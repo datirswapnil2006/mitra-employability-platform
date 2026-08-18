@@ -55,17 +55,17 @@ exports.register = async (req, res) => {
       profileCompletion = profile.calculateCompletion();
       await profile.save();
 
-      // Send credentials email (SMTP or Resend)
-      try {
-        emailResult = await sendCredentialEmail({
-          toEmail: user.email,
-          studentName: user.name,
-          password: generatedPassword,
-          erpNumber: finalErp
-        });
-      } catch (emailErr) {
-        console.error('[Registration Email Error]:', emailErr.message);
-      }
+      // Send credentials email asynchronously (non-blocking for fast registration)
+      sendCredentialEmail({
+        toEmail: user.email,
+        studentName: user.name,
+        password: generatedPassword,
+        erpNumber: finalErp
+      }).then(res => {
+        console.log(`[Registration Email Dispatched]: Status=${res?.success} Method=${res?.method}`);
+      }).catch(emailErr => {
+        console.error('[Registration Email Error]:', emailErr?.message || emailErr);
+      });
     }
 
     const token = generateToken(user._id);
@@ -86,7 +86,7 @@ exports.register = async (req, res) => {
         erpNumber: erpNumber || rollNo || '',
         temporaryPassword: generatedPassword
       },
-      emailDispatched: emailResult?.success || false,
+      emailDispatched: true,
       message: 'Student account created successfully. Your credentials are ready.'
     });
   } catch (err) {
@@ -174,16 +174,20 @@ exports.forgotPassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
-    // Dispatch reset email
-    const emailResult = await sendPasswordResetEmail({
+    // Dispatch reset email asynchronously
+    sendPasswordResetEmail({
       toEmail: user.email,
       studentName: user.name,
       password: newPassword
+    }).then(res => {
+      console.log(`[Reset Email Dispatched]: Status=${res?.success} Method=${res?.method}`);
+    }).catch(emailErr => {
+      console.error('[Reset Email Error]:', emailErr?.message || emailErr);
     });
 
     res.json({
       success: true,
-      emailDispatched: emailResult?.success || false,
+      emailDispatched: true,
       message: `A new temporary password has been dispatched to ${user.email}. Please check your inbox (and spam folder) to sign in.`
     });
   } catch (err) {

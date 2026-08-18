@@ -58,7 +58,10 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
         auth: {
           user: smtpUser,
           pass: smtpPass
-        }
+        },
+        connectionTimeout: 4000,
+        greetingTimeout: 4000,
+        socketTimeout: 5000
       });
 
       const info = await transporter.sendMail({
@@ -76,16 +79,17 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
   }
 
   // 2. Try Resend API if RESEND_API_KEY is available
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const resendFrom = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
 
   if (resendApiKey) {
     try {
+      const fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
       const res = await axios.post(
         'https://api.resend.com/emails',
         {
-          from: resendFrom,
-          to: toEmail,
+          from: fromField,
+          to: toEmail.trim(),
           subject,
           html: emailHtml
         },
@@ -93,7 +97,8 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
           headers: {
             Authorization: `Bearer ${resendApiKey}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 5000
         }
       );
       console.log(`[Email Service - Resend]: Credentials email dispatched to ${toEmail}. Id: ${res.data?.id}`);
@@ -102,7 +107,7 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
       const errDetail = resendErr?.response?.data;
       console.warn('[Email Service - Resend Warning]: Failed to send via Resend API:');
       if (errDetail?.statusCode === 403) {
-        console.warn(`[Email Service Notice]: Resend test sandbox only permits sending to account owner email (${errDetail.message}). For arbitrary student emails, configure Gmail SMTP (EMAIL_USER & EMAIL_PASS) in server/.env or verify your custom domain on Resend.`);
+        console.warn(`[Email Service Notice]: Resend test sandbox only permits sending to account owner email (${errDetail.message}). For arbitrary student emails, configure Gmail App Password or verify domain.`);
       } else {
         console.warn(errDetail || resendErr.message);
       }
@@ -165,7 +170,10 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
         auth: {
           user: smtpUser,
           pass: smtpPass
-        }
+        },
+        connectionTimeout: 4000,
+        greetingTimeout: 4000,
+        socketTimeout: 5000
       });
 
       const info = await transporter.sendMail({
@@ -182,16 +190,17 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
     }
   }
 
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const resendFrom = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
 
   if (resendApiKey) {
     try {
+      const fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
       const res = await axios.post(
         'https://api.resend.com/emails',
         {
-          from: resendFrom,
-          to: toEmail,
+          from: fromField,
+          to: toEmail.trim(),
           subject,
           html: emailHtml
         },
@@ -199,7 +208,8 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
           headers: {
             Authorization: `Bearer ${resendApiKey}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 5000
         }
       );
       return { success: true, method: 'resend', id: res.data?.id };
