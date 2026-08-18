@@ -158,7 +158,7 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
   const html = getRegistrationHtmlTemplate({ studentName, toEmail: recipient, erpNumber, password });
   const from = getSender();
 
-  console.log(`[Email Service]: Email Sending - Dispathing credentials email to ${recipient}...`);
+  console.log('[Email Service]: Dispatching credentials email...');
 
   try {
     const transporter = createTransporter();
@@ -169,11 +169,11 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
       html
     });
 
-    console.log(`[Email Service]: Email Sent - Credentials email successfully delivered to ${recipient}. MessageId: ${info.messageId}`);
-    return { success: true, status: 'Email Sent', method: 'mailtrap', messageId: info.messageId };
+    console.log(`[Email Service]: Email Sent Successfully - Recipient: ${recipient}, MessageId: ${info.messageId}`);
+    return { success: true, status: 'Email Sent', method: 'mailtrap', messageId: info.messageId, recipient };
   } catch (err) {
-    console.error(`[Email Service]: Email Failed - Failed to send credentials email to ${recipient}. Error: ${err.message}`);
-    return { success: false, status: 'Email Failed', method: 'mailtrap', error: err.message };
+    console.error(`[Email Service]: Email Sending Failed - Recipient: ${recipient}, Error: ${err.message}`);
+    return { success: false, status: 'Email Failed', method: 'mailtrap', error: err.message, recipient };
   }
 };
 
@@ -186,7 +186,7 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
   const html = getResetHtmlTemplate({ studentName, toEmail: recipient, password });
   const from = getSender();
 
-  console.log(`[Email Service]: Email Sending - Dispatching reset email to ${recipient}...`);
+  console.log('[Email Service]: Dispatching password reset email...');
 
   try {
     const transporter = createTransporter();
@@ -197,11 +197,11 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
       html
     });
 
-    console.log(`[Email Service]: Email Sent - Password reset email successfully delivered to ${recipient}. MessageId: ${info.messageId}`);
-    return { success: true, status: 'Email Sent', method: 'mailtrap', messageId: info.messageId };
+    console.log(`[Email Service]: Email Sent Successfully - Recipient: ${recipient}, MessageId: ${info.messageId}`);
+    return { success: true, status: 'Email Sent', method: 'mailtrap', messageId: info.messageId, recipient };
   } catch (err) {
-    console.error(`[Email Service]: Email Failed - Failed to send reset email to ${recipient}. Error: ${err.message}`);
-    return { success: false, status: 'Email Failed', method: 'mailtrap', error: err.message };
+    console.error(`[Email Service]: Email Sending Failed - Recipient: ${recipient}, Error: ${err.message}`);
+    return { success: false, status: 'Email Failed', method: 'mailtrap', error: err.message, recipient };
   }
 };
 
@@ -258,7 +258,7 @@ exports.sendTestEmail = async (targetEmail) => {
     </div>
   `;
 
-  console.log(`[Email Service]: Email Sending - Sending test email to ${recipient}...`);
+  console.log('[Email Service]: Dispatching test email...');
 
   try {
     const transporter = createTransporter();
@@ -269,7 +269,7 @@ exports.sendTestEmail = async (targetEmail) => {
       html
     });
 
-    console.log(`[Email Service]: Email Sent - Test email sent successfully to ${recipient}. MessageId: ${info.messageId}`);
+    console.log(`[Email Service]: Email Sent Successfully - Recipient: ${recipient}, MessageId: ${info.messageId}`);
     return {
       success: true,
       status: 'Email Sent',
@@ -278,7 +278,7 @@ exports.sendTestEmail = async (targetEmail) => {
       to: recipient
     };
   } catch (err) {
-    console.error(`[Email Service]: Email Failed - Test email delivery failed to ${recipient}. Error: ${err.message}`);
+    console.error(`[Email Service]: Email Sending Failed - Recipient: ${recipient}, Error: ${err.message}`);
     return {
       success: false,
       status: 'Email Failed',

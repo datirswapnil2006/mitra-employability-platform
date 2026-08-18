@@ -55,21 +55,22 @@ exports.register = async (req, res) => {
       profileCompletion = profile.calculateCompletion();
       await profile.save();
 
-      // Send credentials email asynchronously (non-blocking for fast registration)
-      sendCredentialEmail({
+      // Dispatch credentials email and verify delivery result
+      emailResult = await sendCredentialEmail({
         toEmail: user.email,
         studentName: user.name,
         password: generatedPassword,
         erpNumber: finalErp
-      }).then(res => {
-        if (res?.success) {
-          console.log(`[Email Service]: Email Sent - Credentials email delivered to ${user.email}`);
-        } else {
-          console.error(`[Email Service]: Email Failed - Credentials email failed for ${user.email}: ${res?.error}`);
-        }
-      }).catch(emailErr => {
-        console.error(`[Email Service]: Email Failed - Credentials email error for ${user.email}:`, emailErr?.message || emailErr);
       });
+
+      if (!emailResult?.success) {
+        return res.status(500).json({
+          success: false,
+          emailDispatched: false,
+          status: 'Email Failed',
+          message: `Account created, but credentials email delivery failed (${emailResult?.error || 'SMTP delivery error'}). Please check Mailtrap SMTP configuration.`
+        });
+      }
     }
 
     const token = generateToken(user._id);
@@ -85,6 +86,7 @@ exports.register = async (req, res) => {
         department: user.department
       },
       emailDispatched: true,
+      status: 'Email Sent',
       message: 'Student account registered successfully. Your official sign-in credentials have been dispatched to your email.'
     });
   } catch (err) {
