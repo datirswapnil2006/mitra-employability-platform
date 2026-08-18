@@ -9,7 +9,7 @@ let cachedTransporter = null;
  */
 const getTransporter = () => {
   const host = (process.env.MAIL_HOST || '').trim();
-  const port = process.env.MAIL_PORT ? parseInt(process.env.MAIL_PORT, 10) : 587;
+  const port = process.env.MAIL_PORT ? parseInt(process.env.MAIL_PORT, 10) : 2525;
   const user = (process.env.MAIL_USER || '').trim();
   const pass = (process.env.MAIL_PASSWORD || '').trim();
 
@@ -33,9 +33,9 @@ const getTransporter = () => {
         user,
         pass
       },
-      connectionTimeout: 5000,
-      greetingTimeout: 5000,
-      socketTimeout: 10000
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 12000
     });
   }
 
@@ -225,7 +225,7 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
  */
 exports.getEmailDiagnostics = () => {
   const host = (process.env.MAIL_HOST || '').trim();
-  const port = process.env.MAIL_PORT || '587';
+  const port = process.env.MAIL_PORT || '2525';
   const user = (process.env.MAIL_USER || '').trim();
   const pass = (process.env.MAIL_PASSWORD || '').trim();
   const from = getSender();
