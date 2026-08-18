@@ -80,11 +80,16 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
 
   // 2. Try Resend API if RESEND_API_KEY is available
   const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-  const resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
+  let resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
 
   if (resendApiKey) {
     try {
-      const fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
+      // Resend does not allow personal freemail addresses (like @gmail.com) in the sender field unless using onboarding@resend.dev or verified domain
+      let fromField = 'MITRA Portal <onboarding@resend.dev>';
+      if (resendFrom && !resendFrom.includes('@gmail.com') && !resendFrom.includes('@yahoo.com') && !resendFrom.includes('@outlook.com') && !resendFrom.includes('@hotmail.com')) {
+        fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
+      }
+
       const res = await axios.post(
         'https://api.resend.com/emails',
         {
@@ -191,11 +196,15 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
   }
 
   const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-  const resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
+  let resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
 
   if (resendApiKey) {
     try {
-      const fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
+      let fromField = 'MITRA Portal <onboarding@resend.dev>';
+      if (resendFrom && !resendFrom.includes('@gmail.com') && !resendFrom.includes('@yahoo.com') && !resendFrom.includes('@outlook.com') && !resendFrom.includes('@hotmail.com')) {
+        fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
+      }
+
       const res = await axios.post(
         'https://api.resend.com/emails',
         {

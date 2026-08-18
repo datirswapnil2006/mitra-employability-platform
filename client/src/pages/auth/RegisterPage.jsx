@@ -157,57 +157,23 @@ export const RegisterPage = () => {
                   </div>
 
                   {createdCredentials.erpNumber && (
-                    <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                    <div className="flex justify-between items-center py-1">
                       <span className="text-slate-500 font-medium">ERP / Roll No:</span>
                       <span className="font-mono font-bold text-slate-800">{createdCredentials.erpNumber}</span>
                     </div>
                   )}
-
-                  <div className="flex justify-between items-center py-1 bg-blue-50/50 p-2.5 rounded-xl border border-blue-100">
-                    <div>
-                      <span className="text-blue-900 font-bold block text-[11px]">Your Password:</span>
-                      <span className="font-mono font-extrabold text-blue-700 text-sm tracking-wider">
-                        {showPassword ? createdCredentials.password : '••••••••••••'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-200/60 transition"
-                        title={showPassword ? 'Hide Password' : 'Show Password'}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(createdCredentials.password, 'password')}
-                        className="p-1.5 text-blue-600 hover:text-blue-800 rounded-lg hover:bg-blue-100 transition flex items-center gap-1 font-bold text-[11px]"
-                        title="Copy Password"
-                      >
-                        {copiedField === 'password' ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-600">Copied!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              {/* Password Notice */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3 text-xs text-slate-600">
-                <Mail className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                <p className="text-[11px] leading-relaxed">
-                  A copy of these credentials has also been dispatched to <strong className="font-mono text-slate-800">{createdCredentials.email}</strong>. You can change your password anytime after signing in.
-                </p>
+              {/* Password Delivered to Email Notice */}
+              <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs text-blue-950">
+                <Mail className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-extrabold text-blue-900 block text-xs">Credentials Dispatched to Email</span>
+                  <p className="text-[12px] text-blue-800 leading-relaxed">
+                    Your official student account password and login instructions have been emailed to <strong className="font-mono text-blue-950">{createdCredentials.email}</strong>. Please check your inbox (and spam/promotions folder) to retrieve your password and sign in.
+                  </p>
+                </div>
               </div>
 
               {/* Action Buttons */}
