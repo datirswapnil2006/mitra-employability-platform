@@ -44,12 +44,6 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     const res = await api.register(userData);
-    if (res.success) {
-      localStorage.setItem('mitra_token', res.token);
-      setToken(res.token);
-      setUser(res.user);
-      setProfileCompletion(40);
-    }
     return res;
   };
 
