@@ -3,6 +3,7 @@ import PageHeader from '../../components/PageHeader';
 import Card from '../../components/Card';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
+import { api } from '../../services/api';
 import { OFFICIAL_DEPARTMENTS } from '../../constants/departments';
 import {
   FileSpreadsheet,
@@ -49,22 +50,7 @@ export const ReportsPage = () => {
   const handleExport = async () => {
     setDownloading(true);
     try {
-      const token = localStorage.getItem('mitra_token');
-      const url = `/api/reports/export?type=${reportType}&format=${format}&department=${department}&batch=${batch}`;
-
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      const blob = await res.blob();
-      const fileUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = fileUrl;
-      const ext = format === 'csv' ? 'csv' : 'xlsx';
-      a.download = `MITRA_${reportType}_${department}_${batch}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      await api.downloadStudentReport({ type: reportType, department, batch }, format);
     } catch (err) {
       console.error('Download failed:', err);
     } finally {

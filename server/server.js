@@ -22,19 +22,26 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// API Module Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/students', studentRoutes);
-app.use('/api/training', trainingRoutes);
-app.use('/api/progress', progressRoutes);
-app.use('/api/assessments', assessmentRoutes);
-app.use('/api/questions', questionRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/reports', reportRoutes);
+// API Module Routes (Mounting on both /api/* and /* for full compatibility)
+const routes = [
+  ['/auth', authRoutes],
+  ['/students', studentRoutes],
+  ['/training', trainingRoutes],
+  ['/progress', progressRoutes],
+  ['/assessments', assessmentRoutes],
+  ['/questions', questionRoutes],
+  ['/ai', aiRoutes],
+  ['/analytics', analyticsRoutes],
+  ['/reports', reportRoutes]
+];
+
+routes.forEach(([path, routeHandler]) => {
+  app.use(`/api${path}`, routeHandler);
+  app.use(path, routeHandler);
+});
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health', '/'], (req, res) => {
   res.json({ status: 'healthy', app: 'MITRA Employability Portal API', timestamp: new Date() });
 });
 

@@ -1,4 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+const rawBase = (import.meta.env.VITE_API_BASE_URL || '/api').trim().replace(/\/+$/, '');
+export const API_BASE = rawBase.endsWith('/api')
+  ? rawBase
+  : (rawBase === '' ? '/api' : `${rawBase}/api`);
 
 const getHeaders = () => {
   const token = localStorage.getItem('mitra_token');
