@@ -48,7 +48,11 @@ const getTransporter = () => {
  * Returns sender address strictly from process.env.EMAIL_FROM
  */
 const getSender = () => {
-  const from = (process.env.EMAIL_FROM || '').trim();
+  let from = (process.env.EMAIL_FROM || '').trim();
+  // Strip accidental surrounding quotes if copied with quotes
+  if ((from.startsWith('"') && from.endsWith('"')) || (from.startsWith("'") && from.endsWith("'"))) {
+    from = from.slice(1, -1).trim();
+  }
   if (!from) {
     throw new Error('EMAIL_FROM environment variable is not configured in process.env');
   }
