@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('./user.model');
 const { StudentProfile } = require('../students/student.model');
-const { sendCredentialEmail, sendPasswordResetEmail } = require('../../utils/email.service');
+const { sendCredentialEmail, sendPasswordResetEmail, getEmailDiagnostics, sendTestEmail } = require('../../utils/email.service');
 const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
 
 const generateToken = (id) => {
@@ -62,9 +62,13 @@ exports.register = async (req, res) => {
         password: generatedPassword,
         erpNumber: finalErp
       }).then(res => {
-        console.log(`[Registration Email Dispatched]: Status=${res?.success} Method=${res?.method}`);
+        if (res?.success) {
+          console.log(`[Email Service]: Email Sent - Credentials email delivered to ${user.email}`);
+        } else {
+          console.error(`[Email Service]: Email Failed - Credentials email failed for ${user.email}: ${res?.error}`);
+        }
       }).catch(emailErr => {
-        console.error('[Registration Email Error]:', emailErr?.message || emailErr);
+        console.error(`[Email Service]: Email Failed - Credentials email error for ${user.email}:`, emailErr?.message || emailErr);
       });
     }
 
@@ -80,17 +84,11 @@ exports.register = async (req, res) => {
         role: user.role,
         department: user.department
       },
-      credentials: {
-        name: user.name,
-        email: user.email,
-        erpNumber: erpNumber || rollNo || '',
-        temporaryPassword: generatedPassword
-      },
       emailDispatched: true,
-      message: 'Student account created successfully. Your credentials are ready.'
+      message: 'Student account registered successfully. Your official sign-in credentials have been dispatched to your email.'
     });
   } catch (err) {
-    console.error('[Registration Error]:', err);
+    console.error('[Registration Error]:', err?.message || err);
     if (err.code === 11000) {
       const field = Object.keys(err.keyPattern || {})[0] || 'Email / ERP Number';
       return res.status(400).json({ success: false, message: `${field} is already registered.` });
@@ -169,30 +167,45 @@ exports.forgotPassword = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No registered account found with this email address.' });
     }
 
-    // Generate new secure password
-    const newPassword = `Mitra@${Math.floor(100000 + Math.random() * 900000)}`;
-    user.password = newPassword;
-    await user.save();
-
-    // Dispatch reset email asynchronously
-    sendPasswordResetEmail({
-      toEmail: user.email,
-      studentName: user.name,
-      password: newPassword
-    }).then(res => {
-      console.log(`[Reset Email Dispatched]: Status=${res?.success} Method=${res?.method}`);
-    }).catch(emailErr => {
-      console.error('[Reset Email Error]:', emailErr?.message || emailErr);
-    });
-
     res.json({
       success: true,
-      emailDispatched: true,
-      message: `A new temporary password has been dispatched to ${user.email}. Please check your inbox (and spam folder) to sign in.`
+      message: 'Password reset request submitted. Please contact your Training & Placement Administrator to authorize and dispatch a new password to your email.'
     });
   } catch (err) {
-    console.error('[Forgot Password Error]:', err);
+    console.error('[Forgot Password Error]:', err?.message || err);
     res.status(500).json({ success: false, message: err.message || 'Server error while resetting password.' });
   }
 };
+
+exports.getEmailStatus = (req, res) => {
+  try {
+    const diagnostic = getEmailDiagnostics();
+    res.json({ success: true, diagnostics: diagnostic });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.testEmailSend = async (req, res) => {
+  try {
+    const targetEmail = req.body?.to || req.query?.to;
+    if (!targetEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a target email address in request body {"to": "..."} or query parameter ?to=...'
+      });
+    }
+    const result = await sendTestEmail(targetEmail);
+    res.status(result.success ? 200 : 500).json({
+      success: result.success,
+      status: result.status,
+      message: result.success ? 'Test email dispatched successfully to Mailtrap.' : 'Test email failed. Check Mailtrap SMTP configuration.',
+      details: result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, status: 'Email Failed', message: err.message });
+  }
+};
+
+
 

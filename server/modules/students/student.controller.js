@@ -210,13 +210,24 @@ exports.adminResetStudentPassword = async (req, res) => {
       password: newPassword
     });
 
-    res.json({
-      success: true,
-      emailDispatched: emailResult?.success || false,
-      message: `A new temporary password has been dispatched directly to ${user.email}.`
-    });
+    if (emailResult?.success) {
+      return res.json({
+        success: true,
+        emailDispatched: true,
+        status: 'Email Sent',
+        message: `A new temporary password has been successfully dispatched to ${user.email} via Mailtrap.`
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        emailDispatched: false,
+        status: 'Email Failed',
+        message: `Password was updated, but email delivery failed: ${emailResult?.error || 'Mailtrap SMTP error'}`
+      });
+    }
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, status: 'Email Failed', message: err.message });
   }
 };
+
 

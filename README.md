@@ -5,7 +5,7 @@ MITRA is an end-to-end employability assessment and training platform designed f
 ## 🚀 Tech Stack
 
 - **Frontend**: React 18, Vite, Tailwind CSS, Lucide Icons, React Router DOM
-- **Backend**: Node.js, Express.js, MongoDB / Mongoose, ExcelJS, JWT, Nodemailer, Resend
+- **Backend**: Node.js, Express.js, MongoDB / Mongoose, ExcelJS, JWT, Nodemailer (Mailtrap SMTP)
 - **AI Integrations**: Google Gemini, Groq, Hugging Face
 
 ## 📁 Project Structure

@@ -68,10 +68,8 @@ export const RegisterPage = () => {
     setError('');
     setLoading(true);
     try {
-      const generatedTempPassword = `Mitra@${Math.floor(100000 + Math.random() * 900000)}`;
       const payload = {
         ...formData,
-        password: generatedTempPassword,
         rollNo: formData.erpNumber // compatibility
       };
 
@@ -81,7 +79,6 @@ export const RegisterPage = () => {
           name: formData.name,
           email: formData.email,
           erpNumber: formData.erpNumber,
-          password: res.credentials?.temporaryPassword || generatedTempPassword,
           emailDispatched: res.emailDispatched
         });
         setSuccess(true);
