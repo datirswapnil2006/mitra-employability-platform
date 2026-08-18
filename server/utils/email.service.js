@@ -12,12 +12,14 @@ const getTransporter = () => {
   const port = process.env.MAIL_PORT ? parseInt(process.env.MAIL_PORT, 10) : 2525;
   const user = (process.env.MAIL_USER || '').trim();
   const pass = (process.env.MAIL_PASSWORD || '').trim();
+  const from = (process.env.EMAIL_FROM || '').trim();
 
-  if (!host || !user || !pass) {
+  if (!host || !user || !pass || !from) {
     const missing = [];
     if (!host) missing.push('MAIL_HOST');
     if (!user) missing.push('MAIL_USER');
     if (!pass) missing.push('MAIL_PASSWORD');
+    if (!from) missing.push('EMAIL_FROM');
     throw new Error(`Missing required Mailtrap SMTP environment variables: ${missing.join(', ')}`);
   }
 
@@ -43,10 +45,14 @@ const getTransporter = () => {
 };
 
 /**
- * Returns sender address from process.env.EMAIL_FROM
+ * Returns sender address strictly from process.env.EMAIL_FROM
  */
 const getSender = () => {
-  return (process.env.EMAIL_FROM || 'MITRA Employability Portal <no-reply@mitra-portal.edu>').trim();
+  const from = (process.env.EMAIL_FROM || '').trim();
+  if (!from) {
+    throw new Error('EMAIL_FROM environment variable is not configured in process.env');
+  }
+  return from;
 };
 
 /**
@@ -228,10 +234,10 @@ exports.getEmailDiagnostics = () => {
   const port = process.env.MAIL_PORT || '2525';
   const user = (process.env.MAIL_USER || '').trim();
   const pass = (process.env.MAIL_PASSWORD || '').trim();
-  const from = getSender();
+  const from = (process.env.EMAIL_FROM || '').trim();
   const frontendUrl = getLoginUrl();
 
-  const isConfigured = Boolean(host && user && pass);
+  const isConfigured = Boolean(host && user && pass && from);
 
   return {
     provider: 'Mailtrap SMTP + Nodemailer (Connection Pooled)',
@@ -242,7 +248,7 @@ exports.getEmailDiagnostics = () => {
       port,
       userSet: Boolean(user),
       passwordSet: Boolean(pass),
-      emailFrom: from,
+      emailFrom: from || 'NOT_SET',
       loginUrl: frontendUrl
     }
   };
@@ -252,12 +258,12 @@ exports.getEmailDiagnostics = () => {
  * Live test email dispatcher for Mailtrap SMTP
  */
 exports.sendTestEmail = async (targetEmail) => {
-  const recipient = (targetEmail || process.env.EMAIL_FROM || '').trim();
+  const recipient = (targetEmail || '').trim();
   if (!recipient) {
     return {
       success: false,
       status: 'Email Failed',
-      error: 'Target email is required.'
+      error: 'Target recipient email is required (e.g. ?to=your_email@domain.com).'
     };
   }
 
