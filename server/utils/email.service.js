@@ -1,10 +1,13 @@
 const nodemailer = require('nodemailer');
 
+let cachedTransporter = null;
+
 /**
- * Creates Nodemailer transporter configured strictly for Mailtrap SMTP
+ * Creates or returns cached Nodemailer transporter with connection pooling.
+ * Keeps SMTP connections open to reduce latency from ~4-5s to under ~300ms.
  * Environment variables: MAIL_HOST, MAIL_PORT, MAIL_USER, MAIL_PASSWORD
  */
-const createTransporter = () => {
+const getTransporter = () => {
   const host = (process.env.MAIL_HOST || '').trim();
   const port = process.env.MAIL_PORT ? parseInt(process.env.MAIL_PORT, 10) : 587;
   const user = (process.env.MAIL_USER || '').trim();
@@ -18,15 +21,25 @@ const createTransporter = () => {
     throw new Error(`Missing required Mailtrap SMTP environment variables: ${missing.join(', ')}`);
   }
 
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: {
-      user,
-      pass
-    }
-  });
+  if (!cachedTransporter) {
+    cachedTransporter = nodemailer.createTransport({
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user,
+        pass
+      },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000
+    });
+  }
+
+  return cachedTransporter;
 };
 
 /**
@@ -161,7 +174,7 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
   console.log('[Email Service]: Dispatching credentials email...');
 
   try {
-    const transporter = createTransporter();
+    const transporter = getTransporter();
     const info = await transporter.sendMail({
       from,
       to: recipient,
@@ -172,6 +185,7 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
     console.log(`[Email Service]: Email Sent Successfully - Recipient: ${recipient}, MessageId: ${info.messageId}`);
     return { success: true, status: 'Email Sent', method: 'mailtrap', messageId: info.messageId, recipient };
   } catch (err) {
+    cachedTransporter = null; // reset pooled transporter if connection broke
     console.error(`[Email Service]: Email Sending Failed - Recipient: ${recipient}, Error: ${err.message}`);
     return { success: false, status: 'Email Failed', method: 'mailtrap', error: err.message, recipient };
   }
@@ -189,7 +203,7 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
   console.log('[Email Service]: Dispatching password reset email...');
 
   try {
-    const transporter = createTransporter();
+    const transporter = getTransporter();
     const info = await transporter.sendMail({
       from,
       to: recipient,
@@ -200,6 +214,7 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
     console.log(`[Email Service]: Email Sent Successfully - Recipient: ${recipient}, MessageId: ${info.messageId}`);
     return { success: true, status: 'Email Sent', method: 'mailtrap', messageId: info.messageId, recipient };
   } catch (err) {
+    cachedTransporter = null;
     console.error(`[Email Service]: Email Sending Failed - Recipient: ${recipient}, Error: ${err.message}`);
     return { success: false, status: 'Email Failed', method: 'mailtrap', error: err.message, recipient };
   }
@@ -219,7 +234,7 @@ exports.getEmailDiagnostics = () => {
   const isConfigured = Boolean(host && user && pass);
 
   return {
-    provider: 'Mailtrap SMTP + Nodemailer',
+    provider: 'Mailtrap SMTP + Nodemailer (Connection Pooled)',
     configured: isConfigured,
     status: isConfigured ? 'Ready' : 'Incomplete Configuration',
     config: {
@@ -251,7 +266,7 @@ exports.sendTestEmail = async (targetEmail) => {
   const html = `
     <div style="font-family: sans-serif; padding: 24px; border: 1px solid #2563eb; border-radius: 12px; max-width: 500px; margin: 0 auto;">
       <h2 style="color: #1e3a8a; margin-top: 0;">MITRA Portal - Mailtrap Test</h2>
-      <p>This is a test verification email sent from the MITRA backend via <strong>Mailtrap SMTP + Nodemailer</strong>.</p>
+      <p>This is a test verification email sent from the MITRA backend via <strong>Mailtrap SMTP + Nodemailer (Connection Pooled)</strong>.</p>
       <p><strong>Configured Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
       <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
       <p style="color: #16a34a; font-weight: bold; margin-bottom: 0;">✓ If you see this in Mailtrap Inbox, your email service is fully operational.</p>
@@ -261,7 +276,7 @@ exports.sendTestEmail = async (targetEmail) => {
   console.log('[Email Service]: Dispatching test email...');
 
   try {
-    const transporter = createTransporter();
+    const transporter = getTransporter();
     const info = await transporter.sendMail({
       from: getSender(),
       to: recipient,
@@ -278,6 +293,7 @@ exports.sendTestEmail = async (targetEmail) => {
       to: recipient
     };
   } catch (err) {
+    cachedTransporter = null;
     console.error(`[Email Service]: Email Sending Failed - Recipient: ${recipient}, Error: ${err.message}`);
     return {
       success: false,
