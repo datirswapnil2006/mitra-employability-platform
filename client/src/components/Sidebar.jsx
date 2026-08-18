@@ -1,0 +1,358 @@
+import React, { useState, useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  UserCheck,
+  GraduationCap,
+  BookOpen,
+  Sparkles,
+  FileCheck,
+  HelpCircle,
+  Award,
+  BarChart3,
+  FileSpreadsheet,
+  Settings,
+  User,
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  TrendingUp,
+  BrainCircuit,
+  Layers,
+  X
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+
+export const Sidebar = ({ isOpen, onClose }) => {
+  const { user, profileCompletion } = useAuth();
+  const location = useLocation();
+  const isAdmin = user && user.role === 'admin';
+
+  // Manage open states of collapsible groups
+  const [openGroups, setOpenGroups] = useState({
+    registration: true,
+    training: true,
+    assessment: true
+  });
+
+  const toggleGroup = (groupKey) => {
+    setOpenGroups((prev) => ({
+      ...prev,
+      [groupKey]: !prev[groupKey]
+    }));
+  };
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    if (onClose) onClose();
+  }, [location.pathname]);
+
+  // Admin Navigation Definition (Section 31)
+  const adminNav = [
+    {
+      type: 'link',
+      to: '/admin/dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard
+    },
+    {
+      type: 'group',
+      key: 'registration',
+      label: 'Registration',
+      icon: UserCheck,
+      children: [
+        { to: '/admin/students', label: 'Student Directory' },
+        { to: '/admin/students/export', label: 'Profile Data Export' }
+      ]
+    },
+    {
+      type: 'group',
+      key: 'training',
+      label: 'Training',
+      icon: BookOpen,
+      children: [
+        { to: '/admin/training?module=Aptitude', label: 'Aptitude' },
+        { to: '/admin/training?module=Domain', label: 'Domain Knowledge' },
+        { to: '/admin/training?module=Communication', label: 'Communication' },
+        { to: '/admin/training?module=Resume', label: 'Resume' },
+        { to: '/admin/training?module=Interview', label: 'Interview Preparation' }
+      ]
+    },
+    {
+      type: 'link',
+      to: '/admin/ai-gen',
+      label: 'Psychometric',
+      icon: BrainCircuit
+    },
+    {
+      type: 'group',
+      key: 'assessment',
+      label: 'Assessment',
+      icon: FileCheck,
+      children: [
+        { to: '/admin/assessments?type=Aptitude', label: 'Aptitude' },
+        { to: '/admin/assessments?type=Domain', label: 'Domain Knowledge' },
+        { to: '/admin/assessments?type=Communication', label: 'Communication' },
+        { to: '/admin/assessments?type=Resume', label: 'Resume' },
+        { to: '/admin/assessments?type=Interview', label: 'Interview' },
+        { to: '/admin/assessments?type=Full', label: 'Full Assessment' }
+      ]
+    },
+    {
+      type: 'link',
+      to: '/admin/question-bank',
+      label: 'Question Bank',
+      icon: HelpCircle
+    },
+    {
+      type: 'link',
+      to: '/admin/results',
+      label: 'Results',
+      icon: Award
+    },
+    {
+      type: 'link',
+      to: '/admin/analytics',
+      label: 'Analytics',
+      icon: BarChart3
+    },
+    {
+      type: 'link',
+      to: '/admin/reports',
+      label: 'Reports',
+      icon: FileSpreadsheet
+    },
+    {
+      type: 'link',
+      to: '/admin/settings',
+      label: 'Settings',
+      icon: Settings
+    }
+  ];
+
+  // Student Navigation Definition (Section 32)
+  const studentNav = [
+    {
+      type: 'link',
+      to: '/student/dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard
+    },
+    {
+      type: 'link',
+      to: '/student/profile',
+      label: 'Profile',
+      icon: User,
+      badge: profileCompletion < 100 ? `${profileCompletion}%` : '✓',
+      badgeColor: profileCompletion < 100 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+    },
+    {
+      type: 'group',
+      key: 'training',
+      label: 'Training',
+      icon: BookOpen,
+      children: [
+        { to: '/student/training?category=Aptitude', label: 'Aptitude' },
+        { to: '/student/training?category=Domain', label: 'Domain Knowledge' },
+        { to: '/student/training?category=Communication', label: 'Communication' },
+        { to: '/student/training?category=Resume', label: 'Resume' },
+        { to: '/student/training?category=Interview', label: 'Interview Preparation' }
+      ]
+    },
+    {
+      type: 'link',
+      to: '/student/psychometric',
+      label: 'Psychometric',
+      icon: BrainCircuit
+    },
+    {
+      type: 'link',
+      to: '/student/assessments',
+      label: 'Assessment',
+      icon: FileCheck
+    },
+    {
+      type: 'link',
+      to: '/student/performance',
+      label: 'Performance',
+      icon: TrendingUp
+    },
+    {
+      type: 'link',
+      to: '/student/notifications',
+      label: 'Notifications',
+      icon: Bell
+    },
+    {
+      type: 'link',
+      to: '/student/settings',
+      label: 'Settings',
+      icon: Settings
+    }
+  ];
+
+  const currentNav = isAdmin ? adminNav : studentNav;
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-[#0F172A] text-slate-300 select-none">
+      {/* Brand Header */}
+      <div className="p-5 border-b border-slate-800/80 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <img
+            src="/college-logo.jpg"
+            alt="MITRA Logo"
+            className="h-9 w-auto rounded-lg object-contain bg-white p-1 border border-slate-700 shadow-sm shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-black text-sm text-white tracking-widest uppercase">MITRA</span>
+              <span className="bg-blue-500/20 text-blue-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded border border-blue-500/30">
+                {isAdmin ? 'ADMIN' : 'STUDENT'}
+              </span>
+            </div>
+            <p className="text-[10px] font-semibold text-slate-400 truncate">
+              {isAdmin ? 'Management Console' : 'Employability Portal'}
+            </p>
+          </div>
+        </div>
+
+        {/* Close button for mobile drawer */}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+
+      {/* Navigation List */}
+      <nav className="flex-1 p-3.5 space-y-1.5 overflow-y-auto custom-scrollbar">
+        <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          {isAdmin ? 'Institutional Rights' : 'Student Ecosystem'}
+        </div>
+
+        {currentNav.map((item, idx) => {
+          if (item.type === 'link') {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={idx}
+                to={item.to}
+                className={({ isActive }) =>
+                  `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
+                  }`
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-105" />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${item.badgeColor}`}>
+                    {item.badge}
+                  </span>
+                )}
+              </NavLink>
+            );
+          }
+
+          if (item.type === 'group') {
+            const Icon = item.icon;
+            const isOpen = openGroups[item.key] ?? false;
+            const hasActiveChild = item.children?.some(
+              (c) => location.pathname + location.search === c.to || location.pathname.startsWith(c.to.split('?')[0])
+            );
+
+            return (
+              <div key={idx} className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(item.key)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                    hasActiveChild
+                      ? 'text-blue-300 bg-slate-800/90 font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{item.label}</span>
+                  </div>
+                  {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                </button>
+
+                {isOpen && (
+                  <div className="pl-7 pr-2 py-1 space-y-1 border-l border-slate-800/80 ml-4 animate-in fade-in duration-200">
+                    {item.children.map((child, cIdx) => (
+                      <NavLink
+                        key={cIdx}
+                        to={child.to}
+                        className={({ isActive }) =>
+                          `block px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                            isActive
+                              ? 'bg-blue-600/90 text-white font-bold shadow-xs'
+                              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
+                          }`
+                        }
+                      >
+                        {child.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return null;
+        })}
+      </nav>
+
+      {/* Footer Info */}
+      <div className="p-4 border-t border-slate-800/80 bg-slate-950/40 text-[10px] text-slate-400 flex items-center justify-between">
+        <div>
+          <span className="font-bold text-slate-300">MITRA 2026</span>
+          <p className="text-[9px] text-slate-400">Institutional v2.4</p>
+        </div>
+        <span className="text-emerald-400 font-bold flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Online
+        </span>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Sticky Sidebar */}
+      <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 z-30 shadow-xl shrink-0 border-r border-slate-800">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Drawer Backdrop */}
+      {isOpen && (
+        <div
+          onClick={onClose}
+          className="md:hidden fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 transition-opacity"
+        />
+      )}
+
+      {/* Mobile Drawer */}
+      <aside
+        className={`md:hidden fixed top-0 bottom-0 left-0 w-72 z-50 transform transition-transform duration-300 ease-in-out shadow-2xl ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+    </>
+  );
+};
+
+export default Sidebar;

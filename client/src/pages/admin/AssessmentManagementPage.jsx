@@ -1,0 +1,525 @@
+import React, { useEffect, useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
+import PageHeader from '../../components/PageHeader';
+import FilterTabs from '../../components/FilterTabs';
+import Button from '../../components/Button';
+import Input from '../../components/Input';
+import Select from '../../components/Select';
+import StatusBadge from '../../components/StatusBadge';
+import Modal from '../../components/Modal';
+import LoadingState from '../../components/LoadingState';
+import EmptyState from '../../components/EmptyState';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import {
+  TRAINING_MODULES,
+  MODULE_CATEGORIES,
+  normalizeModuleName
+} from '../../constants/trainingModules';
+import { AI_PROVIDERS, QUESTION_DIFFICULTIES } from '../../constants/questionBank';
+import {
+  Plus,
+  Sparkles,
+  Clock,
+  Award,
+  Trash2,
+  Edit2,
+  Play,
+  FileCheck,
+  CheckCircle2,
+  AlertCircle,
+  Building2,
+  Bot
+} from 'lucide-react';
+
+export const AssessmentManagementPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const rawModule = searchParams.get('type') || searchParams.get('module') || 'Aptitude';
+  const currentModule = normalizeModuleName(rawModule);
+  const isDomainModule = currentModule === 'Domain Knowledge';
+
+  const [loading, setLoading] = useState(true);
+  const [assessments, setAssessments] = useState([]);
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals state
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [assessmentToDelete, setAssessmentToDelete] = useState(null);
+
+  // AI Generator Form
+  const [aiForm, setAiForm] = useState({
+    provider: 'gemini',
+    title: '',
+    description: '',
+    module: currentModule,
+    category: 'Quantitative',
+    department: null,
+    topic: '',
+    difficulty: 'Medium',
+    questionCount: 5,
+    timeLimitMinutes: 20,
+    passingScorePercentage: 70,
+    status: 'published'
+  });
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  // Subcategory tabs for active module
+  const availableCategories =
+    MODULE_CATEGORIES[currentModule] ||
+    MODULE_CATEGORIES[rawModule] ||
+    [];
+
+  const filterTabs = [
+    { id: 'All', label: isDomainModule ? 'All Departments' : 'All Categories' },
+    ...availableCategories
+  ];
+
+  // Modules including Full Assessment
+  const assessmentModules = [
+    ...TRAINING_MODULES,
+    { id: 'Full', label: 'Full Assessment' }
+  ];
+
+  useEffect(() => {
+    setActiveCategory('All');
+  }, [currentModule]);
+
+  useEffect(() => {
+    fetchAssessments();
+  }, [currentModule, activeCategory]);
+
+  const fetchAssessments = async () => {
+    setLoading(true);
+    try {
+      const params = { module: currentModule };
+      if (activeCategory !== 'All') {
+        if (isDomainModule) {
+          params.department = activeCategory;
+        } else {
+          params.category = activeCategory;
+        }
+      }
+
+      const res = await api.getAssessments(params);
+      if (res.success) {
+        setAssessments(res.assessments || []);
+      }
+    } catch (err) {
+      console.error('Error fetching assessments:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleModuleChange = (newModId) => {
+    setSearchParams({ type: newModId });
+  };
+
+  // Generate AI Assessment
+  const handleGenerateAI = async (e) => {
+    e.preventDefault();
+    if (!aiForm.topic.trim()) {
+      setAiError('Please enter a topic name.');
+      return;
+    }
+
+    setGeneratingAI(true);
+    setAiError('');
+
+    try {
+      const payload = {
+        ...aiForm,
+        module: currentModule,
+        category: isDomainModule ? (aiForm.department || 'CSE') : aiForm.category,
+        department: isDomainModule ? (aiForm.department || 'CSE') : null
+      };
+
+      const res = await api.generateAIAssessment(payload);
+      if (res.success) {
+        setIsAIModalOpen(false);
+        fetchAssessments();
+      } else {
+        setAiError(res.message || 'Failed to generate assessment. Please try again.');
+      }
+    } catch (err) {
+      setAiError('AI generation failed. Please verify API keys or try another provider.');
+    } finally {
+      setGeneratingAI(false);
+    }
+  };
+
+  // Delete Assessment
+  const handleDeleteAssessment = async () => {
+    if (!assessmentToDelete) return;
+    try {
+      const res = await api.deleteAssessment(assessmentToDelete._id);
+      if (res.success) {
+        setDeleteConfirmOpen(false);
+        setAssessmentToDelete(null);
+        fetchAssessments();
+      }
+    } catch (err) {
+      console.error('Error deleting assessment:', err);
+    }
+  };
+
+  // Filter assessments by search
+  const filteredAssessments = assessments.filter((a) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      a.title?.toLowerCase().includes(q) ||
+      a.topic?.toLowerCase().includes(q) ||
+      a.category?.toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={`${currentModule} Assessment Management`}
+        subtitle="Manage evaluations, generate tests with Gemini, Groq, and Hugging Face, and review candidate grading."
+        breadcrumbs={[
+          { label: 'Admin', link: '/admin/dashboard' },
+          { label: 'Assessments' },
+          { label: currentModule }
+        ]}
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              icon={Sparkles}
+              onClick={() => {
+                setAiForm((prev) => ({
+                  ...prev,
+                  module: currentModule,
+                  category: availableCategories[0]?.id || 'General',
+                  department: isDomainModule ? 'CSE' : null,
+                  title: '',
+                  topic: ''
+                }));
+                setAiError('');
+                setIsAIModalOpen(true);
+              }}
+              className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+            >
+              AI Assessment Generator
+            </Button>
+          </div>
+        }
+      />
+
+      {/* Module Selector Buttons */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3 overflow-x-auto">
+        {assessmentModules.map((m) => {
+          const isActive =
+            rawModule === m.id ||
+            currentModule === m.label ||
+            (m.id === 'Domain' && isDomainModule);
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => handleModuleChange(m.id)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 border ${
+                isActive
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <FileCheck className="w-4 h-4" />
+              <span>{m.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Category Tabs & Filter */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+        <FilterTabs
+          tabs={filterTabs}
+          activeTab={activeCategory}
+          onTabChange={setActiveCategory}
+        />
+
+        <div className="w-full lg:w-72">
+          <Input
+            placeholder="Search assessment title or topic..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="text-xs"
+          />
+        </div>
+      </div>
+
+      {/* Assessment Cards Grid */}
+      {loading ? (
+        <LoadingState message={`Loading ${currentModule} assessments...`} />
+      ) : filteredAssessments.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredAssessments.map((item) => (
+            <div
+              key={item._id}
+              className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:shadow-lg transition-all duration-200 group"
+            >
+              <div>
+                {/* Header Tags */}
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {item.department && (
+                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/60 flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />
+                        {item.department}
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
+                      {item.category || currentModule}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                        item.difficulty === 'Easy'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : item.difficulty === 'Hard'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}
+                    >
+                      {item.difficulty || 'Medium'}
+                    </span>
+                  </div>
+
+                  <StatusBadge status={item.status || 'published'} />
+                </div>
+
+                <h3 className="font-bold text-base text-slate-900 line-clamp-2 leading-snug">
+                  {item.title}
+                </h3>
+
+                {item.description && (
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-1.5 leading-relaxed">
+                    {item.description}
+                  </p>
+                )}
+
+                {/* Key Metrics Grid */}
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 border border-slate-200/60 rounded-2xl p-3 mt-4 text-center">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Questions</span>
+                    <span className="text-sm font-extrabold text-slate-900">
+                      {item.questions?.length || 0}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Time Limit</span>
+                    <span className="text-sm font-extrabold text-blue-600 flex items-center justify-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      {item.timeLimitMinutes || 20}m
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Pass Mark</span>
+                    <span className="text-sm font-extrabold text-emerald-600">
+                      {item.passingScorePercentage || 70}%
+                    </span>
+                  </div>
+                </div>
+
+                {item.isAIGenerated && (
+                  <div className="mt-3 flex items-center gap-1.5 text-[11px] text-indigo-700 font-semibold bg-indigo-50/70 border border-indigo-200/50 px-2.5 py-1 rounded-xl">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>AI-Generated via {item.aiProvider?.toUpperCase() || 'GEMINI'}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions Footer */}
+              <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Play}
+                  onClick={() => navigate(`/student/take-assessment/${item._id}`)}
+                  className="flex-1 justify-center shadow-xs"
+                >
+                  Preview Test
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssessmentToDelete(item);
+                    setDeleteConfirmOpen(true);
+                  }}
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                  title="Delete Assessment"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title={`No ${activeCategory === 'All' ? currentModule : activeCategory} Assessments`}
+          description={`No assessment evaluations have been published for ${
+            activeCategory !== 'All' ? activeCategory : currentModule
+          } yet. Generate one instantly with AI.`}
+          actionText="Generate AI Assessment"
+          onAction={() => {
+            setAiForm((prev) => ({
+              ...prev,
+              module: currentModule,
+              category: availableCategories[0]?.id || 'General',
+              department: isDomainModule ? 'CSE' : null,
+              title: '',
+              topic: ''
+            }));
+            setAiError('');
+            setIsAIModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* MODAL: AI Assessment Generator */}
+      <Modal
+        isOpen={isAIModalOpen}
+        onClose={() => setIsAIModalOpen(false)}
+        title={`AI Assessment Generator (${currentModule})`}
+      >
+        <form onSubmit={handleGenerateAI} className="space-y-4">
+          {/* AI Provider */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-slate-700">Select AI LLM Engine *</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {AI_PROVIDERS.map((provider) => {
+                const isSelected = aiForm.provider === provider.id;
+                return (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    onClick={() => setAiForm({ ...aiForm, provider: provider.id })}
+                    className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-indigo-50 border-indigo-600 text-indigo-950 font-bold ring-2 ring-indigo-500/20'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-extrabold">{provider.name}</span>
+                      <Bot className={`w-4 h-4 ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    </div>
+                    <span className="text-[10px] text-slate-500">{provider.model}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Category / Department *"
+              options={availableCategories.map((c) => c.id)}
+              value={aiForm.category}
+              onChange={(e) =>
+                setAiForm({
+                  ...aiForm,
+                  category: e.target.value,
+                  department: isDomainModule ? e.target.value : null
+                })
+              }
+            />
+            <Select
+              label="Difficulty Level *"
+              options={QUESTION_DIFFICULTIES}
+              value={aiForm.difficulty}
+              onChange={(e) => setAiForm({ ...aiForm, difficulty: e.target.value })}
+            />
+          </div>
+
+          <Input
+            label="Topic / Exam Subject *"
+            placeholder="e.g. Quantitative Profit & Loss / Database Indexing / Active Listening"
+            value={aiForm.topic}
+            onChange={(e) => setAiForm({ ...aiForm, topic: e.target.value })}
+            required
+          />
+
+          <Input
+            label="Assessment Title (Optional auto-naming)"
+            placeholder="e.g. Master Evaluation on Profit & Loss"
+            value={aiForm.title}
+            onChange={(e) => setAiForm({ ...aiForm, title: e.target.value })}
+          />
+
+          <div className="grid grid-cols-3 gap-3">
+            <Select
+              label="Questions"
+              options={['5', '10', '15', '20']}
+              value={String(aiForm.questionCount)}
+              onChange={(e) =>
+                setAiForm({ ...aiForm, questionCount: parseInt(e.target.value, 10) })
+              }
+            />
+            <Select
+              label="Time Limit"
+              options={['10 mins', '15 mins', '20 mins', '30 mins', '45 mins', '60 mins']}
+              value={`${aiForm.timeLimitMinutes} mins`}
+              onChange={(e) =>
+                setAiForm({
+                  ...aiForm,
+                  timeLimitMinutes: parseInt(e.target.value, 10)
+                })
+              }
+            />
+            <Select
+              label="Pass %"
+              options={['50%', '60%', '70%', '80%']}
+              value={`${aiForm.passingScorePercentage}%`}
+              onChange={(e) =>
+                setAiForm({
+                  ...aiForm,
+                  passingScorePercentage: parseInt(e.target.value, 10)
+                })
+              }
+            />
+          </div>
+
+          {aiError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2 font-medium">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{aiError}</span>
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            icon={Sparkles}
+            loading={generatingAI}
+            className="w-full justify-center bg-indigo-600 hover:bg-indigo-700"
+          >
+            Generate & Publish Assessment
+          </Button>
+        </form>
+      </Modal>
+
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteAssessment}
+        title="Delete Assessment?"
+        message={`Are you sure you want to delete "${assessmentToDelete?.title}"? All student attempts on this test will also be deleted.`}
+        confirmText="Delete Assessment"
+      />
+    </div>
+  );
+};
+
+export default AssessmentManagementPage;
