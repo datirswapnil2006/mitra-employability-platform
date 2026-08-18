@@ -47,7 +47,86 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
   const emailHtml = getHtmlTemplate({ studentName, toEmail, erpNumber, password });
   const subject = 'MITRA Portal - Your Student Account Credentials';
 
-  // 1. Check if SMTP configuration is present (Gmail or custom SMTP)
+  // 1. Try Brevo (Sendinblue) HTTP API (Best for Cloud Deployments / Render)
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
+  const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || 'datirswapnil1@gmail.com').trim();
+  const brevoSenderName = process.env.BREVO_SENDER_NAME || 'MITRA Employability Portal';
+
+  if (brevoApiKey) {
+    try {
+      const res = await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        {
+          sender: {
+            name: brevoSenderName,
+            email: brevoSenderEmail
+          },
+          to: [
+            {
+              email: toEmail.trim(),
+              name: studentName
+            }
+          ],
+          subject,
+          htmlContent: emailHtml
+        },
+        {
+          headers: {
+            'api-key': brevoApiKey,
+            'content-type': 'application/json',
+            'accept': 'application/json'
+          },
+          timeout: 7000
+        }
+      );
+      console.log(`[Email Service - Brevo]: Credentials email successfully dispatched to ${toEmail}. MessageId: ${res.data?.messageId}`);
+      return { success: true, method: 'brevo', messageId: res.data?.messageId };
+    } catch (brevoErr) {
+      console.error('[Email Service - Brevo Error]:', brevoErr?.response?.data || brevoErr.message);
+    }
+  }
+
+  // 2. Try Resend API if RESEND_API_KEY is available
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  let resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
+
+  if (resendApiKey) {
+    try {
+      let fromField = 'MITRA Portal <onboarding@resend.dev>';
+      if (resendFrom && !resendFrom.includes('@gmail.com') && !resendFrom.includes('@yahoo.com') && !resendFrom.includes('@outlook.com') && !resendFrom.includes('@hotmail.com')) {
+        fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
+      }
+
+      const res = await axios.post(
+        'https://api.resend.com/emails',
+        {
+          from: fromField,
+          to: toEmail.trim(),
+          subject,
+          html: emailHtml
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 5000
+        }
+      );
+      console.log(`[Email Service - Resend]: Credentials email dispatched to ${toEmail}. Id: ${res.data?.id}`);
+      return { success: true, method: 'resend', id: res.data?.id };
+    } catch (resendErr) {
+      const errDetail = resendErr?.response?.data;
+      console.warn('[Email Service - Resend Warning]: Failed to send via Resend API:');
+      if (errDetail?.statusCode === 403) {
+        console.warn(`[Email Service Notice]: Resend test sandbox only permits sending to account owner email (${errDetail.message}).`);
+      } else {
+        console.warn(errDetail || resendErr.message);
+      }
+    }
+  }
+
+  // 3. Try SMTP (Gmail or custom SMTP)
   const smtpUser = (process.env.EMAIL_USER || process.env.SMTP_USER || '').trim();
   const smtpPass = (process.env.EMAIL_PASS || process.env.SMTP_PASS || '').replace(/\s+/g, '');
 
@@ -78,48 +157,7 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
     }
   }
 
-  // 2. Try Resend API if RESEND_API_KEY is available
-  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-  let resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
-
-  if (resendApiKey) {
-    try {
-      // Resend does not allow personal freemail addresses (like @gmail.com) in the sender field unless using onboarding@resend.dev or verified domain
-      let fromField = 'MITRA Portal <onboarding@resend.dev>';
-      if (resendFrom && !resendFrom.includes('@gmail.com') && !resendFrom.includes('@yahoo.com') && !resendFrom.includes('@outlook.com') && !resendFrom.includes('@hotmail.com')) {
-        fromField = resendFrom.includes('<') ? resendFrom : `MITRA Portal <${resendFrom}>`;
-      }
-
-      const res = await axios.post(
-        'https://api.resend.com/emails',
-        {
-          from: fromField,
-          to: toEmail.trim(),
-          subject,
-          html: emailHtml
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 5000
-        }
-      );
-      console.log(`[Email Service - Resend]: Credentials email dispatched to ${toEmail}. Id: ${res.data?.id}`);
-      return { success: true, method: 'resend', id: res.data?.id };
-    } catch (resendErr) {
-      const errDetail = resendErr?.response?.data;
-      console.warn('[Email Service - Resend Warning]: Failed to send via Resend API:');
-      if (errDetail?.statusCode === 403) {
-        console.warn(`[Email Service Notice]: Resend test sandbox only permits sending to account owner email (${errDetail.message}). For arbitrary student emails, configure Gmail App Password or verify domain.`);
-      } else {
-        console.warn(errDetail || resendErr.message);
-      }
-    }
-  }
-
-  // 3. Fallback Log
+  // 4. Fallback Log
   console.log(`[Email Service - Local Passcode]: Credentials generated for [${toEmail}]: Password = ${password}`);
   return { success: false, method: 'local', message: 'Credentials generated and retained.' };
 };
@@ -165,36 +203,46 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
   const emailHtml = getResetHtmlTemplate({ studentName, toEmail, password });
   const subject = 'MITRA Portal - Your New Password';
 
-  const smtpUser = (process.env.EMAIL_USER || process.env.SMTP_USER || '').trim();
-  const smtpPass = (process.env.EMAIL_PASS || process.env.SMTP_PASS || '').replace(/\s+/g, '');
+  // 1. Try Brevo (Sendinblue) HTTP API
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
+  const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || 'datirswapnil1@gmail.com').trim();
+  const brevoSenderName = process.env.BREVO_SENDER_NAME || 'MITRA Employability Portal';
 
-  if (smtpUser && smtpPass) {
+  if (brevoApiKey) {
     try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: smtpUser,
-          pass: smtpPass
+      const res = await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        {
+          sender: {
+            name: brevoSenderName,
+            email: brevoSenderEmail
+          },
+          to: [
+            {
+              email: toEmail.trim(),
+              name: studentName
+            }
+          ],
+          subject,
+          htmlContent: emailHtml
         },
-        connectionTimeout: 4000,
-        greetingTimeout: 4000,
-        socketTimeout: 5000
-      });
-
-      const info = await transporter.sendMail({
-        from: `"MITRA Portal" <${smtpUser}>`,
-        to: toEmail.trim(),
-        subject,
-        html: emailHtml
-      });
-
-      console.log(`[Email Service - Reset SMTP]: Password reset email delivered to ${toEmail}. MessageId: ${info.messageId}`);
-      return { success: true, method: 'smtp', messageId: info.messageId };
-    } catch (smtpErr) {
-      console.error('[Email Service - Reset SMTP Error]:', smtpErr.message);
+        {
+          headers: {
+            'api-key': brevoApiKey,
+            'content-type': 'application/json',
+            'accept': 'application/json'
+          },
+          timeout: 7000
+        }
+      );
+      console.log(`[Email Service - Reset Brevo]: Reset email delivered to ${toEmail}. MessageId: ${res.data?.messageId}`);
+      return { success: true, method: 'brevo', messageId: res.data?.messageId };
+    } catch (brevoErr) {
+      console.error('[Email Service - Reset Brevo Error]:', brevoErr?.response?.data || brevoErr.message);
     }
   }
 
+  // 2. Try Resend API if RESEND_API_KEY is available
   const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
   let resendFrom = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
 
@@ -227,6 +275,38 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
     }
   }
 
+  // 3. Try SMTP (Gmail or custom SMTP)
+  const smtpUser = (process.env.EMAIL_USER || process.env.SMTP_USER || '').trim();
+  const smtpPass = (process.env.EMAIL_PASS || process.env.SMTP_PASS || '').replace(/\s+/g, '');
+
+  if (smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        },
+        connectionTimeout: 4000,
+        greetingTimeout: 4000,
+        socketTimeout: 5000
+      });
+
+      const info = await transporter.sendMail({
+        from: `"MITRA Portal" <${smtpUser}>`,
+        to: toEmail.trim(),
+        subject,
+        html: emailHtml
+      });
+
+      console.log(`[Email Service - Reset SMTP]: Password reset email delivered to ${toEmail}. MessageId: ${info.messageId}`);
+      return { success: true, method: 'smtp', messageId: info.messageId };
+    } catch (smtpErr) {
+      console.error('[Email Service - Reset SMTP Error]:', smtpErr.message);
+    }
+  }
+
+  // 4. Fallback Log
   console.log(`[Email Service - Reset Local Passcode]: Reset password for [${toEmail}]: Password = ${password}`);
   return { success: false, method: 'local', message: 'Reset password generated.' };
 };
