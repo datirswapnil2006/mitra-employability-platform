@@ -1,4 +1,10 @@
+const dns = require('dns');
 const nodemailer = require('nodemailer');
+
+// Force IPv4 resolution first to prevent ENETUNREACH IPv6 errors on Render/cloud containers
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 let cachedTransporter = null;
 
@@ -9,7 +15,7 @@ let cachedTransporter = null;
  */
 const getTransporter = () => {
   const host = (process.env.MAIL_HOST || '').trim();
-  const port = process.env.MAIL_PORT ? parseInt(process.env.MAIL_PORT, 10) : 2525;
+  const port = process.env.MAIL_PORT ? parseInt(process.env.MAIL_PORT, 10) : 465;
   const user = (process.env.MAIL_USER || '').trim();
   const pass = (process.env.MAIL_PASSWORD || '').trim();
   const from = (process.env.EMAIL_FROM || '').trim();
@@ -28,10 +34,10 @@ const getTransporter = () => {
     const isSecure = port === 465;
 
     const transportOptions = {
-      host: isGmail ? undefined : host,
-      service: isGmail ? 'gmail' : undefined,
-      port: isGmail ? undefined : port,
-      secure: isSecure,
+      host: isGmail ? 'smtp.gmail.com' : host,
+      port: isGmail ? 465 : port,
+      secure: isGmail ? true : isSecure,
+      family: 4, // Explicitly force IPv4 connection
       auth: {
         user,
         pass
@@ -43,11 +49,6 @@ const getTransporter = () => {
       greetingTimeout: 20000,
       socketTimeout: 30000
     };
-
-    // Remove undefined keys
-    Object.keys(transportOptions).forEach(
-      (key) => transportOptions[key] === undefined && delete transportOptions[key]
-    );
 
     cachedTransporter = nodemailer.createTransport(transportOptions);
   }
