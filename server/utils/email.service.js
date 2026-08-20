@@ -24,21 +24,32 @@ const getTransporter = () => {
   }
 
   if (!cachedTransporter) {
-    cachedTransporter = nodemailer.createTransport({
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 100,
-      host,
-      port,
-      secure: port === 465,
+    const isGmail = host.toLowerCase().includes('gmail');
+    const isSecure = port === 465;
+
+    const transportOptions = {
+      host: isGmail ? undefined : host,
+      service: isGmail ? 'gmail' : undefined,
+      port: isGmail ? undefined : port,
+      secure: isSecure,
       auth: {
         user,
         pass
       },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 12000
-    });
+      tls: {
+        rejectUnauthorized: false
+      },
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 30000
+    };
+
+    // Remove undefined keys
+    Object.keys(transportOptions).forEach(
+      (key) => transportOptions[key] === undefined && delete transportOptions[key]
+    );
+
+    cachedTransporter = nodemailer.createTransport(transportOptions);
   }
 
   return cachedTransporter;
