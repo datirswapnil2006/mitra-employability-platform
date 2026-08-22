@@ -37,12 +37,14 @@
 .gradient-text {
   background: linear-gradient(135deg, #0F172A 0%, #334155 50%, #475569 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .gradient-brand {
   background: linear-gradient(135deg, #2563EB 0%, #4F46E5 60%, #06B6D4 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -66,4 +68,32 @@
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
+}
+
+/* ========================================================= */
+/* STRICT ONE-PAGE PRINT STYLES FOR TALENT INTELLIGENCE REPORT */
+/* ========================================================= */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 4mm 6mm;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body, html {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
 }

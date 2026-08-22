@@ -298,7 +298,7 @@ export const StudentExportPage = () => {
       header: '10th %',
       accessor: 'tenthPercentage',
       render: (row) => (
-        <span className={`font-mono text-xs font-bold ${row.tenthPercentage >= 60 ? 'text-emerald-700' : 'text-slate-700'}`}>
+        <span className={`font-mono text-xs font-bold whitespace-nowrap ${row.tenthPercentage >= 60 ? 'text-emerald-700' : 'text-slate-700'}`}>
           {row.tenthPercentage !== null && row.tenthPercentage !== undefined ? `${row.tenthPercentage}%` : '—'}
         </span>
       )
@@ -312,7 +312,7 @@ export const StudentExportPage = () => {
           : (row.diplomaPercentage !== null && row.diplomaPercentage !== undefined ? `${row.diplomaPercentage}% (Dip)` : '—');
         const num = row.twelfthPercentage || row.diplomaPercentage || 0;
         return (
-          <span className={`font-mono text-xs font-bold ${num >= 60 ? 'text-emerald-700' : 'text-slate-700'}`}>
+          <span className={`font-mono text-xs font-bold whitespace-nowrap ${num >= 60 ? 'text-emerald-700' : 'text-slate-700'}`}>
             {val}
           </span>
         );
@@ -322,7 +322,7 @@ export const StudentExportPage = () => {
       header: 'Current CGPA',
       accessor: 'cgpa',
       render: (row) => (
-        <span className={`font-mono text-xs font-bold ${row.cgpa >= 7.0 ? 'text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg border border-purple-200' : 'text-slate-800'}`}>
+        <span className={`font-mono text-xs font-bold whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded-lg border ${row.cgpa >= 7.0 ? 'text-purple-700 bg-purple-50 border-purple-200' : 'text-slate-800 bg-slate-50 border-slate-200'}`}>
           {row.cgpa ? `${row.cgpa} / 10` : '—'}
         </span>
       )
@@ -331,14 +331,14 @@ export const StudentExportPage = () => {
       header: 'Backlogs & Gap',
       accessor: 'hasBacklogs',
       render: (row) => (
-        <div className="space-y-1">
+        <div className="space-y-1 whitespace-nowrap">
           <div>
             {row.hasBacklogs === 'No' ? (
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block">
                 0 Backlogs
               </span>
             ) : (
-              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 inline-block">
                 {row.hasBacklogs}
               </span>
             )}
@@ -355,7 +355,7 @@ export const StudentExportPage = () => {
       render: (row) => (
         <div className="text-[11px] text-slate-600">
           <p className="font-medium truncate max-w-[140px]" title={row.hometown}>{row.hometown || '—'}</p>
-          {row.aadhaarNumber && <p className="text-[10px] text-slate-400 font-mono">Aadhaar: {row.aadhaarNumber}</p>}
+          {row.aadhaarNumber && <p className="text-[10px] text-slate-400 font-mono whitespace-nowrap">Aadhaar: {row.aadhaarNumber}</p>}
         </div>
       )
     },
@@ -363,7 +363,7 @@ export const StudentExportPage = () => {
       header: 'Profile %',
       accessor: 'profileCompletionPercentage',
       render: (row) => (
-        <span className={`font-bold text-xs ${row.profileCompletionPercentage === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
+        <span className={`font-bold text-xs whitespace-nowrap ${row.profileCompletionPercentage === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
           {row.profileCompletionPercentage}%
         </span>
       )

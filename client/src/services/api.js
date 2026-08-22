@@ -266,25 +266,115 @@ export const api = {
     return res.json();
   },
 
-  // AI Psychometric Profiling & Evaluation
-  getPsychometricQuestions: async () => {
-    const res = await fetch(`${API_BASE}/ai/psychometric/questions`, { headers: getHeaders() });
+  // AI Psychometric & Talent Intelligence Module
+  getPsychometricTests: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/psychometric/tests?${query}`, { headers: getHeaders() });
     return res.json();
   },
-  evaluatePsychometric: async (data) => {
-    const res = await fetch(`${API_BASE}/ai/psychometric/evaluate`, {
+  getPsychometricTestById: async (id = 'default') => {
+    const res = await fetch(`${API_BASE}/psychometric/tests/${id}`, { headers: getHeaders() });
+    return res.json();
+  },
+  createPsychometricTest: async (data) => {
+    const res = await fetch(`${API_BASE}/psychometric`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data)
     });
     return res.json();
   },
-  getStudentPsychometricProfile: async () => {
-    const res = await fetch(`${API_BASE}/ai/psychometric/profile`, { headers: getHeaders() });
+  updatePsychometricTest: async (id, data) => {
+    const res = await fetch(`${API_BASE}/psychometric/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
     return res.json();
   },
-  getPsychometricAdminSummary: async () => {
-    const res = await fetch(`${API_BASE}/ai/psychometric/admin/summary`, { headers: getHeaders() });
+  togglePsychometricTestStatus: async (id) => {
+    const res = await fetch(`${API_BASE}/psychometric/${id}/toggle`, {
+      method: 'PATCH',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  deletePsychometricTest: async (id) => {
+    const res = await fetch(`${API_BASE}/psychometric/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  generateDynamicAIQuestions: async (data) => {
+    const res = await fetch(`${API_BASE}/psychometric/admin/generate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  generateMissingAIQuestions: async (data) => {
+    const res = await fetch(`${API_BASE}/psychometric/admin/generate-missing`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  getBlueprintPreview: async (data) => {
+    const res = await fetch(`${API_BASE}/psychometric/admin/blueprint-preview`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  generate50AIQuestions: async (data) => {
+    const res = await fetch(`${API_BASE}/psychometric/admin/generate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ ...data, questionCount: data.questionCount || 50 })
+    });
+    return res.json();
+  },
+  submitPsychometricAttempt: async (testId, data) => {
+    const targetUrl = testId ? `${API_BASE}/psychometric/${testId}/attempt` : `${API_BASE}/psychometric/attempt`;
+    const res = await fetch(targetUrl, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  getStudentAttempts: async () => {
+    const res = await fetch(`${API_BASE}/psychometric/attempts/my`, { headers: getHeaders() });
+    return res.json();
+  },
+  getPsychometricAttemptById: async (id) => {
+    const res = await fetch(`${API_BASE}/psychometric/attempts/${id}`, { headers: getHeaders() });
+    return res.json();
+  },
+  getStudentPsychometricProfile: async () => {
+    const res = await fetch(`${API_BASE}/psychometric/profile`, { headers: getHeaders() });
+    return res.json();
+  },
+  getPsychometricAdminSummary: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/psychometric/admin/summary?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
+  // Legacy compatibility
+  getPsychometricQuestions: async () => {
+    const res = await fetch(`${API_BASE}/ai/psychometric/questions`, { headers: getHeaders() });
+    return res.json();
+  },
+  evaluatePsychometric: async (data) => {
+    const res = await fetch(`${API_BASE}/psychometric/attempt`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
     return res.json();
   },
   createPsychometricQuestion: async (data) => {

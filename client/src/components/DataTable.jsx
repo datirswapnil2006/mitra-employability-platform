@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+  import React, { useState } from 'react';
 import EmptyState from './EmptyState';
 import Pagination from './Pagination';
 
@@ -28,7 +28,7 @@ export const DataTable = ({
           <thead>
             <tr className="bg-slate-50/90 text-slate-600 font-semibold border-b border-slate-200 select-none">
               {columns.map((col, idx) => (
-                <th key={idx} className="p-4 uppercase tracking-wider text-[11px] font-bold text-slate-500">
+                <th key={idx} className="p-4 uppercase tracking-wider text-[11px] font-bold text-slate-500 whitespace-nowrap">
                   {col.header}
                 </th>
               ))}

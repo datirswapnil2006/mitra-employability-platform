@@ -35,6 +35,7 @@ const routes = [
   ['/assessments', assessmentRoutes],
   ['/questions', questionRoutes],
   ['/ai', aiRoutes],
+  ['/psychometric', aiRoutes],
   ['/analytics', analyticsRoutes],
   ['/reports', reportRoutes]
 ];
