@@ -53,12 +53,16 @@ const COMPETENCIES_ORDER = [
 export const TalentProfileResult = ({
   profile,
   cooldown = null,
+  availableTests = [],
+  selectedTestId = null,
+  onSelectTest = null,
   onRetakeAssessment
 }) => {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   if (!profile) return null;
 
+  const testTitle = profile.testTitle || profile.psychometricTest?.title || 'AI Talent & Psychometric Assessment';
   const overallScore = profile.overallScore ?? profile.employabilityIndex ?? 82;
   const overallReadiness = profile.overallReadiness || (overallScore >= 85 ? 'Exceptional' : overallScore >= 70 ? 'Strong' : 'Developing');
   const aiSummary = profile.aiAnalysis?.aiSummary || profile.aiSummary || 'Your assessment demonstrates high analytical discipline and collaborative readiness across key technical and behavioral dimensions.';
@@ -71,7 +75,7 @@ export const TalentProfileResult = ({
     'Structured enterprise teams with high delivery rigor'
   ];
 
-  // 24-Hour Cooldown Calculation
+  // 24-Hour Cooldown Calculation for this test
   const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
   const lastAttemptTime = profile?.submittedAt || profile?.createdAt || profile?.evaluatedAt
     ? new Date(profile.submittedAt || profile.createdAt || profile.evaluatedAt).getTime()
@@ -89,8 +93,42 @@ export const TalentProfileResult = ({
     minute: '2-digit'
   });
 
+  // Check for any other unattempted published tests
+  const unattemptedTests = (availableTests || []).filter(
+    (t) => !t.hasAttempted && t._id !== selectedTestId
+  );
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* Unattempted Test Notification Alert */}
+      {unattemptedTests.length > 0 && onSelectTest && (
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 border border-emerald-500/40 rounded-2xl p-4 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-emerald-950/20">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300">
+              <Sparkles className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-bold text-emerald-100">
+                New Psychometric Assessment Published by Admin!
+              </p>
+              <p className="text-[11px] sm:text-xs text-slate-300">
+                "{unattemptedTests[0].title}" is available for you to take immediately without any cooldown delay.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            size="sm"
+            variant="primary"
+            icon={ArrowRight}
+            onClick={() => onSelectTest(unattemptedTests[0]._id)}
+            className="bg-emerald-600 hover:bg-emerald-500 text-xs font-black shrink-0 shadow-sm"
+          >
+            Start New Assessment
+          </Button>
+        </div>
+      )}
+
       {/* Top Banner: Overall Readiness Score */}
       <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="space-y-3 text-center md:text-left z-10 flex-1">
@@ -105,7 +143,7 @@ export const TalentProfileResult = ({
           </div>
 
           <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Overall Professional Readiness
+            {testTitle}
           </h2>
 
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-medium max-w-2xl">
@@ -161,7 +199,7 @@ export const TalentProfileResult = ({
             <div className="flex items-center gap-2 text-[11px] text-amber-300 bg-amber-950/50 px-3 py-1.5 rounded-xl border border-amber-800/60 max-w-xl">
               <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span>
-                Assessment cooldown active. In accordance with behavioral evaluation standards, you can retake this assessment after 24 hours (Available on <strong>{nextAvailableDate}</strong>).
+                Assessment cooldown active. In accordance with behavioral evaluation standards, you can retake this specific assessment after 24 hours (Available on <strong>{nextAvailableDate}</strong>).
               </span>
             </div>
           )}

@@ -355,8 +355,9 @@ export const api = {
     const res = await fetch(`${API_BASE}/psychometric/attempts/${id}`, { headers: getHeaders() });
     return res.json();
   },
-  getStudentPsychometricProfile: async () => {
-    const res = await fetch(`${API_BASE}/psychometric/profile`, { headers: getHeaders() });
+  getStudentPsychometricProfile: async (testId) => {
+    const url = testId ? `${API_BASE}/psychometric/profile?testId=${encodeURIComponent(testId)}` : `${API_BASE}/psychometric/profile`;
+    const res = await fetch(url, { headers: getHeaders() });
     return res.json();
   },
   getPsychometricAdminSummary: async (params = {}) => {

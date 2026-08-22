@@ -55,6 +55,55 @@ exports.getPsychometricTests = async (req, res) => {
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
 
+    // For students, attach their specific attempt and cooldown info to each test
+    if (req.user && req.user.role !== 'admin') {
+      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+      const userAttempts = await PsychometricAttempt.find({ user: req.user.id }).sort({ submittedAt: -1 });
+
+      const testsWithStatus = tests.map((test) => {
+        const testObj = test.toObject();
+        // Find latest attempt for this specific test
+        const testAttempt = userAttempts.find(
+          (a) => a.psychometricTest && a.psychometricTest.toString() === test._id.toString()
+        );
+
+        let canRetake = true;
+        let cooldown = { canRetake: true };
+        let hasAttempted = false;
+
+        if (testAttempt) {
+          hasAttempted = true;
+          const lastSubmittedTime = new Date(testAttempt.submittedAt || testAttempt.createdAt).getTime();
+          const elapsed = Date.now() - lastSubmittedTime;
+          canRetake = elapsed >= TWENTY_FOUR_HOURS_MS;
+          const remainingMs = Math.max(0, TWENTY_FOUR_HOURS_MS - elapsed);
+          const totalMinutes = Math.ceil(remainingMs / (60 * 1000));
+          const remainingHours = Math.floor(totalMinutes / 60);
+          const remainingMinutes = totalMinutes % 60;
+          cooldown = {
+            canRetake,
+            lastAttemptAt: testAttempt.submittedAt || testAttempt.createdAt,
+            nextRetakeAvailableAt: new Date(lastSubmittedTime + TWENTY_FOUR_HOURS_MS),
+            remainingHours,
+            remainingMinutes
+          };
+        }
+
+        return {
+          ...testObj,
+          hasAttempted,
+          latestAttempt: testAttempt || null,
+          cooldown
+        };
+      });
+
+      return res.json({
+        success: true,
+        count: testsWithStatus.length,
+        tests: testsWithStatus
+      });
+    }
+
     res.json({
       success: true,
       count: tests.length,
@@ -466,29 +515,7 @@ exports.submitPsychometricAttempt = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Assessment responses are required.' });
     }
 
-    // 0. Enforce 24-hour assessment retake cooldown for students
-    if (req.user?.role !== 'admin') {
-      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-      const lastAttempt = await PsychometricAttempt.findOne({ user: userId }).sort({ submittedAt: -1 });
-      if (lastAttempt) {
-        const lastSubmittedTime = new Date(lastAttempt.submittedAt || lastAttempt.createdAt).getTime();
-        const elapsed = Date.now() - lastSubmittedTime;
-        if (elapsed < TWENTY_FOUR_HOURS_MS) {
-          const remainingMs = TWENTY_FOUR_HOURS_MS - elapsed;
-          const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
-          const remainingMinutes = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
-          return res.status(429).json({
-            success: false,
-            message: `Psychometric assessments can only be retaken once every 24 hours. Please wait ${remainingHours}h ${remainingMinutes}m before retaking.`,
-            nextRetakeAvailableAt: new Date(lastSubmittedTime + TWENTY_FOUR_HOURS_MS),
-            remainingHours,
-            remainingMinutes
-          });
-        }
-      }
-    }
-
-    // Load active test definition
+    // Load active test definition first
     let test = null;
     if (testId && testId !== 'default' && testId !== 'active') {
       test = await PsychometricTest.findById(testId);
@@ -510,6 +537,33 @@ exports.submitPsychometricAttempt = async (req, res) => {
         isActive: true,
         version: 1
       });
+    }
+
+    // 0. Enforce 24-hour assessment retake cooldown for students ON THIS SPECIFIC TEST
+    if (req.user?.role !== 'admin' && test?._id) {
+      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+      const lastAttemptForThisTest = await PsychometricAttempt.findOne({
+        user: userId,
+        psychometricTest: test._id
+      }).sort({ submittedAt: -1 });
+
+      if (lastAttemptForThisTest) {
+        const lastSubmittedTime = new Date(lastAttemptForThisTest.submittedAt || lastAttemptForThisTest.createdAt).getTime();
+        const elapsed = Date.now() - lastSubmittedTime;
+        if (elapsed < TWENTY_FOUR_HOURS_MS) {
+          const remainingMs = TWENTY_FOUR_HOURS_MS - elapsed;
+          const totalMinutes = Math.ceil(remainingMs / (60 * 1000));
+          const remainingHours = Math.floor(totalMinutes / 60);
+          const remainingMinutes = totalMinutes % 60;
+          return res.status(429).json({
+            success: false,
+            message: `This psychometric assessment can only be retaken once every 24 hours. Please wait ${remainingHours}h ${remainingMinutes}m before retaking.`,
+            nextRetakeAvailableAt: new Date(lastSubmittedTime + TWENTY_FOUR_HOURS_MS),
+            remainingHours,
+            remainingMinutes
+          });
+        }
+      }
     }
 
     // Load student user info
@@ -616,24 +670,39 @@ exports.submitPsychometricAttempt = async (req, res) => {
   }
 };
 
-// 2b. Get Student's Latest Talent Profile & History with 24h Cooldown Tracking
+// 2b. Get Student's Latest Talent Profile & History with 24h Cooldown Tracking (Supports optional ?testId=)
 exports.getStudentPsychometricProfile = async (req, res) => {
   try {
     const userId = req.user.id;
+    const testId = req.query.testId || req.params.testId;
     const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-    // First check PsychometricAttempt
-    const attempt = await PsychometricAttempt.findOne({ user: userId })
+    const query = { user: userId };
+    if (testId && testId !== 'all' && testId !== 'latest') {
+      if (testId === 'active') {
+        const activeTest = await PsychometricTest.findOne({ status: 'published', isActive: true }).sort({ createdAt: -1 });
+        if (activeTest) {
+          query.psychometricTest = activeTest._id;
+        }
+      } else {
+        query.psychometricTest = testId;
+      }
+    }
+
+    // First check PsychometricAttempt matching query
+    const attempt = await PsychometricAttempt.findOne(query)
       .sort({ submittedAt: -1 })
-      .populate('user', 'name email department year batch erpNumber');
+      .populate('user', 'name email department year batch erpNumber')
+      .populate('psychometricTest', 'title category durationMinutes questionCount questionsCount');
 
     if (attempt) {
       const lastSubmittedTime = new Date(attempt.submittedAt || attempt.createdAt).getTime();
       const elapsed = Date.now() - lastSubmittedTime;
       const canRetake = req.user.role === 'admin' || elapsed >= TWENTY_FOUR_HOURS_MS;
       const remainingMs = Math.max(0, TWENTY_FOUR_HOURS_MS - elapsed);
-      const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
-      const remainingMinutes = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      const totalMinutes = Math.ceil(remainingMs / (60 * 1000));
+      const remainingHours = Math.floor(totalMinutes / 60);
+      const remainingMinutes = totalMinutes % 60;
 
       return res.json({
         success: true,
@@ -650,7 +719,18 @@ exports.getStudentPsychometricProfile = async (req, res) => {
       });
     }
 
-    // Fallback check legacy PsychometricProfile
+    // If a specific testId was queried and no attempt was found for it, candidate has not taken this test yet!
+    if (testId && testId !== 'all' && testId !== 'latest') {
+      return res.json({
+        success: true,
+        hasProfile: false,
+        profile: null,
+        attempt: null,
+        cooldown: { canRetake: true }
+      });
+    }
+
+    // Fallback check legacy PsychometricProfile only when no specific test was requested
     const legacy = await PsychometricProfile.findOne({ user: userId })
       .sort({ evaluatedAt: -1 })
       .populate('user', 'name email department year batch erpNumber');

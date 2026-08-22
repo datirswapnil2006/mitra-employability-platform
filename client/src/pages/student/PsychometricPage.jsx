@@ -13,10 +13,14 @@ import SubmitConfirmationModal from '../../components/psychometric/SubmitConfirm
 import ExitConfirmationModal from '../../components/psychometric/ExitConfirmationModal';
 import PsychometricInstructions from '../../components/psychometric/PsychometricInstructions';
 import TalentProfileResult from '../../components/psychometric/TalentProfileResult';
+import { Sparkles, Layers, CheckCircle2, Clock, Lock, ArrowRight, BookOpen } from 'lucide-react';
 
 export const PsychometricPage = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [switchingTest, setSwitchingTest] = useState(false);
+  const [tests, setTests] = useState([]);
+  const [selectedTestId, setSelectedTestId] = useState(null);
   const [activeTest, setActiveTest] = useState(null);
   const [profile, setProfile] = useState(null);
   const [cooldown, setCooldown] = useState(null);
@@ -40,7 +44,7 @@ export const PsychometricPage = () => {
     return `mitra_psychometric_progress_${userId}_${testId || 'active'}`;
   }, [user]);
 
-  // 1. Initial Data Fetch
+  // 1. Initial Data Fetch: Load all published tests and select active test
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -48,9 +52,48 @@ export const PsychometricPage = () => {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [profileRes, testRes] = await Promise.all([
-        api.getStudentPsychometricProfile(),
-        api.getPsychometricTestById('active')
+      const testsRes = await api.getPsychometricTests();
+      let publishedTests = [];
+      if (testsRes.success && Array.isArray(testsRes.tests)) {
+        publishedTests = testsRes.tests;
+        setTests(publishedTests);
+      }
+
+      // Determine initial test to select:
+      // Priority 1: First unattempted test (newly published)
+      // Priority 2: First test in list
+      let initialTest = publishedTests.find(t => !t.hasAttempted) || publishedTests[0];
+
+      if (initialTest) {
+        setSelectedTestId(initialTest._id);
+        await loadTestDetails(initialTest._id, initialTest);
+      } else {
+        // Fallback to active single test endpoint
+        const testRes = await api.getPsychometricTestById('active');
+        if (testRes.success && testRes.test) {
+          setActiveTest(testRes.test);
+          setSelectedTestId(testRes.test._id);
+          const profileRes = await api.getStudentPsychometricProfile(testRes.test._id);
+          if (profileRes.success && profileRes.hasProfile) {
+            setProfile(profileRes.profile);
+            setCooldown(profileRes.cooldown || null);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error loading psychometric initial data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load specific test details & student profile for that test
+  const loadTestDetails = async (testId, testMeta = null) => {
+    setSwitchingTest(true);
+    try {
+      const [testRes, profileRes] = await Promise.all([
+        api.getPsychometricTestById(testId),
+        api.getStudentPsychometricProfile(testId)
       ]);
 
       if (testRes.success && testRes.test) {
@@ -61,27 +104,22 @@ export const PsychometricPage = () => {
 
       if (profileRes.success && profileRes.hasProfile) {
         setProfile(profileRes.profile);
-        if (profileRes.cooldown) {
-          setCooldown(profileRes.cooldown);
-        }
-        // Candidate has a completed profile: display results and clear any stale in-progress cache
+        setCooldown(profileRes.cooldown || null);
         setTakingTest(false);
-        if (testRes?.test?._id) {
-          localStorage.removeItem(getStorageKey(testRes.test._id));
-        }
-      } else if (testRes.success && testRes.test) {
-        // Only check localStorage for in-progress attempt if candidate DOES NOT have a completed profile
-        const storageKey = getStorageKey(testRes.test._id);
-        const savedData = localStorage.getItem(storageKey);
+        localStorage.removeItem(getStorageKey(testId));
+      } else {
+        setProfile(null);
+        setCooldown(null);
 
+        // Check if there is an in-progress local storage attempt for this specific test
+        const storageKey = getStorageKey(testId);
+        const savedData = localStorage.getItem(storageKey);
         if (savedData) {
           try {
             const parsed = JSON.parse(savedData);
             if (parsed && parsed.takingTest) {
               const elapsedSinceStart = parsed.startedAt ? Math.floor((Date.now() - parsed.startedAt) / 1000) : 0;
-              const durationSecs = (testRes.test.durationMinutes || 15) * 60;
-
-              // Only resume if allocated time has not expired
+              const durationSecs = ((testRes?.test?.durationMinutes) || 15) * 60;
               if (elapsedSinceStart < durationSecs) {
                 setResponses(parsed.responses || {});
                 setMarkedForReview(parsed.markedForReview || {});
@@ -95,15 +133,28 @@ export const PsychometricPage = () => {
               }
             }
           } catch (e) {
-            console.error('Error restoring saved psychometric progress:', e);
+            console.error('Error restoring progress:', e);
           }
+        } else {
+          setTakingTest(false);
         }
       }
     } catch (err) {
-      console.error('Error loading psychometric data:', err);
+      console.error('Error loading test details:', err);
     } finally {
-      setLoading(false);
+      setSwitchingTest(false);
     }
+  };
+
+  // Handle switching selected assessment
+  const handleSelectTest = async (testId) => {
+    if (takingTest) {
+      if (!window.confirm('You are currently taking an assessment. Switching will leave the current session. Continue?')) {
+        return;
+      }
+    }
+    setSelectedTestId(testId);
+    await loadTestDetails(testId);
   };
 
   // 2. Auto-save progress to localStorage on any state change
@@ -155,7 +206,6 @@ export const PsychometricPage = () => {
 
   // Start Assessment Handler
   const handleStartAssessment = () => {
-    // Prevent starting if candidate already has a profile and cooldown is active
     if (profile && cooldown && cooldown.canRetake === false) {
       return;
     }
@@ -271,13 +321,29 @@ export const PsychometricPage = () => {
         });
         setTakingTest(false);
 
-        // Clear cached progress from localStorage
+        // Clear cached progress
         if (activeTest) {
           localStorage.removeItem(getStorageKey(activeTest._id));
         }
+
+        // Refresh test list status
+        const testsRes = await api.getPsychometricTests();
+        if (testsRes.success && Array.isArray(testsRes.tests)) {
+          setTests(testsRes.tests);
+        }
+      } else {
+        if (res.message) {
+          alert(res.message);
+        }
+        if (activeTest?._id) {
+          localStorage.removeItem(getStorageKey(activeTest._id));
+          await loadTestDetails(activeTest._id);
+        }
+        setTakingTest(false);
       }
     } catch (err) {
       console.error('Error submitting psychometric evaluation:', err);
+      alert('Failed to submit assessment: ' + (err.message || 'Server error'));
     } finally {
       setSubmitting(false);
     }
@@ -291,13 +357,122 @@ export const PsychometricPage = () => {
   const isTimeCritical = timeLeft <= 60; // 1 min critical
   const isTimeWarning = timeLeft > 60 && timeLeft <= 300; // 5 mins warning
 
+  // Check if there are other unattempted tests
+  const unattemptedTests = tests.filter(t => !t.hasAttempted && t._id !== selectedTestId);
+
   return (
     <div className="space-y-6 pb-12">
       {/* 1. Assessment Header */}
       <AssessmentHeader />
 
-      {/* 2. VIEW: INSTRUCTIONS / LANDING SCREEN (If not taking test and no profile exists) */}
-      {!takingTest && !profile && (
+      {/* 2. Published Assessments Selector / Catalog (When NOT actively answering questions) */}
+      {!takingTest && tests.length > 0 && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-indigo-600" />
+                  Available Psychometric Assessments ({tests.length})
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Select an assessment published by administration to start or view your behavioral profile report.
+                </p>
+              </div>
+
+              {unattemptedTests.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200 animate-pulse self-start sm:self-auto">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  {unattemptedTests.length} New Assessment{unattemptedTests.length > 1 ? 's' : ''} Available
+                </span>
+              )}
+            </div>
+
+            {/* Test Cards List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {tests.map((test) => {
+                const isSelected = test._id === selectedTestId;
+                const hasAttempted = Boolean(test.hasAttempted);
+                const isCooldownActive = test.cooldown?.canRetake === false;
+
+                return (
+                  <div
+                    key={test._id}
+                    onClick={() => handleSelectTest(test._id)}
+                    className={`relative p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                      isSelected
+                        ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-600/20 shadow-sm'
+                        : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50/70 bg-white'
+                    }`}
+                  >
+                    {/* Card Header & Badges */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                          {test.category || 'Behavioral Assessment'}
+                        </span>
+
+                        {!hasAttempted ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <Sparkles className="w-3 h-3 text-emerald-600" />
+                            NEW
+                          </span>
+                        ) : isCooldownActive ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            <Lock className="w-3 h-3 text-amber-600" />
+                            24h Cooldown
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                            <CheckCircle2 className="w-3 h-3 text-blue-600" />
+                            Completed
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-1">
+                        {test.title}
+                      </h3>
+                    </div>
+
+                    {/* Metadata & Footer Action */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                      <div className="flex items-center gap-2 text-[11px] font-medium">
+                        <span className="flex items-center gap-1">
+                          <Layers className="w-3 h-3 text-slate-400" />
+                          {test.questionCount || test.questionsCount || 25} Qs
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {test.durationMinutes || 15}m
+                        </span>
+                      </div>
+
+                      <span className={`text-xs font-bold flex items-center gap-1 ${
+                        isSelected ? 'text-indigo-600' : 'text-slate-600 group-hover:text-indigo-600'
+                      }`}>
+                        {!hasAttempted ? 'Take Test' : 'View Report'}
+                        <ArrowRight className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading state during test switch */}
+      {switchingTest && (
+        <div className="py-12">
+          <LoadingState message="Loading selected psychometric assessment..." />
+        </div>
+      )}
+
+      {/* 3. VIEW: INSTRUCTIONS / LANDING SCREEN (If not taking test and no profile exists for this test) */}
+      {!switchingTest && !takingTest && !profile && (
         <PsychometricInstructions
           testTitle={activeTest?.title}
           questionCount={totalQuestions || activeTest?.questionCount || 25}
@@ -306,7 +481,7 @@ export const PsychometricPage = () => {
         />
       )}
 
-      {/* 3. VIEW: LIVE ASSESSMENT RUNNER */}
+      {/* 4. VIEW: LIVE ASSESSMENT RUNNER */}
       {takingTest && currentQuestion && (
         <div className="max-w-7xl mx-auto space-y-5 px-2 sm:px-4">
           {/* Top Assessment Info Card */}
@@ -370,16 +545,19 @@ export const PsychometricPage = () => {
         </div>
       )}
 
-      {/* 4. VIEW: AI TALENT PROFILE RESULTS (When submitted or previously completed) */}
-      {!takingTest && profile && (
+      {/* 5. VIEW: AI TALENT PROFILE RESULTS (When submitted or previously completed for this test) */}
+      {!switchingTest && !takingTest && profile && (
         <TalentProfileResult
           profile={profile}
           cooldown={cooldown}
+          availableTests={tests}
+          selectedTestId={selectedTestId}
+          onSelectTest={handleSelectTest}
           onRetakeAssessment={handleStartAssessment}
         />
       )}
 
-      {/* 5. Submit Confirmation Modal */}
+      {/* 6. Submit Confirmation Modal */}
       <SubmitConfirmationModal
         isOpen={isSubmitModalOpen}
         onClose={() => setIsSubmitModalOpen(false)}
@@ -391,7 +569,7 @@ export const PsychometricPage = () => {
         onFinalSubmit={handleFinalSubmit}
       />
 
-      {/* 6. Exit Assessment Confirmation Modal */}
+      {/* 7. Exit Assessment Confirmation Modal */}
       <ExitConfirmationModal
         isOpen={isExitModalOpen}
         onClose={() => setIsExitModalOpen(false)}
@@ -402,3 +580,4 @@ export const PsychometricPage = () => {
 };
 
 export default PsychometricPage;
+
