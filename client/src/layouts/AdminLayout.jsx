@@ -7,6 +7,25 @@ import { useAuth } from '../context/AuthContext';
 export const AdminLayout = () => {
   const { user, token, loading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem('mitra_sidebar_collapsed') === 'true';
+  });
+
+  const handleToggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('mitra_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
+  const handleMenuToggle = () => {
+    if (window.innerWidth < 768) {
+      setMobileMenuOpen((prev) => !prev);
+    } else {
+      handleToggleCollapse();
+    }
+  };
 
   if (loading) {
     return (
@@ -28,10 +47,21 @@ export const AdminLayout = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC] text-[#0F172A]">
-      <Sidebar isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+    <div
+      className="flex min-h-screen transition-colors duration-200"
+      style={{
+        backgroundColor: 'var(--page-bg, #F8FAFC)',
+        color: 'var(--text-primary, #0F172A)'
+      }}
+    >
+      <Sidebar
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        isCollapsed={isCollapsed}
+        onToggleCollapse={handleToggleCollapse}
+      />
       <div className="flex-1 flex flex-col min-w-0">
-        <Navbar onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <Navbar onMenuToggle={handleMenuToggle} />
         <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
           <Outlet />
         </main>

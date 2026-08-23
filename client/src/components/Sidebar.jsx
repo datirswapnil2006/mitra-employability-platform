@@ -19,23 +19,53 @@ import {
   TrendingUp,
   BrainCircuit,
   Layers,
-  X
+  ChevronLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+  Palette
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
-export const Sidebar = ({ isOpen, onClose }) => {
+export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
   const { user, profileCompletion } = useAuth();
+  const { openCustomizer } = useTheme();
   const location = useLocation();
   const isAdmin = user && user.role === 'admin';
 
-  // Manage open states of collapsible groups
+  // Internal collapse state fallback if not passed from layout
+  const [internalCollapsed, setInternalCollapsed] = useState(() => {
+    return localStorage.getItem('mitra_sidebar_collapsed') === 'true';
+  });
+
+  const effectiveCollapsed = isCollapsed !== undefined ? isCollapsed : internalCollapsed;
+
+  const handleToggleCollapse = () => {
+    if (onToggleCollapse) {
+      onToggleCollapse();
+    } else {
+      setInternalCollapsed((prev) => {
+        const next = !prev;
+        localStorage.setItem('mitra_sidebar_collapsed', String(next));
+        return next;
+      });
+    }
+  };
+
+  // Manage open states of collapsible groups (Training, Registration, Assessment)
   const [openGroups, setOpenGroups] = useState({
     registration: true,
     training: true,
     assessment: true
   });
 
-  const toggleGroup = (groupKey) => {
+  const toggleGroup = (groupKey, e) => {
+    if (e) e.preventDefault();
+    // If sidebar is collapsed on desktop, auto-expand it when clicking a group
+    if (effectiveCollapsed) {
+      handleToggleCollapse();
+    }
     setOpenGroups((prev) => ({
       ...prev,
       [groupKey]: !prev[groupKey]
@@ -194,34 +224,62 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const currentNav = isAdmin ? adminNav : studentNav;
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-[#0F172A] text-slate-300 select-none">
+    <div
+      className="flex flex-col h-full select-none overflow-hidden transition-colors duration-200"
+      style={{
+        backgroundColor: 'var(--sidebar-bg, #0F172A)',
+        color: 'var(--sidebar-text, #94A3B8)'
+      }}
+    >
       {/* Brand Header */}
-      <div className="p-5 border-b border-slate-800/80 flex items-center justify-between gap-3">
+      <div
+        className={`p-4 border-b flex items-center ${effectiveCollapsed ? 'justify-center' : 'justify-between'} gap-2 transition-all`}
+        style={{ borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))' }}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <img
             src="/college-logo.jpg"
             alt="MITRA Logo"
-            className="h-9 w-auto rounded-lg object-contain bg-white p-1 border border-slate-700 shadow-sm shrink-0"
+            className="h-9 w-9 rounded-lg object-contain bg-white p-1 border border-slate-700 shadow-sm shrink-0"
           />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="font-black text-sm text-white tracking-widest uppercase">MITRA</span>
-              <span className="bg-blue-500/20 text-blue-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded border border-blue-500/30">
-                {isAdmin ? 'ADMIN' : 'STUDENT'}
-              </span>
+          {!effectiveCollapsed && (
+            <div className="min-w-0 animate-in fade-in duration-200">
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-sm tracking-widest uppercase text-white">MITRA</span>
+                <span
+                  className="text-[9px] font-extrabold px-1.5 py-0.5 rounded border"
+                  style={{
+                    backgroundColor: 'var(--primary-light, rgba(37,99,235,0.2))',
+                    color: 'var(--primary-color, #60A5FA)',
+                    borderColor: 'var(--primary-color, #3B82F6)'
+                  }}
+                >
+                  {isAdmin ? 'ADMIN' : 'STUDENT'}
+                </span>
+              </div>
+              <p className="text-[10px] font-semibold opacity-75 truncate">
+                {isAdmin ? 'Management Console' : 'Employability Portal'}
+              </p>
             </div>
-            <p className="text-[10px] font-semibold text-slate-400 truncate">
-              {isAdmin ? 'Management Console' : 'Employability Portal'}
-            </p>
-          </div>
+          )}
         </div>
+
+        {/* Desktop Collapse / Expand Icon Button */}
+        <button
+          type="button"
+          onClick={handleToggleCollapse}
+          className="hidden md:flex p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition"
+          title={effectiveCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+        >
+          {effectiveCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
 
         {/* Close button for mobile drawer */}
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="md:hidden p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -229,31 +287,63 @@ export const Sidebar = ({ isOpen, onClose }) => {
       </div>
 
       {/* Navigation List */}
-      <nav className="flex-1 p-3.5 space-y-1.5 overflow-y-auto custom-scrollbar">
-        <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          {isAdmin ? 'Institutional Rights' : 'Student Ecosystem'}
-        </div>
+      <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto custom-scrollbar">
+        {!effectiveCollapsed ? (
+          <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider opacity-60">
+            {isAdmin ? 'Institutional Rights' : 'Student Ecosystem'}
+          </div>
+        ) : (
+          <div className="h-2" />
+        )}
 
         {currentNav.map((item, idx) => {
           if (item.type === 'link') {
             const Icon = item.icon;
+            const currentPath = location.pathname;
+            const isCustomActive =
+              (item.to === '/student/assessments' && (
+                currentPath.startsWith('/student/assessments') ||
+                currentPath.startsWith('/student/assessment') ||
+                currentPath.startsWith('/student/take-assessment') ||
+                currentPath.startsWith('/student/assessment-result')
+              )) ||
+              (item.to === '/student/training' && (
+                currentPath.startsWith('/student/training') ||
+                currentPath.startsWith('/student/submodule')
+              )) ||
+              (item.to === '/admin/questions' || item.to === '/admin/question-bank'
+                ? currentPath.startsWith('/admin/questions') || currentPath.startsWith('/admin/question-bank')
+                : false);
+
             return (
               <NavLink
                 key={idx}
                 to={item.to}
-                className={({ isActive }) =>
-                  `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
-                  }`
-                }
+                title={effectiveCollapsed ? item.label : undefined}
+                style={({ isActive }) => {
+                  const active = isActive || isCustomActive;
+                  if (active) {
+                    return {
+                      backgroundColor: 'var(--sidebar-active-bg, #2563EB)',
+                      color: 'var(--sidebar-active-text, #FFFFFF)'
+                    };
+                  }
+                  return {};
+                }}
+                className={({ isActive }) => {
+                  const active = isActive || isCustomActive;
+                  return `flex items-center ${effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'} py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group relative ${
+                    active
+                      ? 'shadow-md font-bold'
+                      : 'opacity-80 hover:opacity-100 hover:bg-white/10'
+                  }`;
+                }}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-105" />
-                  <span>{item.label}</span>
+                  {!effectiveCollapsed && <span className="truncate">{item.label}</span>}
                 </div>
-                {item.badge && (
+                {!effectiveCollapsed && item.badge && (
                   <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${item.badgeColor}`}>
                     {item.badge}
                   </span>
@@ -271,35 +361,61 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
             return (
               <div key={idx} className="space-y-1">
+                {/* Collapsible Section Header */}
                 <button
                   type="button"
-                  onClick={() => toggleGroup(item.key)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                  onClick={(e) => toggleGroup(item.key, e)}
+                  title={effectiveCollapsed ? `${item.label} (Click to toggle)` : undefined}
+                  className={`w-full flex items-center ${effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'} py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group cursor-pointer ${
                     hasActiveChild
-                      ? 'text-blue-300 bg-slate-800/90 font-bold'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                      ? 'bg-white/15 font-bold opacity-100'
+                      : 'opacity-80 hover:opacity-100 hover:bg-white/10'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span>{item.label}</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-105" />
+                    {!effectiveCollapsed && <span className="truncate">{item.label}</span>}
                   </div>
-                  {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+
+                  {!effectiveCollapsed && (
+                    <div className="p-0.5">
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 opacity-75 transition-transform duration-200 ${
+                          isOpen ? 'transform rotate-0' : 'transform -rotate-90'
+                        }`}
+                      />
+                    </div>
+                  )}
                 </button>
 
-                {isOpen && (
-                  <div className="pl-7 pr-2 py-1 space-y-1 border-l border-slate-800/80 ml-4 animate-in fade-in duration-200">
+                {/* Sub-Items Accordion Drawer */}
+                {!effectiveCollapsed && isOpen && (
+                  <div
+                    className="pl-7 pr-2 py-1 space-y-1 border-l ml-4 animate-in fade-in slide-in-from-top-1 duration-200"
+                    style={{ borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))' }}
+                  >
                     {item.children.map((child, cIdx) => (
                       <NavLink
                         key={cIdx}
                         to={child.to}
-                        className={({ isActive }) =>
-                          `block px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                            isActive
-                              ? 'bg-blue-600/90 text-white font-bold shadow-xs'
-                              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
-                          }`
-                        }
+                        style={({ isActive }) => {
+                          const active = isActive || (location.pathname + location.search === child.to);
+                          if (active) {
+                            return {
+                              backgroundColor: 'var(--sidebar-active-bg, #2563EB)',
+                              color: 'var(--sidebar-active-text, #FFFFFF)'
+                            };
+                          }
+                          return {};
+                        }}
+                        className={({ isActive }) => {
+                          const active = isActive || (location.pathname + location.search === child.to);
+                          return `block px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                            active
+                              ? 'font-bold shadow-xs'
+                              : 'opacity-75 hover:opacity-100 hover:bg-white/10'
+                          }`;
+                        }}
                       >
                         {child.label}
                       </NavLink>
@@ -314,24 +430,69 @@ export const Sidebar = ({ isOpen, onClose }) => {
         })}
       </nav>
 
-      {/* Footer Info */}
-      <div className="p-4 border-t border-slate-800/80 bg-slate-950/40 text-[10px] text-slate-400 flex items-center justify-between">
-        <div>
-          <span className="font-bold text-slate-300">MITRA 2026</span>
-          <p className="text-[9px] text-slate-400">Institutional v2.4</p>
-        </div>
-        <span className="text-emerald-400 font-bold flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Online
-        </span>
+      {/* Footer Info, Theme Trigger & Collapse Action */}
+      <div
+        className={`p-3.5 border-t text-[10px] flex items-center ${effectiveCollapsed ? 'justify-center flex-col gap-2' : 'justify-between'}`}
+        style={{
+          borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))',
+          backgroundColor: 'rgba(0, 0, 0, 0.15)'
+        }}
+      >
+        {!effectiveCollapsed ? (
+          <>
+            <div>
+              <span className="font-bold opacity-90">MITRA 2026</span>
+              <p className="text-[9px] opacity-60">Institutional v2.4</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openCustomizer}
+                className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/15 transition flex items-center gap-1"
+                title="Theme Customization"
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold hidden xl:inline">Theme</span>
+              </button>
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Online
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={openCustomizer}
+              className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/15 transition"
+              title="Theme Customization"
+            >
+              <Palette className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleToggleCollapse}
+              className="p-1 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/15 transition"
+              title="Expand Sidebar"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 
   return (
     <>
-      {/* Desktop Sticky Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 z-30 shadow-xl shrink-0 border-r border-slate-800">
+      {/* Desktop Sticky Sidebar with Dynamic Width Transition */}
+      <aside
+        className={`hidden md:flex flex-col h-screen sticky top-0 z-30 shadow-xl shrink-0 border-r transition-all duration-300 ease-in-out ${
+          effectiveCollapsed ? 'w-20' : 'w-64'
+        }`}
+        style={{ borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))' }}
+      >
         {sidebarContent}
       </aside>
 

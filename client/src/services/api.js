@@ -41,6 +41,14 @@ export const api = {
     const res = await fetch(`${API_BASE}/auth/me`, { headers: getHeaders() });
     return res.json();
   },
+  updateThemePreferences: async (themeData) => {
+    const res = await fetch(`${API_BASE}/auth/theme`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(themeData)
+    });
+    return res.json();
+  },
 
   // Student Profile & Gating
   getProfile: async () => {
@@ -461,5 +469,43 @@ export const api = {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  },
+
+  // AI Communication Assessment
+  startCommunicationAssessment: async (data) => {
+    const res = await fetch(`${API_BASE}/communication/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  respondCommunicationAssessment: async (data) => {
+    const res = await fetch(`${API_BASE}/communication/respond`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  evaluateCommunicationAssessment: async (data) => {
+    const res = await fetch(`${API_BASE}/communication/evaluate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  getCommunicationHistory: async () => {
+    const res = await fetch(`${API_BASE}/communication/history`, {
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  getCommunicationAttempt: async (id) => {
+    const res = await fetch(`${API_BASE}/communication/attempt/${id}`, {
+      headers: getHeaders()
+    });
+    return res.json();
   }
 };

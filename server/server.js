@@ -16,6 +16,7 @@ const progressRoutes = require('./modules/progress/progress.routes');
 const assessmentRoutes = require('./modules/assessments/assessment.routes');
 const questionRoutes = require('./modules/assessments/question.routes');
 const aiRoutes = require('./modules/ai/ai.routes');
+const communicationRoutes = require('./modules/communication/communication.routes');
 const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const reportRoutes = require('./modules/reports/report.routes');
 
@@ -34,6 +35,7 @@ const routes = [
   ['/progress', progressRoutes],
   ['/assessments', assessmentRoutes],
   ['/questions', questionRoutes],
+  ['/communication', communicationRoutes],
   ['/ai', aiRoutes],
   ['/psychometric', aiRoutes],
   ['/analytics', analyticsRoutes],

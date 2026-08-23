@@ -10,6 +10,25 @@ export const StudentLayout = () => {
   const { user, token, loading, profileCompletion } = useAuth();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem('mitra_sidebar_collapsed') === 'true';
+  });
+
+  const handleToggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('mitra_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
+  const handleMenuToggle = () => {
+    if (window.innerWidth < 768) {
+      setMobileMenuOpen((prev) => !prev);
+    } else {
+      handleToggleCollapse();
+    }
+  };
 
   if (loading) {
     return (
@@ -34,10 +53,21 @@ export const StudentLayout = () => {
   const isGated = profileCompletion < 100 && !isProfilePage;
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC] text-[#0F172A]">
-      <Sidebar isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+    <div
+      className="flex min-h-screen transition-colors duration-200"
+      style={{
+        backgroundColor: 'var(--page-bg, #F8FAFC)',
+        color: 'var(--text-primary, #0F172A)'
+      }}
+    >
+      <Sidebar
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        isCollapsed={isCollapsed}
+        onToggleCollapse={handleToggleCollapse}
+      />
       <div className="flex-1 flex flex-col min-w-0">
-        <Navbar onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <Navbar onMenuToggle={handleMenuToggle} />
 
         {/* Profile Completion Warning Banner */}
         {profileCompletion < 100 && (

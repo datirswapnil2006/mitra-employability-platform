@@ -12,6 +12,7 @@ import {
   MODULE_CATEGORIES,
   normalizeModuleName
 } from '../../constants/trainingModules';
+import AICommunicationAssessmentView from '../../components/communication/AICommunicationAssessmentView';
 import {
   FileCheck,
   Clock,
@@ -30,6 +31,7 @@ export const StudentAssessmentsPage = () => {
   const rawModule = searchParams.get('type') || searchParams.get('category') || 'Aptitude';
   const currentModule = normalizeModuleName(rawModule);
   const isDomainModule = currentModule === 'Domain Knowledge';
+  const isCommunicationModule = currentModule === 'Communication';
 
   const [loading, setLoading] = useState(true);
   const [assessments, setAssessments] = useState([]);
@@ -57,8 +59,10 @@ export const StudentAssessmentsPage = () => {
   }, [rawModule, user?.department]);
 
   useEffect(() => {
-    fetchStudentAssessments();
-  }, [rawModule, activeSubfilter]);
+    if (!isCommunicationModule) {
+      fetchStudentAssessments();
+    }
+  }, [rawModule, activeSubfilter, isCommunicationModule]);
 
   const fetchStudentAssessments = async () => {
     setLoading(true);
@@ -91,7 +95,11 @@ export const StudentAssessmentsPage = () => {
     <div className="space-y-6">
       <PageHeader
         title={`${currentModule} Assessments`}
-        subtitle="Timed candidate evaluations, topic mock tests, and AI-generated placement assessments."
+        subtitle={
+          isCommunicationModule
+            ? "Practice and evaluate your real-world communication skills through AI-powered conversations and receive personalized feedback."
+            : "Timed candidate evaluations, topic mock tests, and AI-generated placement assessments."
+        }
         breadcrumbs={[
           { label: 'Student', link: '/student/dashboard' },
           { label: 'Assessments' },
@@ -126,18 +134,23 @@ export const StudentAssessmentsPage = () => {
         </div>
       </div>
 
-      {/* Subcategory / Department Filter Tabs */}
-      <div className="flex items-center justify-between gap-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-        <FilterTabs
-          tabs={filterTabs}
-          activeTab={activeSubfilter}
-          onTabChange={setActiveSubfilter}
-        />
-      </div>
+      {/* If Communication Module -> Render Dedicated AI Communication Assessment Hub */}
+      {isCommunicationModule ? (
+        <AICommunicationAssessmentView />
+      ) : (
+        <>
+          {/* Subcategory / Department Filter Tabs */}
+          <div className="flex items-center justify-between gap-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+            <FilterTabs
+              tabs={filterTabs}
+              activeTab={activeSubfilter}
+              onTabChange={setActiveSubfilter}
+            />
+          </div>
 
-      {/* Assessment Cards Grid */}
-      {loading ? (
-        <LoadingState message={`Fetching published ${currentModule} assessments...`} />
+          {/* Assessment Cards Grid */}
+          {loading ? (
+            <LoadingState message={`Fetching published ${currentModule} assessments...`} />
       ) : assessments.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {assessments.map((item) => (
@@ -229,6 +242,8 @@ export const StudentAssessmentsPage = () => {
           title={`No ${activeSubfilter !== 'All' ? activeSubfilter : currentModule} Assessments Available`}
           description="Faculty members have not published any tests for this category yet. Check back soon."
         />
+      )}
+        </>
       )}
     </div>
   );

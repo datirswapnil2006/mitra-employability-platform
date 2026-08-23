@@ -15,6 +15,13 @@ const userSchema = new mongoose.Schema({
   },
   profilePhoto: { type: String, default: '' },
   status: { type: String, enum: ['active', 'inactive', 'suspended'], default: 'active' },
+  themePreferences: {
+    mode: { type: String, enum: ['light', 'dark', 'system'], default: 'light' },
+    primaryColor: { type: String, default: '#2563EB' },
+    sidebarColor: { type: String, default: 'default' },
+    customPrimaryColor: { type: String, default: '' },
+    customSidebarColor: { type: String, default: '' }
+  },
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -209,5 +209,30 @@ exports.testEmailSend = async (req, res) => {
   }
 };
 
+exports.updateThemePreferences = async (req, res) => {
+  try {
+    const { mode, primaryColor, sidebarColor, customPrimaryColor, customSidebarColor } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
+    user.themePreferences = {
+      mode: mode || user.themePreferences?.mode || 'light',
+      primaryColor: primaryColor || user.themePreferences?.primaryColor || '#2563EB',
+      sidebarColor: sidebarColor || user.themePreferences?.sidebarColor || 'default',
+      customPrimaryColor: customPrimaryColor !== undefined ? customPrimaryColor : (user.themePreferences?.customPrimaryColor || ''),
+      customSidebarColor: customSidebarColor !== undefined ? customSidebarColor : (user.themePreferences?.customSidebarColor || '')
+    };
 
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Theme preferences saved successfully',
+      themePreferences: user.themePreferences
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
