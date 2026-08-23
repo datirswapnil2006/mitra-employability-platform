@@ -145,6 +145,7 @@ export const AICommunicationAssessmentView = () => {
   const [isSpeakingAI, setIsSpeakingAI] = useState(false);
   const [voiceAudioEnabled, setVoiceAudioEnabled] = useState(true);
   const recognitionRef = useRef(null);
+  const speechBaseInputRef = useRef('');
 
   // History & Analytics States
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -156,10 +157,21 @@ export const AICommunicationAssessmentView = () => {
   const [turnSeconds, setTurnSeconds] = useState(0);
   const timerRef = useRef(null);
 
-  // Load history on mount
+  // Load history on mount & cleanup speech on unmount
   useEffect(() => {
     fetchHistory();
     checkSpeechSupport();
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
 
   // Timer tick during conversation
@@ -220,6 +232,9 @@ export const AICommunicationAssessmentView = () => {
       return;
     }
 
+    // Preserve any text already typed before speech recognition was started
+    speechBaseInputRef.current = studentInput ? studentInput.trim() + ' ' : '';
+
     try {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
@@ -232,23 +247,22 @@ export const AICommunicationAssessmentView = () => {
       };
 
       recognition.onresult = (event) => {
-        let interimTranscript = '';
         let finalTranscript = '';
+        let interimTranscript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        // Iterate through all results to construct clean final + current interim text
+        for (let i = 0; i < event.results.length; ++i) {
+          const chunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+            finalTranscript += chunk + ' ';
           } else {
-            interimTranscript += event.results[i][0].transcript;
+            interimTranscript += chunk;
           }
         }
 
-        const newText = finalTranscript || interimTranscript;
-        setStudentInput((prev) => {
-          // If previous ended with space or empty
-          if (!prev) return newText.trim();
-          return `${prev.trim()} ${newText.trim()}`.replace(/\s+/g, ' ');
-        });
+        const sessionTranscript = (finalTranscript + interimTranscript).trim();
+        const fullOutput = (speechBaseInputRef.current + sessionTranscript).replace(/\s+/g, ' ');
+        setStudentInput(fullOutput);
       };
 
       recognition.onerror = (event) => {
