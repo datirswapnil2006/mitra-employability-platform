@@ -19,6 +19,7 @@ const aiRoutes = require('./modules/ai/ai.routes');
 const communicationRoutes = require('./modules/communication/communication.routes');
 const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const reportRoutes = require('./modules/reports/report.routes');
+const supportRoutes = require('./modules/support/support.routes');
 
 const app = express();
 
@@ -39,7 +40,8 @@ const routes = [
   ['/ai', aiRoutes],
   ['/psychometric', aiRoutes],
   ['/analytics', analyticsRoutes],
-  ['/reports', reportRoutes]
+  ['/reports', reportRoutes],
+  ['/support', supportRoutes]
 ];
 
 routes.forEach(([path, routeHandler]) => {

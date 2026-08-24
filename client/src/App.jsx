@@ -27,6 +27,7 @@ import PsychometricPage from './pages/student/PsychometricPage';
 import StudentPerformancePage from './pages/student/StudentPerformancePage';
 import StudentNotificationsPage from './pages/student/StudentNotificationsPage';
 import StudentSettingsPage from './pages/student/StudentSettingsPage';
+import StudentSupportPage from './pages/student/StudentSupportPage';
 
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -39,6 +40,7 @@ import QuestionBankPage from './pages/admin/QuestionBankPage';
 import AIAssessmentGenPage from './pages/admin/AIAssessmentGenPage';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
 import ReportsPage from './pages/admin/ReportsPage';
+import AdminSupportPage from './pages/admin/AdminSupportPage';
 import SettingsPage from './pages/admin/SettingsPage';
 
 export function App() {
@@ -74,6 +76,7 @@ export function App() {
               <Route path="assessment-result/:id" element={<AssessmentResultPage />} />
               <Route path="psychometric" element={<PsychometricPage />} />
               <Route path="performance" element={<StudentPerformancePage />} />
+              <Route path="support" element={<StudentSupportPage />} />
               <Route path="notifications" element={<StudentNotificationsPage />} />
               <Route path="settings" element={<StudentSettingsPage />} />
               <Route index element={<Navigate to="dashboard" replace />} />
@@ -94,6 +97,7 @@ export function App() {
               <Route path="psychometric" element={<AIAssessmentGenPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="reports" element={<ReportsPage />} />
+              <Route path="support" element={<AdminSupportPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>

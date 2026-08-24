@@ -507,5 +507,101 @@ export const api = {
       headers: getHeaders()
     });
     return res.json();
+  },
+
+  // Support & Suggestions Module
+  submitSupportFeedback: async (data) => {
+    const res = await fetch(`${API_BASE}/support`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  getMySupportFeedback: async () => {
+    const res = await fetch(`${API_BASE}/support/my`, {
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  getSupportFeedbackById: async (id) => {
+    const res = await fetch(`${API_BASE}/support/${id}`, {
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  getAdminSupportFeedback: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/support/admin/all?${query}`, {
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  getAdminSupportStats: async () => {
+    const res = await fetch(`${API_BASE}/support/admin/stats`, {
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  updateAdminSupportFeedback: async (id, data) => {
+    const res = await fetch(`${API_BASE}/support/admin/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  deleteAdminSupportFeedback: async (id) => {
+    const res = await fetch(`${API_BASE}/support/admin/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  downloadSupportExcel: async (params = {}) => {
+    const token = localStorage.getItem('mitra_token');
+    const cleanParams = { ...params };
+    if (token) cleanParams.token = token;
+    const query = new URLSearchParams(cleanParams).toString();
+
+    const res = await fetch(`${API_BASE}/support/admin/export?${query}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+
+    if (!res.ok) {
+      let errMsg = 'Export failed';
+      try {
+        const err = await res.json();
+        errMsg = err.message || errMsg;
+      } catch (e) {}
+      throw new Error(errMsg);
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+
+    // Determine filename
+    const dept = (params.department || 'All').replace(/[\s/\\?%*:|"<>]+/g, '_');
+    const batch = (params.batch || 'All').replace(/[\s/\\?%*:|"<>]+/g, '_');
+    let exportName = 'Support_Feedback_Report.xlsx';
+    if (dept === 'All' && batch === 'All') {
+      exportName = 'Support_Feedback_All_Departments_All_Batches.xlsx';
+    } else if (dept !== 'All' && batch !== 'All') {
+      exportName = `Support_Feedback_${dept}_${batch}.xlsx`;
+    } else if (dept !== 'All' && batch === 'All') {
+      exportName = `Support_Feedback_${dept}_All_Batches.xlsx`;
+    } else if (dept === 'All' && batch !== 'All') {
+      exportName = `Support_Feedback_All_Departments_${batch}.xlsx`;
+    }
+
+    a.download = exportName;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   }
 };

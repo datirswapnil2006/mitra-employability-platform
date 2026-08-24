@@ -6,38 +6,47 @@ import { AlertTriangle } from 'lucide-react';
 export const ConfirmDialog = ({
   isOpen,
   onClose,
+  onCancel,
   onConfirm,
   title = 'Confirm Action',
   message = 'Are you sure you want to proceed?',
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
+  confirmText,
+  confirmLabel = 'Confirm',
+  cancelText,
+  cancelLabel = 'Cancel',
   danger = true,
+  confirmVariant,
   loading = false
 }) => {
+  const handleClose = onClose || onCancel;
+  const isDanger = confirmVariant === 'danger' || (confirmVariant === undefined && danger);
+  const primaryText = confirmText || confirmLabel;
+  const secondaryText = cancelText || cancelLabel;
+
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title={title}
       maxWidth="max-w-md"
       footer={
         <>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={loading}>
-            {cancelText}
+          <Button variant="outline" size="sm" onClick={handleClose} disabled={loading}>
+            {secondaryText}
           </Button>
           <Button
-            variant={danger ? 'danger' : 'primary'}
+            variant={isDanger ? 'danger' : 'primary'}
             size="sm"
             onClick={onConfirm}
             loading={loading}
           >
-            {confirmText}
+            {primaryText}
           </Button>
         </>
       }
     >
       <div className="flex items-start gap-4">
-        <div className={`p-3 rounded-xl border ${danger ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+        <div className={`p-3 rounded-xl border ${isDanger ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
           <AlertTriangle className="w-6 h-6" />
         </div>
         <div>

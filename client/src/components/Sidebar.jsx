@@ -23,7 +23,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
-  Palette
+  Palette,
+  LifeBuoy
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -54,10 +55,11 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
   };
 
   // Manage open states of collapsible groups (Training, Registration, Assessment)
+  // Closed by default so sections do not open automatically upon login
   const [openGroups, setOpenGroups] = useState({
-    registration: true,
-    training: true,
-    assessment: true
+    registration: false,
+    training: false,
+    assessment: false
   });
 
   const toggleGroup = (groupKey, e) => {
@@ -154,6 +156,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
     },
     {
       type: 'link',
+      to: '/admin/support',
+      label: 'Support Management',
+      icon: LifeBuoy
+    },
+    {
+      type: 'link',
       to: '/admin/settings',
       label: 'Settings',
       icon: Settings
@@ -206,6 +214,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
       to: '/student/performance',
       label: 'Performance',
       icon: TrendingUp
+    },
+    {
+      type: 'link',
+      to: '/student/support',
+      label: 'Support & Suggestions',
+      icon: LifeBuoy
     },
     {
       type: 'link',
