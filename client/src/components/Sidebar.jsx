@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   UserCheck,
@@ -223,6 +223,45 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
 
   const currentNav = isAdmin ? adminNav : studentNav;
 
+  // Helper to check if a specific child link is active
+  const isChildActive = (childTo, cIdx, allChildren) => {
+    const currentPath = location.pathname;
+    const currentFull = currentPath + location.search;
+
+    if (childTo.includes('?')) {
+      const [targetPath, targetQuery] = childTo.split('?');
+      if (currentPath !== targetPath) return false;
+
+      if (location.search) {
+        return currentFull.toLowerCase() === childTo.toLowerCase() ||
+               location.search.toLowerCase() === `?${targetQuery.toLowerCase()}`;
+      }
+
+      // If on target path with no query param, default to first child
+      return cIdx === 0;
+    }
+
+    // Exact path match for non-query routes (e.g. /admin/students vs /admin/students/export)
+    return currentPath === childTo;
+  };
+
+  // Helper to check if a top-level link is active
+  const isTopLinkActive = (itemTo) => {
+    const currentPath = location.pathname;
+    if (itemTo === '/student/assessments') {
+      return (
+        currentPath === '/student/assessments' ||
+        currentPath.startsWith('/student/assessment') ||
+        currentPath.startsWith('/student/take-assessment') ||
+        currentPath.startsWith('/student/assessment-result')
+      );
+    }
+    if (itemTo === '/admin/question-bank' || itemTo === '/admin/questions') {
+      return currentPath.startsWith('/admin/question-bank') || currentPath.startsWith('/admin/questions');
+    }
+    return currentPath === itemTo;
+  };
+
   const sidebarContent = (
     <div
       className="flex flex-col h-full select-none overflow-hidden transition-colors duration-200"
@@ -299,45 +338,26 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
         {currentNav.map((item, idx) => {
           if (item.type === 'link') {
             const Icon = item.icon;
-            const currentPath = location.pathname;
-            const isCustomActive =
-              (item.to === '/student/assessments' && (
-                currentPath.startsWith('/student/assessments') ||
-                currentPath.startsWith('/student/assessment') ||
-                currentPath.startsWith('/student/take-assessment') ||
-                currentPath.startsWith('/student/assessment-result')
-              )) ||
-              (item.to === '/student/training' && (
-                currentPath.startsWith('/student/training') ||
-                currentPath.startsWith('/student/submodule')
-              )) ||
-              (item.to === '/admin/questions' || item.to === '/admin/question-bank'
-                ? currentPath.startsWith('/admin/questions') || currentPath.startsWith('/admin/question-bank')
-                : false);
+            const active = isTopLinkActive(item.to);
 
             return (
-              <NavLink
+              <Link
                 key={idx}
                 to={item.to}
                 title={effectiveCollapsed ? item.label : undefined}
-                style={({ isActive }) => {
-                  const active = isActive || isCustomActive;
-                  if (active) {
-                    return {
-                      backgroundColor: 'var(--sidebar-active-bg, #2563EB)',
-                      color: 'var(--sidebar-active-text, #FFFFFF)'
-                    };
-                  }
-                  return {};
-                }}
-                className={({ isActive }) => {
-                  const active = isActive || isCustomActive;
-                  return `flex items-center ${effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'} py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group relative ${
-                    active
-                      ? 'shadow-md font-bold'
-                      : 'opacity-80 hover:opacity-100 hover:bg-white/10'
-                  }`;
-                }}
+                style={
+                  active
+                    ? {
+                        backgroundColor: 'var(--sidebar-active-bg, #2563EB)',
+                        color: 'var(--sidebar-active-text, #FFFFFF)'
+                      }
+                    : {}
+                }
+                className={`flex items-center ${effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'} py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group relative ${
+                  active
+                    ? 'shadow-md font-bold'
+                    : 'opacity-80 hover:opacity-100 hover:bg-white/10'
+                }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-105" />
@@ -348,16 +368,14 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                     {item.badge}
                   </span>
                 )}
-              </NavLink>
+              </Link>
             );
           }
 
           if (item.type === 'group') {
             const Icon = item.icon;
             const isOpen = openGroups[item.key] ?? false;
-            const hasActiveChild = item.children?.some(
-              (c) => location.pathname + location.search === c.to || location.pathname.startsWith(c.to.split('?')[0])
-            );
+            const hasActiveChild = item.children?.some((c, cIdx) => isChildActive(c.to, cIdx, item.children));
 
             return (
               <div key={idx} className="space-y-1">
@@ -394,32 +412,31 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                     className="pl-7 pr-2 py-1 space-y-1 border-l ml-4 animate-in fade-in slide-in-from-top-1 duration-200"
                     style={{ borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))' }}
                   >
-                    {item.children.map((child, cIdx) => (
-                      <NavLink
-                        key={cIdx}
-                        to={child.to}
-                        style={({ isActive }) => {
-                          const active = isActive || (location.pathname + location.search === child.to);
-                          if (active) {
-                            return {
-                              backgroundColor: 'var(--sidebar-active-bg, #2563EB)',
-                              color: 'var(--sidebar-active-text, #FFFFFF)'
-                            };
+                    {item.children.map((child, cIdx) => {
+                      const active = isChildActive(child.to, cIdx, item.children);
+
+                      return (
+                        <Link
+                          key={cIdx}
+                          to={child.to}
+                          style={
+                            active
+                              ? {
+                                  backgroundColor: 'var(--sidebar-active-bg, #2563EB)',
+                                  color: 'var(--sidebar-active-text, #FFFFFF)'
+                                }
+                              : {}
                           }
-                          return {};
-                        }}
-                        className={({ isActive }) => {
-                          const active = isActive || (location.pathname + location.search === child.to);
-                          return `block px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                          className={`block px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
                             active
                               ? 'font-bold shadow-xs'
                               : 'opacity-75 hover:opacity-100 hover:bg-white/10'
-                          }`;
-                        }}
-                      >
-                        {child.label}
-                      </NavLink>
-                    ))}
+                          }`}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
               </div>

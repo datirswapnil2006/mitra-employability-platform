@@ -191,13 +191,22 @@ exports.getAllStudentsAdmin = async (req, res) => {
   }
 };
 
-// Admin: Reset a student's password and email them directly
+// Admin: Reset a student's password only if they have a PENDING request
 exports.adminResetStudentPassword = async (req, res) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Student user account not found.' });
+    }
+
+    // Check student profile for pending request
+    let profile = await StudentProfile.findOne({ user: user._id });
+    if (!profile || profile.passwordResetStatus !== 'PENDING') {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending password reset request found for this student. Password reset can only be processed when requested by the student.'
+      });
     }
 
     const newPassword = `Mitra@${Math.floor(100000 + Math.random() * 900000)}`;
@@ -211,18 +220,24 @@ exports.adminResetStudentPassword = async (req, res) => {
     });
 
     if (emailResult?.success) {
+      // Mark request as COMPLETED
+      profile.passwordResetStatus = 'COMPLETED';
+      profile.passwordResetCompletedAt = new Date();
+      await profile.save();
+
       return res.json({
         success: true,
         emailDispatched: true,
         status: 'Email Sent',
-        message: `A new temporary password has been successfully dispatched to ${user.email} via Mailtrap.`
+        passwordResetStatus: 'COMPLETED',
+        message: `A new temporary password has been successfully dispatched to ${user.email}.`
       });
     } else {
       return res.status(500).json({
         success: false,
         emailDispatched: false,
         status: 'Email Failed',
-        message: `Password was updated, but email delivery failed: ${emailResult?.error || 'Mailtrap SMTP error'}`
+        message: `Password was updated, but email delivery failed: ${emailResult?.error || 'SMTP delivery error'}`
       });
     }
   } catch (err) {

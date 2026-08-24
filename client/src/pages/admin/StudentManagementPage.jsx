@@ -5,6 +5,8 @@ import Card from '../../components/Card';
 import Input from '../../components/Input';
 import Select from '../../components/Select';
 import Badge from '../../components/Badge';
+import Button from '../../components/Button';
+import Modal from '../../components/Modal';
 import DataTable from '../../components/DataTable';
 import LoadingState from '../../components/LoadingState';
 import {
@@ -16,7 +18,8 @@ import {
   SlidersHorizontal,
   KeyRound,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 import { OFFICIAL_DEPARTMENTS, ACADEMIC_YEARS } from '../../constants/departments';
 
@@ -26,6 +29,10 @@ export const StudentManagementPage = () => {
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('All');
   const [year, setYear] = useState('All');
+
+  const [confirmStudent, setConfirmStudent] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [actionMsg, setActionMsg] = useState('');
 
   const departments = ['All', ...OFFICIAL_DEPARTMENTS];
   const years = ['All', ...ACADEMIC_YEARS];
@@ -63,20 +70,29 @@ export const StudentManagementPage = () => {
     return name.includes(q) || email.includes(q) || erp.includes(q);
   });
 
-  const [actionLoading, setActionLoading] = useState(null);
-  const [actionMsg, setActionMsg] = useState('');
+  const handleExecuteResetPassword = async () => {
+    if (!confirmStudent?.user?._id) return;
 
-  const handleAdminResetPassword = async (student) => {
-    if (!student.user?._id) return;
-    const confirm = window.confirm(`Generate and dispatch a new password to ${student.user.name} (${student.user.email})?`);
-    if (!confirm) return;
-
-    setActionLoading(student.user._id);
+    setActionLoading(confirmStudent.user._id);
     setActionMsg('');
     try {
-      const res = await api.adminResetStudentPassword(student.user._id);
+      const res = await api.adminResetStudentPassword(confirmStudent.user._id);
       if (res.success) {
-        setActionMsg(res.message || `New password dispatched to ${student.user.email}`);
+        // Update local state to reflect COMPLETED status immediately
+        setStudents(prev =>
+          prev.map(st => {
+            if (st.user?._id === confirmStudent.user._id) {
+              return {
+                ...st,
+                passwordResetStatus: 'COMPLETED',
+                passwordResetCompletedAt: new Date()
+              };
+            }
+            return st;
+          })
+        );
+        setActionMsg(res.message || `New password dispatched to ${confirmStudent.user.email}`);
+        setConfirmStudent(null);
         setTimeout(() => setActionMsg(''), 6000);
       } else {
         alert(res.message || 'Failed to reset password.');
@@ -171,19 +187,62 @@ export const StudentManagementPage = () => {
       )
     },
     {
+      header: 'Password Reset',
+      accessor: 'passwordResetStatus',
+      render: (row) => {
+        const status = row.passwordResetStatus || 'NO_REQUEST';
+        if (status === 'PENDING') {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              Reset Requested
+            </span>
+          );
+        }
+        if (status === 'COMPLETED') {
+          return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+              Completed
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+            No Request
+          </span>
+        );
+      }
+    },
+    {
       header: 'Actions',
       accessor: 'actions',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => handleAdminResetPassword(row)}
-          disabled={actionLoading === row.user?._id}
-          className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition disabled:opacity-50"
-          title="Dispatch new password to student email"
-        >
-          {actionLoading === row.user?._id ? 'Sending...' : 'Reset Password'}
-        </button>
-      )
+      render: (row) => {
+        const isPending = row.passwordResetStatus === 'PENDING';
+        const isCompleted = row.passwordResetStatus === 'COMPLETED';
+
+        return (
+          <button
+            type="button"
+            onClick={() => isPending && setConfirmStudent(row)}
+            disabled={!isPending || actionLoading === row.user?._id}
+            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition border ${
+              isPending
+                ? 'text-white bg-indigo-600 hover:bg-indigo-700 border-indigo-600 shadow-xs cursor-pointer active:scale-95'
+                : 'text-slate-400 bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed'
+            }`}
+            title={
+              isPending
+                ? 'Review and dispatch a new password to this student'
+                : isCompleted
+                ? 'Password reset already completed'
+                : 'No password reset request submitted'
+            }
+          >
+            {actionLoading === row.user?._id ? 'Sending...' : 'Reset Password'}
+          </button>
+        );
+      }
     }
   ];
 
@@ -272,6 +331,68 @@ export const StudentManagementPage = () => {
           emptyMessage="No student accounts match your filter criteria."
         />
       )}
+
+      {/* Admin Reset Password Confirmation Modal */}
+      <Modal
+        isOpen={Boolean(confirmStudent)}
+        onClose={() => setConfirmStudent(null)}
+        title="Confirm Password Reset"
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-950">Password Reset Request Pending</p>
+              <p className="mt-1 leading-relaxed text-[11px]">
+                This student has requested a password reset. Generate a new password and send it to the student's registered email?
+              </p>
+            </div>
+          </div>
+
+          {confirmStudent && (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Student Name:</span>
+                <span className="font-bold text-slate-900">{confirmStudent.user?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Registered Email:</span>
+                <span className="font-mono font-bold text-slate-800">{confirmStudent.user?.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">ERP / Roll Number:</span>
+                <span className="font-mono text-slate-700">{confirmStudent.erpNumber || confirmStudent.rollNo || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Department:</span>
+                <span className="font-semibold text-slate-700">{confirmStudent.department}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setConfirmStudent(null)}
+              disabled={Boolean(actionLoading)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={Boolean(actionLoading)}
+              onClick={handleExecuteResetPassword}
+              icon={KeyRound}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
+              Reset Password
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

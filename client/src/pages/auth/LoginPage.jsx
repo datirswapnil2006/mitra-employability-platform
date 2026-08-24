@@ -239,7 +239,7 @@ export const LoginPage = () => {
           <div className="flex items-center gap-3 p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs text-blue-950">
             <KeyRound className="w-5 h-5 text-blue-600 shrink-0" />
             <p className="text-[11px] leading-relaxed">
-              Enter your registered institutional email. We will generate a new secure temporary password and dispatch it directly to your email inbox.
+              Enter your registered email address to submit a password reset request. Your request will be forwarded to the Training & Placement (T&P) department for authorization.
             </p>
           </div>
 
@@ -275,7 +275,7 @@ export const LoginPage = () => {
                 className="w-full justify-center"
                 icon={Mail}
               >
-                Send New Password to Email
+                Submit Reset Request
               </Button>
             </form>
           ) : (

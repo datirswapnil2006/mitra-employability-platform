@@ -169,9 +169,23 @@ exports.forgotPassword = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No registered account found with this email address.' });
     }
 
+    // Find or create student profile if user is student
+    if (user.role === 'student') {
+      let profile = await StudentProfile.findOne({ user: user._id });
+      if (!profile) {
+        profile = new StudentProfile({
+          user: user._id,
+          department: user.department || 'CSE'
+        });
+      }
+      profile.passwordResetStatus = 'PENDING';
+      profile.passwordResetRequestedAt = new Date();
+      await profile.save();
+    }
+
     res.json({
       success: true,
-      message: 'Password reset request submitted. Please contact your Training & Placement Administrator to authorize and dispatch a new password to your email.'
+      message: 'Your password reset request has been submitted. Please contact the Training & Placement (T&P) department to complete the reset process.'
     });
   } catch (err) {
     console.error('[Forgot Password Error]:', err?.message || err);

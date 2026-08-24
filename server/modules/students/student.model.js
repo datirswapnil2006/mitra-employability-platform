@@ -31,6 +31,13 @@ const studentProfileSchema = new mongoose.Schema({
   diplomaPercentage: { type: Number, default: null },
   cgpa: { type: Number, default: null },
   profileCompletionPercentage: { type: Number, default: 0 },
+  passwordResetStatus: {
+    type: String,
+    enum: ['NO_REQUEST', 'PENDING', 'COMPLETED'],
+    default: 'NO_REQUEST'
+  },
+  passwordResetRequestedAt: { type: Date, default: null },
+  passwordResetCompletedAt: { type: Date, default: null },
   updatedAt: { type: Date, default: Date.now }
 });
 
