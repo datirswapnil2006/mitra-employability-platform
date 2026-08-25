@@ -11,6 +11,7 @@ import {
   Calendar,
   ArrowRight,
   CheckCircle2,
+  AlertCircle,
   ShieldCheck,
   Copy,
   Check,
@@ -213,8 +214,9 @@ export const RegisterPage = () => {
               </div>
 
               {error && (
-                <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl text-center font-medium">
-                  {error}
+                <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-start gap-2.5 font-medium leading-relaxed shadow-xs">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{error}</span>
                 </div>
               )}
 

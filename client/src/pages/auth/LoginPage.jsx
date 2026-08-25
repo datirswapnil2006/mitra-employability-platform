@@ -78,7 +78,7 @@ export const LoginPage = () => {
     try {
       const res = await api.forgotPassword(forgotEmail.trim());
       if (res.success) {
-        setForgotMsg(res.message || `A new password has been dispatched to ${forgotEmail}. Please check your inbox.`);
+        setForgotMsg(res.message || 'Password reset request submitted successfully. Please contact the Training & Placement department to enable your password reset.');
       } else {
         setForgotError(res.message || 'Unable to reset password. Please verify the email address.');
       }

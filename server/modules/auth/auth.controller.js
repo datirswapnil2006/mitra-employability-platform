@@ -20,16 +20,49 @@ exports.register = async (req, res) => {
 
     const selectedDept = department && OFFICIAL_DEPARTMENTS.includes(department) ? department : 'CSE';
 
-    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+    const trimmedEmail = email.toLowerCase().trim();
+    const finalErp = (erpNumber || rollNo || '').trim();
+
+    // Check if Email already exists
+    const existingUser = await User.findOne({ email: trimmedEmail });
+
+    // Check if ERP / Roll number already exists (for student registrations)
+    let existingProfileWithErp = null;
+    if (finalErp) {
+      existingProfileWithErp = await StudentProfile.findOne({
+        $or: [
+          { erpNumber: { $regex: new RegExp(`^${finalErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+          { rollNo: { $regex: new RegExp(`^${finalErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+        ]
+      });
+    }
+
+    if (existingUser && existingProfileWithErp) {
+      return res.status(400).json({
+        success: false,
+        message: `Both email '${trimmedEmail}' and ERP number '${finalErp}' are already registered. Please sign in or use different details.`
+      });
+    }
+
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email is already registered' });
+      return res.status(400).json({
+        success: false,
+        message: `Email '${trimmedEmail}' is already registered. Please sign in or use a different email address.`
+      });
+    }
+
+    if (existingProfileWithErp) {
+      return res.status(400).json({
+        success: false,
+        message: `ERP / Roll number '${finalErp}' is already registered. Please verify your ERP number or contact the Training & Placement department.`
+      });
     }
 
     const generatedPassword = password ? password.trim() : `Mitra@${Math.floor(100000 + Math.random() * 900000)}`;
 
     const user = await User.create({
       name: name.trim(),
-      email: email.toLowerCase().trim(),
+      email: trimmedEmail,
       password: generatedPassword,
       role: role || 'student',
       department: selectedDept
@@ -40,7 +73,6 @@ exports.register = async (req, res) => {
 
     // Auto-create StudentProfile if user is student
     if (user.role === 'student') {
-      const finalErp = erpNumber || rollNo || '';
       const profile = new StudentProfile({
         user: user._id,
         erpNumber: finalErp,
@@ -92,8 +124,13 @@ exports.register = async (req, res) => {
   } catch (err) {
     console.error('[Registration Error]:', err?.message || err);
     if (err.code === 11000) {
-      const field = Object.keys(err.keyPattern || {})[0] || 'Email / ERP Number';
-      return res.status(400).json({ success: false, message: `${field} is already registered.` });
+      const field = Object.keys(err.keyPattern || {})[0] || '';
+      if (field === 'email') {
+        return res.status(400).json({ success: false, message: 'This email address is already registered.' });
+      } else if (field === 'erpNumber' || field === 'rollNo') {
+        return res.status(400).json({ success: false, message: 'This ERP / Roll number is already registered.' });
+      }
+      return res.status(400).json({ success: false, message: 'An account with these details already exists.' });
     }
     res.status(500).json({ success: false, message: err.message || 'Server error during registration.' });
   }
@@ -180,15 +217,110 @@ exports.forgotPassword = async (req, res) => {
       }
       profile.passwordResetStatus = 'PENDING';
       profile.passwordResetRequestedAt = new Date();
+      profile.passwordResetToken = null;
+      profile.passwordResetExpires = null;
       await profile.save();
     }
 
     res.json({
       success: true,
-      message: 'Your password reset request has been submitted. Please contact the Training & Placement (T&P) department to complete the reset process.'
+      message: 'Password reset request submitted successfully. Please contact the Training & Placement department to enable your password reset.'
     });
   } catch (err) {
     console.error('[Forgot Password Error]:', err?.message || err);
+    res.status(500).json({ success: false, message: err.message || 'Server error while submitting password reset request.' });
+  }
+};
+
+exports.verifyResetToken = async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Password reset token is required.' });
+    }
+
+    const profile = await StudentProfile.findOne({
+      passwordResetToken: token,
+      passwordResetStatus: 'ENABLED',
+      passwordResetExpires: { $gt: new Date() }
+    }).populate('user', 'name email');
+
+    if (!profile || !profile.user) {
+      return res.status(400).json({
+        success: false,
+        message: 'This password reset link is invalid, expired, or has already been used. Please submit a new request if needed.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Token is valid.',
+      student: {
+        name: profile.user.name,
+        email: profile.user.email
+      }
+    });
+  } catch (err) {
+    console.error('[Verify Reset Token Error]:', err?.message || err);
+    res.status(500).json({ success: false, message: err.message || 'Server error while verifying reset token.' });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword, confirmPassword } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Password reset token is required.' });
+    }
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Both New Password and Confirm Password are required.' });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Passwords do not match.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
+    }
+
+    // Find student profile with matching token, status ENABLED, and valid expiry
+    const profile = await StudentProfile.findOne({
+      passwordResetToken: token,
+      passwordResetStatus: 'ENABLED',
+      passwordResetExpires: { $gt: new Date() }
+    });
+
+    if (!profile) {
+      return res.status(400).json({
+        success: false,
+        message: 'This password reset link is invalid, expired, or has already been used. Please submit a new request if needed.'
+      });
+    }
+
+    const user = await User.findById(profile.user);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User account not found.' });
+    }
+
+    // Hash and update password (userSchema.pre('save') handles bcrypt hashing)
+    user.password = newPassword;
+    await user.save();
+
+    // Invalidate reset token and mark status as COMPLETED
+    profile.passwordResetToken = null;
+    profile.passwordResetExpires = null;
+    profile.passwordResetStatus = 'COMPLETED';
+    profile.passwordResetCompletedAt = new Date();
+    await profile.save();
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully. You can now log in using your new password.'
+    });
+  } catch (err) {
+    console.error('[Reset Password Error]:', err?.message || err);
     res.status(500).json({ success: false, message: err.message || 'Server error while resetting password.' });
   }
 };

@@ -14,6 +14,7 @@ import PrivacyPolicyPage from './pages/public/PrivacyPolicyPage';
 
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 
 import StudentLayout from './layouts/StudentLayout';
 import StudentDashboard from './pages/student/StudentDashboard';
@@ -63,6 +64,11 @@ export function App() {
             {/* Public Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+            <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/auth/reset-password/:token" element={<ResetPasswordPage />} />
+            <Route path="/resetpassword" element={<ResetPasswordPage />} />
 
             {/* Student Ecosystem */}
             <Route path="/student" element={<StudentLayout />}>

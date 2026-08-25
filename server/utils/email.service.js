@@ -234,44 +234,46 @@ const getRegistrationHtmlTemplate = ({ studentName, toEmail, erpNumber, password
 };
 
 /**
- * HTML Template for Password Reset Notification
+ * Returns dynamic password reset URL using process.env.FRONTEND_URL and reset token
  */
-const getResetHtmlTemplate = ({ studentName, toEmail, password }) => {
-  const loginUrl = getLoginUrl();
+const getResetPasswordUrl = (token) => {
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/+$/, '');
+  return `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+};
 
+/**
+ * HTML Template for Password Reset Notification (Admin Approved Reset Link)
+ */
+const getResetHtmlTemplate = ({ studentName, resetLink }) => {
   return `
-    <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background: #ffffff;">
+    <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 16px; background: #ffffff;">
       <div style="text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #f1f5f9;">
         <h2 style="color: #1e3a8a; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">MITRA Employability Portal</h2>
-        <p style="color: #64748b; font-size: 13px; margin-top: 4px; font-weight: 600;">Password Reset Notification</p>
+        <p style="color: #64748b; font-size: 13px; margin-top: 4px; font-weight: 600;">Training & Placement Department</p>
       </div>
       
       <div style="padding: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
         <p style="font-size: 15px; color: #1e293b; margin-top: 0;">Hello <strong>${studentName}</strong>,</p>
         <p style="font-size: 14px; color: #475569; line-height: 1.6;">
-          Your account password has been reset by the Training & Placement Administrator. Below is your new temporary sign-in password:
+          Your password reset request has been approved by the Training & Placement department.
         </p>
-        
-        <table style="width: 100%; font-size: 14px; margin-top: 16px; border-collapse: separate; border-spacing: 0; background: #ffffff; border-radius: 8px; border: 1px solid #cbd5e1; overflow: hidden;">
-          <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 10px 14px; color: #64748b; width: 40%; font-weight: 600; background: #f1f5f9;">Account Email</td>
-            <td style="padding: 10px 14px; color: #0f172a; font-family: monospace; font-weight: 700;">${toEmail}</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px 14px; color: #64748b; font-weight: 600; background: #f1f5f9;">New Temporary Password</td>
-            <td style="padding: 10px 14px; color: #2563eb; font-weight: 800; font-family: monospace; font-size: 16px; letter-spacing: 0.5px;">${password}</td>
-          </tr>
-        </table>
+        <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+          You can now create your own new password using the secure link below:
+        </p>
       </div>
 
       <div style="margin-top: 24px; text-align: center;">
-        <a href="${loginUrl}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; text-decoration: none; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
-          Sign In to MITRA Portal &rarr;
+        <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; text-decoration: none; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+          Reset Password &rarr;
         </a>
       </div>
 
-      <div style="margin-top: 24px; padding: 14px; background: #fef2f2; border-radius: 8px; border: 1px solid #fecaca; font-size: 13px; color: #991b1b;">
-        <strong>Security Notice:</strong> Please sign in using this temporary password and update your password immediately from your profile settings. If you did not request this change, please report to the T&P Department immediately.
+      <div style="margin-top: 24px; padding: 14px; background: #fef3c7; border-radius: 8px; border: 1px solid #fde68a; font-size: 13px; color: #92400e;">
+        <strong>Notice:</strong> This link is valid only for the configured reset period and can be used only once. If you did not request a password reset, please contact the Training & Placement department.
+      </div>
+
+      <div style="margin-top: 24px; font-size: 13px; color: #64748b; line-height: 1.5;">
+        <p style="margin: 0;">Regards,<br><strong>MITRA Employability Portal</strong><br>Training & Placement Department</p>
       </div>
 
       <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 16px;">
@@ -304,19 +306,20 @@ exports.sendCredentialEmail = async ({ toEmail, studentName, password, erpNumber
 };
 
 /**
- * Dispatches password reset notification email
+ * Dispatches password reset notification email with secure link
  */
-exports.sendPasswordResetEmail = async ({ toEmail, studentName, password }) => {
+exports.sendPasswordResetEmail = async ({ toEmail, studentName, resetToken, resetLink }) => {
   const recipient = (toEmail || '').trim();
-  const subject = 'MITRA Portal - Password Reset Notification';
-  const html = getResetHtmlTemplate({ studentName, toEmail: recipient, password });
+  const subject = 'MITRA Portal – Password Reset Enabled';
+  const targetLink = resetLink || (resetToken ? getResetPasswordUrl(resetToken) : getLoginUrl());
+  const html = getResetHtmlTemplate({ studentName, toEmail: recipient, resetLink: targetLink });
 
-  console.log('[Email Service]: Dispatching password reset email...');
+  console.log('[Email Service]: Dispatching password reset link email...');
 
   try {
     const result = await dispatchEmail({ to: recipient, subject, html });
     console.log(`[Email Service]: Email Sent Successfully - Recipient: ${recipient}, Method: ${result.method}, MessageId: ${result.messageId}`);
-    return { success: true, status: 'Email Sent', method: result.method, messageId: result.messageId, recipient };
+    return { success: true, status: 'Email Sent', method: result.method, messageId: result.messageId, recipient, resetLink: targetLink };
   } catch (err) {
     cachedTransporter = null;
     const errMsg = err.response?.data?.message || err.response?.data?.error || err.message;

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { StudentProfile, ProfileConfig } = require('./student.model');
 const User = require('../auth/user.model');
 const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
@@ -79,8 +80,24 @@ exports.updateStudentProfile = async (req, res) => {
 
     const finalErp = erpNumber !== undefined ? erpNumber : rollNo;
     if (finalErp !== undefined) {
-      profile.erpNumber = finalErp;
-      profile.rollNo = finalErp;
+      const trimmedErp = (finalErp || '').trim();
+      if (trimmedErp) {
+        const existingOther = await StudentProfile.findOne({
+          user: { $ne: req.user.id },
+          $or: [
+            { erpNumber: { $regex: new RegExp(`^${trimmedErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+            { rollNo: { $regex: new RegExp(`^${trimmedErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+          ]
+        });
+        if (existingOther) {
+          return res.status(400).json({
+            success: false,
+            message: `The ERP / Roll number '${trimmedErp}' is already associated with another student account.`
+          });
+        }
+      }
+      profile.erpNumber = trimmedErp;
+      profile.rollNo = trimmedErp;
     }
     if (gender !== undefined) profile.gender = gender;
     if (section !== undefined) profile.section = section;
@@ -191,7 +208,7 @@ exports.getAllStudentsAdmin = async (req, res) => {
   }
 };
 
-// Admin: Reset a student's password only if they have a PENDING request
+// Admin: Enable a student's password reset only if they have a PENDING request
 exports.adminResetStudentPassword = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -209,40 +226,54 @@ exports.adminResetStudentPassword = async (req, res) => {
       });
     }
 
-    const newPassword = `Mitra@${Math.floor(100000 + Math.random() * 900000)}`;
-    user.password = newPassword;
-    await user.save();
+    // Generate secure one-time reset token (valid for 24 hours)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    profile.passwordResetStatus = 'ENABLED';
+    profile.passwordResetToken = resetToken;
+    profile.passwordResetExpires = expiresAt;
+    profile.passwordResetApprovedAt = new Date();
+    await profile.save();
+
+    // Student password is NOT changed or generated here. Existing password remains intact.
+    let originUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/+$/, '');
+    if (req.headers.origin) {
+      originUrl = req.headers.origin.trim().replace(/\/+$/, '');
+    } else if (req.headers.referer) {
+      try {
+        originUrl = new URL(req.headers.referer).origin.replace(/\/+$/, '');
+      } catch (_) {}
+    }
+    const resetLink = `${originUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
     const emailResult = await sendPasswordResetEmail({
       toEmail: user.email,
       studentName: user.name,
-      password: newPassword
+      resetToken,
+      resetLink
     });
 
     if (emailResult?.success) {
-      // Mark request as COMPLETED
-      profile.passwordResetStatus = 'COMPLETED';
-      profile.passwordResetCompletedAt = new Date();
-      await profile.save();
-
       return res.json({
         success: true,
         emailDispatched: true,
         status: 'Email Sent',
-        passwordResetStatus: 'COMPLETED',
-        message: `A new temporary password has been successfully dispatched to ${user.email}.`
+        passwordResetStatus: 'ENABLED',
+        message: `Password reset link has been successfully dispatched to ${user.email}.`
       });
     } else {
       return res.status(500).json({
         success: false,
         emailDispatched: false,
         status: 'Email Failed',
-        message: `Password was updated, but email delivery failed: ${emailResult?.error || 'SMTP delivery error'}`
+        message: `Password reset was enabled, but email delivery failed: ${emailResult?.error || 'SMTP delivery error'}`
       });
     }
   } catch (err) {
     res.status(500).json({ success: false, status: 'Email Failed', message: err.message });
   }
 };
+
 
 

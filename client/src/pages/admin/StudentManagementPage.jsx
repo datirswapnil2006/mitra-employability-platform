@@ -78,24 +78,24 @@ export const StudentManagementPage = () => {
     try {
       const res = await api.adminResetStudentPassword(confirmStudent.user._id);
       if (res.success) {
-        // Update local state to reflect COMPLETED status immediately
+        // Update local state to reflect ENABLED status immediately
         setStudents(prev =>
           prev.map(st => {
             if (st.user?._id === confirmStudent.user._id) {
               return {
                 ...st,
-                passwordResetStatus: 'COMPLETED',
-                passwordResetCompletedAt: new Date()
+                passwordResetStatus: 'ENABLED',
+                passwordResetApprovedAt: new Date()
               };
             }
             return st;
           })
         );
-        setActionMsg(res.message || `New password dispatched to ${confirmStudent.user.email}`);
+        setActionMsg(res.message || `Password reset link dispatched to ${confirmStudent.user.email}`);
         setConfirmStudent(null);
         setTimeout(() => setActionMsg(''), 6000);
       } else {
-        alert(res.message || 'Failed to reset password.');
+        alert(res.message || 'Failed to enable password reset.');
       }
     } catch (err) {
       alert('Error communicating with reset service.');
@@ -195,7 +195,15 @@ export const StudentManagementPage = () => {
           return (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-              Reset Requested
+              RESET REQUESTED
+            </span>
+          );
+        }
+        if (status === 'ENABLED') {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-300 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+              RESET ENABLED
             </span>
           );
         }
@@ -218,8 +226,19 @@ export const StudentManagementPage = () => {
       header: 'Actions',
       accessor: 'actions',
       render: (row) => {
-        const isPending = row.passwordResetStatus === 'PENDING';
-        const isCompleted = row.passwordResetStatus === 'COMPLETED';
+        const status = row.passwordResetStatus || 'NO_REQUEST';
+        const isPending = status === 'PENDING';
+        const isEnabled = status === 'ENABLED';
+        const isCompleted = status === 'COMPLETED';
+
+        let buttonLabel = 'Enable Reset';
+        if (actionLoading === row.user?._id) {
+          buttonLabel = 'Enabling...';
+        } else if (isEnabled) {
+          buttonLabel = 'Reset Enabled';
+        } else if (isCompleted) {
+          buttonLabel = 'Completed';
+        }
 
         return (
           <button
@@ -233,13 +252,15 @@ export const StudentManagementPage = () => {
             }`}
             title={
               isPending
-                ? 'Review and dispatch a new password to this student'
+                ? 'Authorize password reset and dispatch a secure reset link to this student'
+                : isEnabled
+                ? 'Password reset is enabled and link has been sent to the student'
                 : isCompleted
-                ? 'Password reset already completed'
-                : 'No password reset request submitted'
+                ? 'Password reset already completed by the student'
+                : 'Enable Reset — Disabled (No request submitted)'
             }
           >
-            {actionLoading === row.user?._id ? 'Sending...' : 'Reset Password'}
+            {buttonLabel}
           </button>
         );
       }
@@ -336,7 +357,7 @@ export const StudentManagementPage = () => {
       <Modal
         isOpen={Boolean(confirmStudent)}
         onClose={() => setConfirmStudent(null)}
-        title="Confirm Password Reset"
+        title="Enable Password Reset"
         maxWidth="max-w-md"
       >
         <div className="space-y-4">
@@ -345,7 +366,7 @@ export const StudentManagementPage = () => {
             <div>
               <p className="font-bold text-amber-950">Password Reset Request Pending</p>
               <p className="mt-1 leading-relaxed text-[11px]">
-                This student has requested a password reset. Generate a new password and send it to the student's registered email?
+                This student has requested a password reset. Enable password reset for this student?
               </p>
             </div>
           </div>
@@ -388,7 +409,7 @@ export const StudentManagementPage = () => {
               icon={KeyRound}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
-              Reset Password
+              Enable Reset
             </Button>
           </div>
         </div>

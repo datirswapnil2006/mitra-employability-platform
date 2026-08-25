@@ -37,6 +37,20 @@ export const api = {
     });
     return res.json();
   },
+  verifyResetToken: async (token) => {
+    const res = await fetch(`${API_BASE}/auth/verify-reset-token?token=${encodeURIComponent(token)}`, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.json();
+  },
+  resetPassword: async (token, newPassword, confirmPassword) => {
+    const res = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword, confirmPassword })
+    });
+    return res.json();
+  },
   getMe: async () => {
     const res = await fetch(`${API_BASE}/auth/me`, { headers: getHeaders() });
     return res.json();

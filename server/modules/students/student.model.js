@@ -33,10 +33,13 @@ const studentProfileSchema = new mongoose.Schema({
   profileCompletionPercentage: { type: Number, default: 0 },
   passwordResetStatus: {
     type: String,
-    enum: ['NO_REQUEST', 'PENDING', 'COMPLETED'],
+    enum: ['NO_REQUEST', 'PENDING', 'ENABLED', 'COMPLETED'],
     default: 'NO_REQUEST'
   },
+  passwordResetToken: { type: String, default: null },
+  passwordResetExpires: { type: Date, default: null },
   passwordResetRequestedAt: { type: Date, default: null },
+  passwordResetApprovedAt: { type: Date, default: null },
   passwordResetCompletedAt: { type: Date, default: null },
   updatedAt: { type: Date, default: Date.now }
 });
