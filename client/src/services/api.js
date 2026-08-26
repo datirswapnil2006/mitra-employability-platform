@@ -104,6 +104,41 @@ export const api = {
     });
     return res.json();
   },
+
+  // Topics (Aptitude & Topic-based modules)
+  getTopics: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/training/topics?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
+  getTopicById: async (id) => {
+    const res = await fetch(`${API_BASE}/training/topics/${id}`, { headers: getHeaders() });
+    return res.json();
+  },
+  createTopic: async (data) => {
+    const res = await fetch(`${API_BASE}/training/topics`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  updateTopic: async (id, data) => {
+    const res = await fetch(`${API_BASE}/training/topics/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  deleteTopic: async (id) => {
+    const res = await fetch(`${API_BASE}/training/topics/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+
   getSubmodules: async (moduleId) => {
     const res = await fetch(`${API_BASE}/training/modules/${moduleId}/submodules`, { headers: getHeaders() });
     return res.json();

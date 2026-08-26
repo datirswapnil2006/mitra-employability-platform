@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const {
+  getTopics,
+  getTopicById,
+  createTopic,
+  updateTopic,
+  deleteTopic,
   getModules,
   createModule,
   updateModule,
@@ -22,6 +27,13 @@ const { requireCompleteProfile } = require('../../middleware/profileMiddleware')
 // Metadata preview
 router.post('/preview-metadata', protect, authorize('admin'), previewMetadata);
 
+// Topics (Aptitude & Topic-based modules)
+router.get('/topics', protect, requireCompleteProfile, getTopics);
+router.get('/topics/:id', protect, requireCompleteProfile, getTopicById);
+router.post('/topics', protect, authorize('admin'), createTopic);
+router.put('/topics/:id', protect, authorize('admin'), updateTopic);
+router.delete('/topics/:id', protect, authorize('admin'), deleteTopic);
+
 // Modules
 router.get('/modules', protect, requireCompleteProfile, getModules);
 router.post('/modules', protect, authorize('admin'), createModule);
@@ -34,7 +46,7 @@ router.post('/submodules', protect, authorize('admin'), createSubmodule);
 router.put('/submodules/:id', protect, authorize('admin'), updateSubmodule);
 router.delete('/submodules/:id', protect, authorize('admin'), deleteSubmodule);
 
-// Content
+// Content (Videos & Notes)
 router.get('/content', protect, requireCompleteProfile, getContentList);
 router.post('/content', protect, authorize('admin'), createContent);
 router.put('/content/:id', protect, authorize('admin'), updateContent);

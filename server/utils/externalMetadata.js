@@ -66,12 +66,39 @@ const extractUrlMetadata = async (resourceUrl) => {
     throw new Error('Unsafe or invalid URL provided. Internal and private network URLs are blocked for security.');
   }
 
-  // 1. YouTube Detection
-  const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-  const ytMatch = cleanUrl.match(ytRegex);
+  // 1. YouTube Detection (supports watch?v=, youtu.be/, /live/, /shorts/, /embed/, etc.)
+  let ytVideoId = null;
+  try {
+    const parsed = new URL(cleanUrl);
+    if (parsed.hostname.includes('youtube.com') || parsed.hostname.includes('youtu.be')) {
+      if (parsed.hostname.includes('youtu.be')) {
+        ytVideoId = parsed.pathname.slice(1).split(/[?#&/]/)[0];
+      } else if (parsed.pathname.startsWith('/live/')) {
+        ytVideoId = parsed.pathname.replace('/live/', '').split(/[?#&/]/)[0];
+      } else if (parsed.pathname.startsWith('/shorts/')) {
+        ytVideoId = parsed.pathname.replace('/shorts/', '').split(/[?#&/]/)[0];
+      } else if (parsed.pathname.startsWith('/embed/')) {
+        ytVideoId = parsed.pathname.replace('/embed/', '').split(/[?#&/]/)[0];
+      } else if (parsed.pathname.startsWith('/v/')) {
+        ytVideoId = parsed.pathname.replace('/v/', '').split(/[?#&/]/)[0];
+      } else if (parsed.searchParams.get('v')) {
+        ytVideoId = parsed.searchParams.get('v');
+      }
+    }
+  } catch (e) {
+    // Fallback regex
+  }
 
-  if (ytMatch && ytMatch[1]) {
-    const videoId = ytMatch[1];
+  if (!ytVideoId) {
+    const ytRegex = /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|live\/|.+\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const ytMatch = cleanUrl.match(ytRegex);
+    if (ytMatch && ytMatch[1]) {
+      ytVideoId = ytMatch[1];
+    }
+  }
+
+  if (ytVideoId && ytVideoId.length === 11) {
+    const videoId = ytVideoId;
     const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
     let title = `YouTube Lecture (${videoId})`;
     let description = 'YouTube Video Training Resource';
