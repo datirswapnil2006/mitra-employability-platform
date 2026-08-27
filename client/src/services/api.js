@@ -3,6 +3,19 @@ export const API_BASE = rawBase.endsWith('/api')
   ? rawBase
   : (rawBase === '' ? '/api' : `${rawBase}/api`);
 
+export const getMediaUrl = (path) => {
+  if (!path || typeof path !== 'string') return '';
+  const trimmed = path.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+    return trimmed;
+  }
+  const baseUrl = rawBase.endsWith('/api') ? rawBase.slice(0, -4) : rawBase;
+  if (baseUrl) {
+    return `${baseUrl}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+  }
+  return trimmed;
+};
+
 const getHeaders = () => {
   const token = localStorage.getItem('mitra_token');
   return {
@@ -77,6 +90,14 @@ export const api = {
     });
     return res.json();
   },
+  uploadProfilePhoto: async (data) => {
+    const res = await fetch(`${API_BASE}/students/profile/photo`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
   getAllStudentsAdmin: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE}/students/admin/all?${query}`, { headers: getHeaders() });
@@ -101,6 +122,74 @@ export const api = {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  // Categories (Domain & Categorized Modules)
+  getCategories: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/training/categories?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
+  getCategoryById: async (id) => {
+    const res = await fetch(`${API_BASE}/training/categories/${id}`, { headers: getHeaders() });
+    return res.json();
+  },
+  createCategory: async (data) => {
+    const res = await fetch(`${API_BASE}/training/categories`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  updateCategory: async (id, data) => {
+    const res = await fetch(`${API_BASE}/training/categories/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  deleteCategory: async (id) => {
+    const res = await fetch(`${API_BASE}/training/categories/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+
+  // Companies (Data-Driven Company Preparation)
+  getCompanies: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/training/companies?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
+  getCompanyById: async (id) => {
+    const res = await fetch(`${API_BASE}/training/companies/${id}`, { headers: getHeaders() });
+    return res.json();
+  },
+  createCompany: async (data) => {
+    const res = await fetch(`${API_BASE}/training/companies`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  updateCompany: async (id, data) => {
+    const res = await fetch(`${API_BASE}/training/companies/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  deleteCompany: async (id) => {
+    const res = await fetch(`${API_BASE}/training/companies/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
     });
     return res.json();
   },

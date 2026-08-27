@@ -27,7 +27,8 @@ pnpm-debug.log*
 *.suo
 *.ntvs*
 *.njsproj
-*.sln
-*.sw?
-.DS_Store
-Thumbs.db
+# Uploads
+uploads/
+server/uploads/
+server/uploads/*
+!server/uploads/.gitkeep

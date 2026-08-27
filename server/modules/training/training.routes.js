@@ -1,6 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const {
+  getCategories,
+  getCategoryById,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  getCompanies,
+  getCompanyById,
+  createCompany,
+  updateCompany,
+  deleteCompany,
   getTopics,
   getTopicById,
   createTopic,
@@ -26,6 +36,20 @@ const { requireCompleteProfile } = require('../../middleware/profileMiddleware')
 
 // Metadata preview
 router.post('/preview-metadata', protect, authorize('admin'), previewMetadata);
+
+// Companies (Data-Driven Company Preparation)
+router.get('/companies', protect, requireCompleteProfile, getCompanies);
+router.get('/companies/:id', protect, requireCompleteProfile, getCompanyById);
+router.post('/companies', protect, authorize('admin'), createCompany);
+router.put('/companies/:id', protect, authorize('admin'), updateCompany);
+router.delete('/companies/:id', protect, authorize('admin'), deleteCompany);
+
+// Categories (Domain & Categorized Modules)
+router.get('/categories', protect, requireCompleteProfile, getCategories);
+router.get('/categories/:id', protect, requireCompleteProfile, getCategoryById);
+router.post('/categories', protect, authorize('admin'), createCategory);
+router.put('/categories/:id', protect, authorize('admin'), updateCategory);
+router.delete('/categories/:id', protect, authorize('admin'), deleteCategory);
 
 // Topics (Aptitude & Topic-based modules)
 router.get('/topics', protect, requireCompleteProfile, getTopics);

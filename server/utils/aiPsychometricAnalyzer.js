@@ -221,10 +221,18 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
   if (geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
     try {
       const ai = new GoogleGenAI({ apiKey: geminiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt
-      });
+      let response = null;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: prompt
+        });
+      } catch (gemErr) {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        });
+      }
       const cleaned = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleaned);
       return { ...parsed, aiProvider: 'gemini' };
@@ -239,17 +247,17 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
       const res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
         {
-          model: 'llama-3.3-70b-versatile',
+          model: 'qwen/qwen3.6-27b',
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3,
-          response_format: { type: 'json_object' }
+          temperature: 0.3
         },
         {
           headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
           timeout: 12000
         }
       );
-      const parsed = JSON.parse(res.data?.choices?.[0]?.message?.content || '{}');
+      const cleanedGroq = (res.data?.choices?.[0]?.message?.content || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanedGroq || '{}');
       if (parsed.strengths && parsed.careerFit) {
         return { ...parsed, aiProvider: 'groq' };
       }

@@ -29,12 +29,22 @@ exports.register = async (req, res) => {
     // Check if ERP / Roll number already exists (for student registrations)
     let existingProfileWithErp = null;
     if (finalErp) {
-      existingProfileWithErp = await StudentProfile.findOne({
+      const candidateProfiles = await StudentProfile.find({
         $or: [
           { erpNumber: { $regex: new RegExp(`^${finalErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
           { rollNo: { $regex: new RegExp(`^${finalErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
         ]
-      });
+      }).populate('user');
+
+      for (const cp of candidateProfiles) {
+        if (cp.user) {
+          existingProfileWithErp = cp;
+          break;
+        } else {
+          // Self-clean orphaned profile record
+          await StudentProfile.deleteOne({ _id: cp._id });
+        }
+      }
     }
 
     if (existingUser && existingProfileWithErp) {
@@ -84,7 +94,7 @@ exports.register = async (req, res) => {
         batch: batch || '2026'
       });
 
-      profileCompletion = profile.calculateCompletion();
+      profileCompletion = profile.calculateCompletion(user);
       await profile.save();
 
       // Dispatch credentials email and verify delivery result
@@ -157,7 +167,13 @@ exports.login = async (req, res) => {
     let profileCompletion = 100;
     if (user.role === 'student') {
       const profile = await StudentProfile.findOne({ user: user._id });
-      profileCompletion = profile ? profile.profileCompletionPercentage : 0;
+      if (profile) {
+        profile.calculateCompletion(user);
+        await profile.save();
+        profileCompletion = profile.profileCompletionPercentage;
+      } else {
+        profileCompletion = 0;
+      }
     }
 
     res.json({
@@ -181,8 +197,12 @@ exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
     let studentProfile = null;
-    if (user.role === 'student') {
+    if (user && user.role === 'student') {
       studentProfile = await StudentProfile.findOne({ user: user._id });
+      if (studentProfile) {
+        studentProfile.calculateCompletion(user);
+        await studentProfile.save();
+      }
     }
     res.json({
       success: true,

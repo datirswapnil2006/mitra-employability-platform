@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../services/api';
+import { api, getMediaUrl } from '../../services/api';
 import Card from '../../components/Card';
 import Input from '../../components/Input';
 import Select from '../../components/Select';
@@ -263,7 +263,7 @@ export const StudentExportPage = () => {
         <div className="flex items-center gap-3">
           {row.profilePhoto || row.user?.profilePhoto ? (
             <img
-              src={row.profilePhoto || row.user?.profilePhoto}
+              src={getMediaUrl(row.profilePhoto || row.user?.profilePhoto)}
               alt={row.user?.name || 'Student'}
               className="w-9 h-9 rounded-xl object-cover border border-slate-200 shadow-xs shrink-0"
             />

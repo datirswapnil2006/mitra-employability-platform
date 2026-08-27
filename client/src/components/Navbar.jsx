@@ -19,6 +19,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getMediaUrl } from '../services/api';
 
 export const Navbar = ({ onMenuToggle }) => {
   const { user, profileCompletion, logout } = useAuth();
@@ -141,7 +142,7 @@ export const Navbar = ({ onMenuToggle }) => {
           >
             {user?.profilePhoto ? (
               <img
-                src={user.profilePhoto}
+                src={getMediaUrl(user.profilePhoto)}
                 alt={user.name || 'User'}
                 className="w-8 h-8 rounded-full object-cover border border-slate-200 dark:border-slate-700 shadow-xs"
               />

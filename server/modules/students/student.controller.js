@@ -1,8 +1,53 @@
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
+const mongoose = require('mongoose');
 const { StudentProfile, ProfileConfig } = require('./student.model');
 const User = require('../auth/user.model');
 const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
 const { sendPasswordResetEmail } = require('../../utils/email.service');
+
+// Helper to save base64 / data URI photo to disk and return file URL
+const savePhotoToFile = (photoInput, userId) => {
+  if (!photoInput || typeof photoInput !== 'string') return '';
+  const trimmed = photoInput.trim();
+  if (!trimmed) return '';
+
+  // If already a static URL or web URL, keep it
+  if (trimmed.startsWith('/uploads/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  // Handle data URI / base64 image
+  const matches = trimmed.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+  if (matches && matches.length === 3) {
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    let ext = 'jpg';
+    if (mimeType.includes('png')) ext = 'png';
+    else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
+    else if (mimeType.includes('webp')) ext = 'webp';
+
+    const uploadsDir = path.join(__dirname, '../../uploads/profiles');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const filename = `profile-${userId}-${Date.now()}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    try {
+      const buffer = Buffer.from(base64Data, 'base64');
+      fs.writeFileSync(filePath, buffer);
+      return `/uploads/profiles/${filename}`;
+    } catch (err) {
+      console.error('Error writing profile photo file:', err);
+      return '';
+    }
+  }
+
+  return trimmed;
+};
 
 // Get profile config or default
 const getRequiredFieldsConfig = async () => {
@@ -21,23 +66,74 @@ const getRequiredFieldsConfig = async () => {
 // Get current student profile
 exports.getStudentProfile = async (req, res) => {
   try {
-    let profile = await StudentProfile.findOne({ user: req.user.id }).populate('user', 'name email role department');
+    const currentUserId = req.user._id || req.user.id;
+    let profile = await StudentProfile.findOne({ user: currentUserId }).populate('user', 'name email role department profilePhoto');
     if (!profile) {
       profile = await StudentProfile.create({
-        user: req.user.id,
+        user: currentUserId,
         department: req.user.department || 'CSE'
       });
-      profile = await profile.populate('user', 'name email role department');
+      profile = await profile.populate('user', 'name email role department profilePhoto');
     }
 
-    const requiredFields = await getRequiredFieldsConfig();
-    profile.calculateCompletion(requiredFields);
+    // Ensure photo consistency between User and Profile
+    if (!profile.profilePhoto && profile.user?.profilePhoto) {
+      profile.profilePhoto = profile.user.profilePhoto;
+    }
+
+    profile.calculateCompletion(profile.user);
     await profile.save();
 
     res.json({
       success: true,
       profile,
-      requiredFields
+      student: profile,
+      requiredFields: await getRequiredFieldsConfig()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Standalone endpoint: Upload profile photo
+exports.uploadProfilePhoto = async (req, res) => {
+  try {
+    const currentUserId = req.user._id || req.user.id;
+    const { photoData, profilePhoto } = req.body;
+    const photoToProcess = photoData || profilePhoto;
+
+    if (!photoToProcess) {
+      return res.status(400).json({ success: false, message: 'No photo data provided' });
+    }
+
+    const savedUrl = savePhotoToFile(photoToProcess, currentUserId);
+    if (!savedUrl) {
+      return res.status(400).json({ success: false, message: 'Invalid photo data' });
+    }
+
+    let profile = await StudentProfile.findOne({ user: currentUserId });
+    if (!profile) {
+      profile = new StudentProfile({ user: currentUserId });
+    }
+    profile.profilePhoto = savedUrl;
+
+    const user = await User.findById(currentUserId);
+    if (user) {
+      user.profilePhoto = savedUrl;
+      await user.save();
+    }
+
+    profile.calculateCompletion(user);
+    await profile.save();
+    await profile.populate('user', 'name email role department profilePhoto');
+
+    res.json({
+      success: true,
+      message: 'Profile photo uploaded successfully',
+      photoUrl: savedUrl,
+      profilePhoto: savedUrl,
+      profile,
+      student: profile
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -47,7 +143,10 @@ exports.getStudentProfile = async (req, res) => {
 // Update student profile
 exports.updateStudentProfile = async (req, res) => {
   try {
+    const currentUserId = req.user._id || req.user.id;
     const {
+      name,
+      email,
       erpNumber,
       rollNo,
       gender,
@@ -73,32 +172,65 @@ exports.updateStudentProfile = async (req, res) => {
       cgpa
     } = req.body;
 
-    let profile = await StudentProfile.findOne({ user: req.user.id });
+    let profile = await StudentProfile.findOne({ user: currentUserId });
     if (!profile) {
-      profile = new StudentProfile({ user: req.user.id });
+      profile = new StudentProfile({ user: currentUserId });
     }
 
+    // 1. ERP / Roll Number uniqueness validation - excludes currently authenticated student's own document
     const finalErp = erpNumber !== undefined ? erpNumber : rollNo;
     if (finalErp !== undefined) {
       const trimmedErp = (finalErp || '').trim();
       if (trimmedErp) {
-        const existingOther = await StudentProfile.findOne({
-          user: { $ne: req.user.id },
+        const userObjId = mongoose.Types.ObjectId.isValid(currentUserId)
+          ? new mongoose.Types.ObjectId(currentUserId)
+          : currentUserId;
+
+        const candidateProfiles = await StudentProfile.find({
+          _id: { $ne: profile._id },
+          user: { $ne: userObjId },
           $or: [
             { erpNumber: { $regex: new RegExp(`^${trimmedErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
             { rollNo: { $regex: new RegExp(`^${trimmedErp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
           ]
-        });
-        if (existingOther) {
-          return res.status(400).json({
-            success: false,
-            message: `The ERP / Roll number '${trimmedErp}' is already associated with another student account.`
-          });
+        }).populate('user');
+
+        for (const candidate of candidateProfiles) {
+          if (candidate.user && candidate.user._id && candidate.user._id.toString() !== currentUserId.toString()) {
+            return res.status(400).json({
+              success: false,
+              message: `The ERP / Roll number '${trimmedErp}' is already associated with another student account.`
+            });
+          } else if (!candidate.user) {
+            // Self-clean orphaned profile record with no active user
+            await StudentProfile.deleteOne({ _id: candidate._id });
+          }
         }
       }
       profile.erpNumber = trimmedErp;
       profile.rollNo = trimmedErp;
     }
+
+    // 2. Email uniqueness validation if email was provided
+    if (email && email.trim()) {
+      const trimmedEmail = email.trim().toLowerCase();
+      const existingEmailUser = await User.findOne({
+        _id: { $ne: currentUserId },
+        email: trimmedEmail
+      });
+      if (existingEmailUser) {
+        return res.status(400).json({
+          success: false,
+          message: `The email address '${trimmedEmail}' is already associated with another account.`
+        });
+      }
+    }
+
+    // 3. Process Profile Photo storage (file on disk, path/URL in DB)
+    if (profilePhoto !== undefined) {
+      profile.profilePhoto = savePhotoToFile(profilePhoto, currentUserId);
+    }
+
     if (gender !== undefined) profile.gender = gender;
     if (section !== undefined) profile.section = section;
     if (department !== undefined && OFFICIAL_DEPARTMENTS.includes(department)) {
@@ -107,7 +239,6 @@ exports.updateStudentProfile = async (req, res) => {
     if (year !== undefined) profile.year = year;
     if (batch !== undefined) profile.batch = batch;
     if (phone !== undefined) profile.phone = phone;
-    if (profilePhoto !== undefined) profile.profilePhoto = profilePhoto;
     if (hometown !== undefined) profile.hometown = hometown;
     if (aadhaarNumber !== undefined) profile.aadhaarNumber = aadhaarNumber;
     if (educationGap !== undefined) profile.educationGap = educationGap;
@@ -137,22 +268,31 @@ exports.updateStudentProfile = async (req, res) => {
 
     profile.updatedAt = Date.now();
 
-    const requiredFields = await getRequiredFieldsConfig();
-    profile.calculateCompletion(requiredFields);
+    // Also update User department, name, email, profilePhoto
+    const userUpdates = {};
+    if (name && name.trim()) userUpdates.name = name.trim();
+    if (email && email.trim()) userUpdates.email = email.trim().toLowerCase();
+    if (department) userUpdates.department = department;
+    if (profile.profilePhoto !== undefined) userUpdates.profilePhoto = profile.profilePhoto;
+
+    let updatedUser = null;
+    if (Object.keys(userUpdates).length > 0) {
+      updatedUser = await User.findByIdAndUpdate(currentUserId, userUpdates, { new: true });
+    } else {
+      updatedUser = await User.findById(currentUserId);
+    }
+
+    // 4. Calculate Profile Completion using weighted formula
+    profile.calculateCompletion(updatedUser);
     await profile.save();
 
-    // Also update User department / profilePhoto if changed
-    const userUpdates = {};
-    if (department) userUpdates.department = department;
-    if (profilePhoto !== undefined) userUpdates.profilePhoto = profilePhoto;
-    if (Object.keys(userUpdates).length > 0) {
-      await User.findByIdAndUpdate(req.user.id, userUpdates);
-    }
+    await profile.populate('user', 'name email role department profilePhoto');
 
     res.json({
       success: true,
+      message: 'Profile updated successfully',
       profile,
-      message: 'Profile updated successfully'
+      student: profile
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

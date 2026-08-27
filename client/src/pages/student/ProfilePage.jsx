@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
+import { api, getMediaUrl } from '../../services/api';
 import Card from '../../components/Card';
 import Input from '../../components/Input';
 import Select from '../../components/Select';
@@ -9,6 +9,7 @@ import Badge from '../../components/Badge';
 import ProgressBar from '../../components/ProgressBar';
 import LoadingState from '../../components/LoadingState';
 import Toast from '../../components/Toast';
+import { calculateProfileCompletion } from '../../utils/profileCompletion';
 import { User, Phone, Hash, Globe, ShieldCheck, Check, Sparkles, Save, Link as LinkIcon, FileText, Mail, GraduationCap, Award, MapPin, CreditCard, Camera, Upload, Trash2 } from 'lucide-react';
 import {
   OFFICIAL_DEPARTMENTS,
@@ -24,6 +25,7 @@ export const ProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [imgError, setImgError] = useState(false);
   const [profileData, setProfileData] = useState({
     erpNumber: '',
     rollNo: '',
@@ -72,9 +74,10 @@ export const ProfilePage = () => {
     const fetchProfile = async () => {
       try {
         const res = await api.getProfile();
-        if (res.success && res.profile) {
-          const p = res.profile;
-          setProfileData({
+        if (res.success && (res.profile || res.student)) {
+          const p = res.profile || res.student;
+          const photo = p.profilePhoto || user?.profilePhoto || '';
+          const initialData = {
             erpNumber: p.erpNumber || p.rollNo || '',
             rollNo: p.erpNumber || p.rollNo || '',
             gender: p.gender || 'Male',
@@ -83,7 +86,7 @@ export const ProfilePage = () => {
             year: p.year || 'Third Year',
             batch: p.batch || '2026',
             phone: p.phone || '',
-            profilePhoto: p.profilePhoto || user?.profilePhoto || '',
+            profilePhoto: photo,
             hometown: p.hometown || '',
             aadhaarNumber: p.aadhaarNumber || '',
             educationGap: p.educationGap || 'No',
@@ -95,9 +98,14 @@ export const ProfilePage = () => {
             tenthPercentage: p.tenthPercentage !== null && p.tenthPercentage !== undefined ? p.tenthPercentage : '',
             twelfthPercentage: p.twelfthPercentage !== null && p.twelfthPercentage !== undefined ? p.twelfthPercentage : '',
             diplomaPercentage: p.diplomaPercentage !== null && p.diplomaPercentage !== undefined ? p.diplomaPercentage : '',
-            cgpa: p.cgpa !== null && p.cgpa !== undefined ? p.cgpa : '',
-            profileCompletionPercentage: p.profileCompletionPercentage || 0
+            cgpa: p.cgpa !== null && p.cgpa !== undefined ? p.cgpa : ''
+          };
+          const completion = calculateProfileCompletion(initialData, user);
+          setProfileData({
+            ...initialData,
+            profileCompletionPercentage: completion
           });
+          setImgError(false);
         }
       } catch (err) {
         console.error('Error fetching profile:', err);
@@ -110,7 +118,15 @@ export const ProfilePage = () => {
   }, [user]);
 
   const handleChange = (e) => {
-    setProfileData({ ...profileData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setProfileData(prev => {
+      const next = { ...prev, [name]: value };
+      if (name === 'erpNumber') next.rollNo = value;
+      return {
+        ...next,
+        profileCompletionPercentage: calculateProfileCompletion(next, user)
+      };
+    });
   };
 
   const handlePhotoUpload = (e) => {
@@ -118,21 +134,59 @@ export const ProfilePage = () => {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Photo size should be less than 5MB.');
+      setError('Photo size should be less than 5MB.');
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = (event) => {
-      setProfileData(prev => ({ ...prev, profilePhoto: event.target.result }));
+    reader.onload = async (event) => {
+      const base64 = event.target.result;
+      setProfileData(prev => {
+        const next = { ...prev, profilePhoto: base64 };
+        return {
+          ...next,
+          profileCompletionPercentage: calculateProfileCompletion(next, user)
+        };
+      });
+      setImgError(false);
+
+      try {
+        const uploadRes = await api.uploadProfilePhoto({ photoData: base64 });
+        if (uploadRes.success && (uploadRes.photoUrl || uploadRes.profilePhoto)) {
+          const savedUrl = uploadRes.photoUrl || uploadRes.profilePhoto;
+          setProfileData(prev => {
+            const next = { ...prev, profilePhoto: savedUrl };
+            return {
+              ...next,
+              profileCompletionPercentage: calculateProfileCompletion(next, user)
+            };
+          });
+          await refreshUser();
+        }
+      } catch (uploadErr) {
+        console.warn('Direct upload photo endpoint failed, photo will be persisted on form save:', uploadErr);
+      }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleRemovePhoto = () => {
-    setProfileData(prev => ({ ...prev, profilePhoto: '' }));
+  const handleRemovePhoto = async () => {
+    setProfileData(prev => {
+      const next = { ...prev, profilePhoto: '' };
+      return {
+        ...next,
+        profileCompletionPercentage: calculateProfileCompletion(next, user)
+      };
+    });
+    setImgError(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+    try {
+      await api.updateProfile({ profilePhoto: '' });
+      await refreshUser();
+    } catch (err) {
+      console.error('Error removing photo:', err);
     }
   };
 
@@ -146,16 +200,25 @@ export const ProfilePage = () => {
         ...profileData,
         rollNo: profileData.erpNumber
       });
-      if (res.success) {
+      if (res.success && (res.profile || res.student)) {
+        const updated = res.profile || res.student;
+        const newCompletion = calculateProfileCompletion(updated, user);
         setProfileData(prev => ({
           ...prev,
-          profileCompletionPercentage: res.profile.profileCompletionPercentage
+          ...updated,
+          erpNumber: updated.erpNumber || updated.rollNo || prev.erpNumber,
+          rollNo: updated.erpNumber || updated.rollNo || prev.erpNumber,
+          profilePhoto: updated.profilePhoto !== undefined ? updated.profilePhoto : prev.profilePhoto,
+          profileCompletionPercentage: newCompletion
         }));
+        setImgError(false);
         setMessage('Profile updated successfully! Academic credentials attached and verified.');
         await refreshUser();
+      } else {
+        setError(res.message || 'Error updating profile');
       }
     } catch (err) {
-      setError(err?.response?.data?.message || 'Error updating profile');
+      setError(err?.response?.data?.message || err?.message || 'Error updating profile');
     } finally {
       setSaving(false);
     }
@@ -196,11 +259,12 @@ export const ProfilePage = () => {
               className="w-20 h-20 rounded-3xl bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-blue-700 font-black text-2xl shadow-xs overflow-hidden cursor-pointer relative transition-all hover:ring-4 hover:ring-blue-500/20"
               title="Click to upload student profile photo"
             >
-              {profileData.profilePhoto ? (
+              {profileData.profilePhoto && !imgError ? (
                 <img
-                  src={profileData.profilePhoto}
+                  src={getMediaUrl(profileData.profilePhoto)}
                   alt={user?.name || 'Student Profile'}
                   className="w-full h-full object-cover"
+                  onError={() => setImgError(true)}
                 />
               ) : (
                 <span>{user?.name ? user.name.charAt(0).toUpperCase() : 'S'}</span>
@@ -266,14 +330,14 @@ export const ProfilePage = () => {
 
         <div className="w-full md:w-64 bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <div className="flex justify-between text-xs font-semibold mb-2">
-            <span className="text-slate-600">Gating Status</span>
+            <span className="text-slate-600">Profile Completion</span>
             <span className={is100 ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
               {profileData.profileCompletionPercentage}%
             </span>
           </div>
           <ProgressBar progress={profileData.profileCompletionPercentage} color={is100 ? 'emerald' : 'amber'} showPercentage={false} />
           <p className="text-[11px] text-slate-500 mt-2 text-center">
-            {is100 ? '✓ All Assessments Unlocked' : '100% required to take tests'}
+            {is100 ? '✓ Complete Profile' : 'Complete your profile to reach 100%'}
           </p>
         </div>
       </div>

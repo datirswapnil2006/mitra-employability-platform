@@ -43,17 +43,18 @@ const submoduleSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-const topicSchema = new mongoose.Schema({
+const categorySchema = new mongoose.Schema({
   module: {
     type: String,
     enum: ['Aptitude', 'Domain Knowledge', 'Domain', 'Communication', 'Resume', 'Interview Preparation', 'Interview', 'SQL', 'Technical Coding', 'General'],
-    default: 'Aptitude'
+    default: 'Domain'
   },
-  category: {
+  department: {
     type: String,
-    required: true,
-    trim: true
+    enum: [...OFFICIAL_DEPARTMENTS, 'All', null],
+    default: null
   },
+  departmentId: { type: String, default: null },
   title: {
     type: String,
     required: true,
@@ -67,10 +68,57 @@ const topicSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+const topicSchema = new mongoose.Schema({
+  module: {
+    type: String,
+    enum: ['Aptitude', 'Domain Knowledge', 'Domain', 'Communication', 'Resume', 'Interview Preparation', 'Interview', 'SQL', 'Technical Coding', 'General'],
+    default: 'Aptitude'
+  },
+  department: {
+    type: String,
+    enum: [...OFFICIAL_DEPARTMENTS, 'All', null],
+    default: null
+  },
+  departmentId: { type: String, default: null },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+  category: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+  company: { type: String, default: '' },
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  description: { type: String, default: '' },
+  order: { type: Number, default: 0 },
+  status: { type: String, enum: ['published', 'draft'], default: 'published' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const companySchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  description: { type: String, default: '' },
+  logoUrl: { type: String, default: '' },
+  order: { type: Number, default: 0 },
+  status: { type: String, enum: ['published', 'draft'], default: 'published' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
 const learningContentSchema = new mongoose.Schema({
   moduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingModule' },
   submoduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Submodule' },
   topicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic' },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+  company: { type: String, default: '' },
   module: {
     type: String,
     enum: ['Aptitude', 'Domain Knowledge', 'Domain', 'Communication', 'Resume', 'Interview Preparation', 'Interview', 'SQL', 'Technical Coding', 'General'],
@@ -82,6 +130,7 @@ const learningContentSchema = new mongoose.Schema({
     enum: [...OFFICIAL_DEPARTMENTS, null],
     default: null
   },
+  departmentId: { type: String, default: null },
   subject: { type: String, default: '' },
   topic: { type: String, default: '' },
   title: { type: String, required: true, trim: true },
@@ -110,7 +159,9 @@ const learningContentSchema = new mongoose.Schema({
 
 const TrainingModule = mongoose.model('TrainingModule', trainingModuleSchema);
 const Submodule = mongoose.model('Submodule', submoduleSchema);
+const Category = mongoose.model('Category', categorySchema);
 const Topic = mongoose.model('Topic', topicSchema);
+const Company = mongoose.model('Company', companySchema);
 const LearningContent = mongoose.model('LearningContent', learningContentSchema);
 
-module.exports = { TrainingModule, Submodule, Topic, LearningContent };
+module.exports = { TrainingModule, Submodule, Category, Topic, Company, LearningContent };

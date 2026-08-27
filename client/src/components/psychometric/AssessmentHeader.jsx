@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Bell, GraduationCap, Sparkles, LogOut, ChevronDown, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
+import { getMediaUrl } from '../../services/api';
 
 export const AssessmentHeader = () => {
   const { user, logout } = useAuth();
@@ -70,7 +71,7 @@ export const AssessmentHeader = () => {
             >
               {user?.profilePhoto ? (
                 <img
-                  src={user.profilePhoto}
+                  src={getMediaUrl(user.profilePhoto)}
                   alt={studentName}
                   className="w-8 h-8 rounded-xl object-cover border border-indigo-200 shadow-xs"
                 />

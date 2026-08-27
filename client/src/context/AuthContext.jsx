@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { calculateProfileCompletion } from '../utils/profileCompletion';
 
 const AuthContext = createContext();
 
@@ -16,7 +17,10 @@ export const AuthProvider = ({ children }) => {
           if (res.success) {
             setUser(res.user);
             if (res.studentProfile) {
-              setProfileCompletion(res.studentProfile.profileCompletionPercentage);
+              const comp = res.studentProfile.profileCompletionPercentage !== undefined
+                ? res.studentProfile.profileCompletionPercentage
+                : calculateProfileCompletion(res.studentProfile, res.user);
+              setProfileCompletion(comp);
             }
           } else {
             logout();
@@ -58,7 +62,10 @@ export const AuthProvider = ({ children }) => {
     if (res.success) {
       setUser(res.user);
       if (res.studentProfile) {
-        setProfileCompletion(res.studentProfile.profileCompletionPercentage);
+        const comp = res.studentProfile.profileCompletionPercentage !== undefined
+          ? res.studentProfile.profileCompletionPercentage
+          : calculateProfileCompletion(res.studentProfile, res.user);
+        setProfileCompletion(comp);
       }
     }
   };

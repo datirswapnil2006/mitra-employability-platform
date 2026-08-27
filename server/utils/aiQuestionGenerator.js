@@ -39,57 +39,102 @@ Required JSON Structure:
 ]`;
 };
 
+const cleanAndParseJson = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  const stripped = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  // Try direct parse
+  try {
+    const parsed = JSON.parse(stripped);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    if (parsed.questions && Array.isArray(parsed.questions)) return parsed.questions;
+    if (parsed && typeof parsed === 'object') return [parsed];
+  } catch (e) {
+    // Attempt to extract JSON array substring
+    const match = stripped.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (match) {
+      try {
+        const extracted = JSON.parse(match[0]);
+        if (Array.isArray(extracted) && extracted.length > 0) return extracted;
+      } catch (innerE) {}
+    }
+  }
+  return null;
+};
+
 // 1. Google Gemini Provider
 const generateWithGemini = async (prompt, apiKey) => {
   const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: prompt
-  });
+  const modelsToTry = ['gemini-3.6-flash', 'gemini-3.5-flash'];
+  let lastError = null;
 
-  const textOutput = response.text || '';
-  const cleanedText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
-  return JSON.parse(cleanedText);
+  for (const modelName of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: prompt
+      });
+
+      const parsed = cleanAndParseJson(response.text || '');
+      if (parsed) return parsed;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Gemini Provider]: Model '${modelName}' unavailable (${err.message}). Trying backup model...`);
+    }
+  }
+  throw lastError || new Error('Gemini question generation failed.');
 };
 
-// 2. Groq Cloud Provider (Llama 3.3 / Mixtral)
+// 2. Groq Cloud Provider
 const generateWithGroq = async (prompt, apiKey) => {
-  const response = await axios.post(
-    'https://api.groq.com/openai/v1/chat/completions',
-    {
-      model: 'llama-3.3-70b-versatile',
-      messages: [
+  const modelsToTry = ['qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'groq/compound'];
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      const response = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
         {
-          role: 'system',
-          content: 'You are an expert assessment generator. Always output strict JSON arrays only.'
+          model: modelName,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert assessment generator. Always output strict JSON arrays only without any formatting or reasoning tags.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.2
         },
         {
-          role: 'user',
-          content: prompt
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
         }
-      ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
+      );
+
+      const rawContent = response.data?.choices?.[0]?.message?.content;
+      if (!rawContent) continue;
+
+      const parsed = cleanAndParseJson(rawContent);
+      if (parsed) return parsed;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Groq Provider]: Model '${modelName}' error: ${err.message}. Trying next Groq model...`);
     }
-  );
-
-  const rawContent = response.data?.choices?.[0]?.message?.content;
-  if (!rawContent) throw new Error('No content returned from Groq');
-
-  const parsed = JSON.parse(rawContent);
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed.questions && Array.isArray(parsed.questions)) return parsed.questions;
-  return [parsed];
+  }
+  throw lastError || new Error('Groq question generation failed.');
 };
 
-// 3. Hugging Face Inference API Provider (Llama 3 / Mistral)
+// 3. Hugging Face Inference API Provider
 const generateWithHuggingFace = async (prompt, apiKey) => {
   const response = await axios.post(
     'https://router.huggingface.co/hf-inference/v1/chat/completions',
@@ -120,11 +165,9 @@ const generateWithHuggingFace = async (prompt, apiKey) => {
   const rawContent = response.data?.choices?.[0]?.message?.content;
   if (!rawContent) throw new Error('No content returned from Hugging Face');
 
-  const cleaned = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
-  const parsed = JSON.parse(cleaned);
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed.questions && Array.isArray(parsed.questions)) return parsed.questions;
-  return [parsed];
+  const parsed = cleanAndParseJson(rawContent);
+  if (parsed) return parsed;
+  throw new Error('Hugging Face response could not be parsed into JSON');
 };
 
 // 4. Grounded Rule-Based Academic Fallback Generator
@@ -188,7 +231,8 @@ const generateAcademicFallback = ({ module, category, topic, difficulty, count }
 };
 
 /**
- * Main AI Generation Handler
+ * Main AI Generation Handler with Cascading Provider Fallback:
+ * Groq -> Gemini -> Hugging Face -> Academic Fallback
  */
 const generateQuestionsAI = async ({
   provider = 'gemini',
@@ -203,7 +247,7 @@ const generateQuestionsAI = async ({
   let questions = [];
   let resolvedProvider = provider;
 
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY;
+  const geminiKey = (process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY || '').trim();
   const groqKey = (process.env.GROQ_API_KEY || process.env.Groq_API_KEY || '').trim();
   const hfKey = (
     process.env.HF_API_KEY ||
@@ -212,38 +256,53 @@ const generateQuestionsAI = async ({
     ''
   ).trim();
 
-  try {
-    if (provider === 'gemini' && geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
-      questions = await generateWithGemini(prompt, geminiKey);
-    } else if (provider === 'groq' && groqKey) {
-      questions = await generateWithGroq(prompt, groqKey);
-    } else if (provider === 'huggingface' && hfKey) {
-      questions = await generateWithHuggingFace(prompt, hfKey);
-    } else {
-      // Auto-fallback to any available configured key
-      if (geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
+  // Define preferred execution order based on requested provider or auto-mode
+  const tryOrder = [];
+  if (provider === 'gemini') {
+    tryOrder.push('gemini', 'groq', 'huggingface');
+  } else if (provider === 'groq') {
+    tryOrder.push('groq', 'gemini', 'huggingface');
+  } else if (provider === 'huggingface') {
+    tryOrder.push('huggingface', 'groq', 'gemini');
+  } else {
+    // Default Auto preference: Groq -> Gemini -> Hugging Face
+    tryOrder.push('groq', 'gemini', 'huggingface');
+  }
+
+  let generatedSuccessfully = false;
+
+  for (const prov of tryOrder) {
+    try {
+      if (prov === 'gemini' && geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
         questions = await generateWithGemini(prompt, geminiKey);
         resolvedProvider = 'gemini';
-      } else if (groqKey) {
+        generatedSuccessfully = true;
+        break;
+      } else if (prov === 'groq' && groqKey) {
         questions = await generateWithGroq(prompt, groqKey);
         resolvedProvider = 'groq';
-      } else if (hfKey) {
+        generatedSuccessfully = true;
+        break;
+      } else if (prov === 'huggingface' && hfKey) {
         questions = await generateWithHuggingFace(prompt, hfKey);
         resolvedProvider = 'huggingface';
-      } else {
-        questions = generateAcademicFallback({ module, category, topic, difficulty, count });
-        resolvedProvider = 'fallback';
+        generatedSuccessfully = true;
+        break;
       }
+    } catch (err) {
+      console.warn(`[AI Question Generator]: Provider '${prov}' failed (${err.message}). Cascading to next available provider...`);
     }
-  } catch (err) {
-    console.warn(`[AI Generator Error - ${provider}]:`, err.message);
-    // Graceful fallback to grounded academic questions
+  }
+
+  // If all providers failed or keys not configured, use calibrated academic fallback
+  if (!generatedSuccessfully || !Array.isArray(questions) || questions.length === 0) {
+    console.warn('[AI Question Generator]: All external LLM providers were unavailable. Using grounded academic fallback.');
     questions = generateAcademicFallback({ module, category, topic, difficulty, count });
     resolvedProvider = 'fallback';
   }
 
   // Format and validate returned questions
-  return questions.map((q) => ({
+  return questions.slice(0, count).map((q) => ({
     module,
     category,
     department: module === 'Domain' ? (department || category) : null,

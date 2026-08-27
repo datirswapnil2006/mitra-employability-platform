@@ -1061,13 +1061,36 @@ Return ONLY a valid JSON array of ${count} objects with structure:
 ]
 `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
-        contents: prompt
-      });
+      let response = null;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: prompt
+        });
+      } catch (gemErr) {
+        console.warn(`[Dynamic AI Question Gen Gemini]: gemini-3.6-flash retry (${gemErr.message}), trying gemini-3.5-flash...`);
+        response = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        });
+      }
 
-      const textOutput = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(textOutput);
+      const rawText = response?.text || '';
+      const cleaned = rawText
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (pe) {
+        const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (match) {
+          try { parsed = JSON.parse(match[0]); } catch (innerPe) {}
+        }
+      }
 
       if (Array.isArray(parsed) && parsed.length > 0) {
         const formatted = parsed.slice(0, count).map((q, idx) => {
@@ -1467,10 +1490,18 @@ RULES:
 5. Exactly 3 to 5 sentences.
 `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
-        contents: prompt
-      });
+      let response = null;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: prompt
+        });
+      } catch (synthErr) {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        });
+      }
 
       const text = (response.text || '').trim();
       if (text.length > 50) {
