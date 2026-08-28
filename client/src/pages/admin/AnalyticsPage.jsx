@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import React, { useState } from 'react';
+import { useAdminAnalytics } from '../../hooks/queries/useAdminQueries';
 import PageHeader from '../../components/PageHeader';
 import Card from '../../components/Card';
 import Select from '../../components/Select';
@@ -20,29 +20,10 @@ import {
 } from 'lucide-react';
 
 export const AnalyticsPage = () => {
-  const [loading, setLoading] = useState(true);
   const [department, setDepartment] = useState('All');
-  const [data, setData] = useState(null);
-
   const departments = ['All', ...OFFICIAL_DEPARTMENTS];
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [department]);
-
-  const fetchAnalytics = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getAdminAnalytics({ department });
-      if (res.success) {
-        setData(res);
-      }
-    } catch (err) {
-      console.error('Error loading analytics:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data, isLoading: loading } = useAdminAnalytics({ department });
 
   if (loading) return <LoadingState message="Aggregating departmental analytics & placement intelligence..." />;
 

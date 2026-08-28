@@ -52,7 +52,7 @@ const questionSchema = new mongoose.Schema({
   },
   difficulty: {
     type: String,
-    enum: ['Easy', 'Medium', 'Hard', 'Beginner', 'Intermediate', 'Advanced'],
+    enum: ['Easy', 'Medium', 'Hard', 'Beginner', 'Intermediate', 'Advanced', 'Mixed', 'mixed'],
     default: 'Medium'
   },
   marks: {

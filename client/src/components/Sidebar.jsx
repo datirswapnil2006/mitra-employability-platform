@@ -132,12 +132,6 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
     },
     {
       type: 'link',
-      to: '/admin/question-bank',
-      label: 'Question Bank',
-      icon: HelpCircle
-    },
-    {
-      type: 'link',
       to: '/admin/results',
       label: 'Results',
       icon: Award
@@ -269,9 +263,6 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
         currentPath.startsWith('/student/take-assessment') ||
         currentPath.startsWith('/student/assessment-result')
       );
-    }
-    if (itemTo === '/admin/question-bank' || itemTo === '/admin/questions') {
-      return currentPath.startsWith('/admin/question-bank') || currentPath.startsWith('/admin/questions');
     }
     return currentPath === itemTo;
   };

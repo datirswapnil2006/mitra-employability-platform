@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../../services/api';
+import { useStudentAttempts } from '../../hooks/queries/useAssessmentQueries';
 import PageHeader from '../../components/PageHeader';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
@@ -20,27 +20,10 @@ import {
 
 export const StudentPerformancePage = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [attempts, setAttempts] = useState([]);
   const [selectedAttempt, setSelectedAttempt] = useState(null);
 
-  useEffect(() => {
-    fetchStudentAttempts();
-  }, []);
-
-  const fetchStudentAttempts = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getStudentAttempts();
-      if (res.success) {
-        setAttempts(res.attempts || []);
-      }
-    } catch (err) {
-      console.error('Error fetching student attempts:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: attemptsRes, isLoading: loading } = useStudentAttempts();
+  const attempts = attemptsRes?.attempts || [];
 
   const totalAttempts = attempts.length;
   const passedAttempts = attempts.filter((a) => a.status === 'PASSED').length;

@@ -2,6 +2,7 @@ const { Assessment, AssessmentAttempt } = require('./assessment.models');
 const StudentProgress = require('../progress/progress.model');
 const { evaluateSqlQuery } = require('../../utils/sqlEvaluator');
 const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
+const { extractQuestionsFromPdfText } = require('../../utils/pdfQuestionExtractor');
 
 // Get assessments list with module/department filtering
 exports.getAssessments = async (req, res) => {
@@ -20,7 +21,10 @@ exports.getAssessments = async (req, res) => {
       }
     }
 
-    if (category && category !== 'All') filter.category = category;
+    if (category && category !== 'All') {
+      const escaped = category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.category = { $regex: new RegExp(escaped.replace(/ Aptitude| Reasoning| Ability/i, ''), 'i') };
+    }
     if (department && department !== 'All') {
       filter.$or = [{ department }, { category: department }];
     }
@@ -37,6 +41,40 @@ exports.getAssessments = async (req, res) => {
       .populate('moduleId', 'title category')
       .populate('submoduleId', 'title')
       .sort({ createdAt: -1 });
+
+    if (req.user && req.user.role === 'student') {
+      const recentAttempts = await AssessmentAttempt.find({
+        user: req.user._id,
+        attemptedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+      });
+
+      const attemptMap = {};
+      recentAttempts.forEach((att) => {
+        const attId = att.assessmentId.toString();
+        if (!attemptMap[attId] || new Date(att.attemptedAt) > new Date(attemptMap[attId].attemptedAt)) {
+          attemptMap[attId] = att;
+        }
+      });
+
+      const enriched = assessments.map((a) => {
+        const obj = a.toObject();
+        const recent = attemptMap[a._id.toString()];
+        if (recent) {
+          const unlockTime = new Date(new Date(recent.attemptedAt).getTime() + 24 * 60 * 60 * 1000);
+          const remainingMs = unlockTime.getTime() - Date.now();
+          if (remainingMs > 0) {
+            obj.isLocked = true;
+            obj.lockedUntil = unlockTime;
+            obj.remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+            obj.remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
+            obj.isAbandoned = recent.isAbandoned;
+          }
+        }
+        return obj;
+      });
+
+      return res.json({ success: true, count: enriched.length, assessments: enriched });
+    }
 
     res.json({ success: true, count: assessments.length, assessments });
   } catch (err) {
@@ -55,6 +93,32 @@ exports.getAssessmentById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Assessment not found' });
     }
 
+    // Check 24-hour retake cooldown for students
+    if (user && user.role === 'student') {
+      const lastAttempt = await AssessmentAttempt.findOne({
+        user: user._id || user.id,
+        assessmentId: id,
+        attemptedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+      }).sort({ attemptedAt: -1 });
+
+      if (lastAttempt) {
+        const unlockTime = new Date(new Date(lastAttempt.attemptedAt).getTime() + 24 * 60 * 60 * 1000);
+        const remainingMs = unlockTime.getTime() - Date.now();
+        if (remainingMs > 0) {
+          const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+          const mins = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+          return res.status(403).json({
+            success: false,
+            isLocked: true,
+            message: `Assessment is locked. You can retake this assessment in ${hours > 0 ? `${hours}h ` : ''}${mins}m.`,
+            lockedUntil: unlockTime,
+            remainingMinutes: Math.ceil(remainingMs / (60 * 1000)),
+            isAbandoned: lastAttempt.isAbandoned
+          });
+        }
+      }
+    }
+
     // Prepare response data (hide answers from students while test is active)
     const responseData = assessment.toObject();
     if (user && user.role === 'student') {
@@ -70,10 +134,59 @@ exports.getAssessmentById = async (req, res) => {
   }
 };
 
+// Record Abandoned Assessment Attempt (locks for 24 hours)
+exports.abandonAssessment = async (req, res) => {
+  try {
+    const { assessmentId } = req.body;
+    const userId = req.user.id || req.user._id;
+
+    const assessment = await Assessment.findById(assessmentId);
+    if (!assessment) {
+      return res.status(404).json({ success: false, message: 'Assessment not found' });
+    }
+
+    const totalQuestions = assessment.questions?.length || 1;
+
+    const attempt = await AssessmentAttempt.create({
+      user: userId,
+      assessmentId,
+      moduleId: assessment.moduleId,
+      submoduleId: assessment.submoduleId,
+      score: 0,
+      totalMarks: assessment.totalMarks || totalQuestions,
+      percentage: 0,
+      status: 'FAILED',
+      isAbandoned: true,
+      timeSpentSeconds: 0,
+      answers: [],
+      categoryBreakdown: { mcq: '0/0', sql: '0/0', conceptual: '0/0', output: '0/0', coding: '0/0' },
+      violationsCount: 1,
+      proctoringLogs: [
+        {
+          type: 'TEST_ABANDONED',
+          timestamp: new Date(),
+          details: 'Candidate abandoned assessment before submission. 24-hour retake cooldown enforced.'
+        }
+      ]
+    });
+
+    const unlockTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    res.json({
+      success: true,
+      message: 'Assessment marked as abandoned. You can retake this assessment in 24 hours.',
+      lockedUntil: unlockTime,
+      attempt
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // Submit assessment answers & auto-grade attempt
 exports.submitAssessment = async (req, res) => {
   try {
-    const { assessmentId, timeSpentSeconds, answers } = req.body;
+    const { assessmentId, timeSpentSeconds, answers, violationsCount = 0, proctoringLogs = [] } = req.body;
     const userId = req.user.id;
 
     const assessment = await Assessment.findById(assessmentId);
@@ -161,7 +274,9 @@ exports.submitAssessment = async (req, res) => {
       attemptNumber,
       timeSpentSeconds: timeSpentSeconds || 0,
       answers: gradedAnswers,
-      categoryBreakdown
+      categoryBreakdown,
+      violationsCount: parseInt(violationsCount, 10) || 0,
+      proctoringLogs: Array.isArray(proctoringLogs) ? proctoringLogs : []
     });
 
     res.json({
@@ -205,6 +320,80 @@ exports.getStudentAttempts = async (req, res) => {
   }
 };
 
+// Generate Questions for Review (AI)
+exports.generateQuestionsForReview = async (req, res) => {
+  try {
+    const {
+      provider = 'gemini',
+      module: moduleName = 'Aptitude',
+      category = 'Quantitative Aptitude',
+      department = null,
+      topic,
+      difficulty = 'Medium',
+      questionCount = 5
+    } = req.body;
+
+    if (!topic || !topic.trim()) {
+      return res.status(400).json({ success: false, message: 'Topic name is required.' });
+    }
+
+    const count = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 50);
+
+    const questions = await generateQuestionsAI({
+      provider,
+      module: moduleName,
+      category,
+      department: moduleName === 'Domain' ? (department || category) : null,
+      topic: topic.trim(),
+      difficulty,
+      count
+    });
+
+    res.json({
+      success: true,
+      count: questions.length,
+      questions
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Extract Questions from PDF Text
+exports.extractPdfQuestions = async (req, res) => {
+  try {
+    const {
+      pdfText,
+      category = 'Quantitative Aptitude',
+      topic = 'General',
+      difficulty = 'Medium',
+      questionCount = 10
+    } = req.body;
+
+    if (!pdfText || !pdfText.trim()) {
+      return res.status(400).json({ success: false, message: 'No text or content found in uploaded PDF.' });
+    }
+
+    const count = Math.min(Math.max(parseInt(questionCount, 10) || 10, 1), 50);
+
+    const questions = await extractQuestionsFromPdfText({
+      pdfText,
+      category,
+      topic,
+      difficulty,
+      count
+    });
+
+    res.json({
+      success: true,
+      count: questions.length,
+      questions
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // Generate Assessment via AI (Gemini, Groq, Hugging Face)
 exports.generateAIAssessment = async (req, res) => {
   try {
@@ -220,6 +409,9 @@ exports.generateAIAssessment = async (req, res) => {
       questionCount = 5,
       timeLimitMinutes = 20,
       passingScorePercentage = 70,
+      assessmentMode = 'NORMAL',
+      creationMethod = 'AI_GENERATED',
+      proctoringSettings,
       status = 'published'
     } = req.body;
 
@@ -234,7 +426,7 @@ exports.generateAIAssessment = async (req, res) => {
       department: moduleName === 'Domain' ? (department || category) : null,
       topic: topic.trim(),
       difficulty,
-      count: Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 20)
+      count: Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 50)
     });
 
     const totalMarks = generatedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0);
@@ -253,6 +445,17 @@ exports.generateAIAssessment = async (req, res) => {
       totalMarks,
       isAIGenerated: true,
       aiProvider: generatedQuestions[0]?.aiProvider || provider,
+      assessmentMode: assessmentMode || 'NORMAL',
+      creationMethod: creationMethod || 'AI_GENERATED',
+      proctoringSettings: proctoringSettings || {
+        camera: true,
+        screenShare: true,
+        fullScreen: true,
+        tabSwitch: true,
+        copyPaste: true,
+        secondPerson: true,
+        mobileDetection: true
+      },
       status: status || 'published',
       createdBy: req.user ? req.user._id : undefined
     });

@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
+import { useStudentOverallProgress } from '../../hooks/queries/useStudentQueries';
+import { useStudentAttempts } from '../../hooks/queries/useAssessmentQueries';
+import { useTrainingModules } from '../../hooks/queries/useTrainingQueries';
 import Card from '../../components/Card';
 import ProgressBar from '../../components/ProgressBar';
 import Button from '../../components/Button';
@@ -11,54 +13,30 @@ import { Link } from 'react-router-dom';
 
 export const StudentDashboard = () => {
   const { user, profileCompletion } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [overallStats, setOverallStats] = useState({
-    overallPercentage: 0,
-    completedSubmodulesCount: 0,
-    totalSubmodules: 0,
-    continueLearning: null
-  });
-  const [attemptsStats, setAttemptsStats] = useState({ count: 0, passed: 0 });
-  const [recommendedModules, setRecommendedModules] = useState([]);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const [progressRes, attemptsRes, modulesRes] = await Promise.all([
-          api.getOverallProgress(),
-          api.getStudentAttempts(),
-          api.getModules({ department: user?.department || 'CSE' })
-        ]);
+  const { data: progressRes, isLoading: progressLoading } = useStudentOverallProgress();
+  const { data: attemptsRes, isLoading: attemptsLoading } = useStudentAttempts();
+  const { data: modulesRes, isLoading: modulesLoading } = useTrainingModules(
+    { department: user?.department || 'CSE' },
+    { enabled: !!user }
+  );
 
-        if (progressRes.success) {
-          setOverallStats({
-            overallPercentage: progressRes.overallPercentage,
-            completedSubmodulesCount: progressRes.completedSubmodulesCount,
-            totalSubmodules: progressRes.totalSubmodules,
-            continueLearning: progressRes.continueLearning
-          });
-        }
+  const loading = progressLoading || attemptsLoading || modulesLoading;
 
-        if (attemptsRes.success) {
-          const attempts = attemptsRes.attempts || [];
-          setAttemptsStats({
-            count: attempts.length,
-            passed: attempts.filter(a => a.status === 'PASSED').length
-          });
-        }
+  const overallStats = {
+    overallPercentage: progressRes?.overallPercentage || 0,
+    completedSubmodulesCount: progressRes?.completedSubmodulesCount || 0,
+    totalSubmodules: progressRes?.totalSubmodules || 0,
+    continueLearning: progressRes?.continueLearning || null,
+  };
 
-        if (modulesRes.success) {
-          setRecommendedModules((modulesRes.modules || []).slice(0, 3));
-        }
-      } catch (err) {
-        console.error('Error loading dashboard data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const attempts = attemptsRes?.attempts || [];
+  const attemptsStats = {
+    count: attempts.length,
+    passed: attempts.filter((a) => a.status === 'PASSED').length,
+  };
 
-    fetchDashboardData();
-  }, [user]);
+  const recommendedModules = (modulesRes?.modules || []).slice(0, 3);
 
   if (loading) return <LoadingState message="Preparing your student dashboard..." />;
 

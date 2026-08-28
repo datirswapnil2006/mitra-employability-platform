@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import React, { useState, useMemo } from 'react';
+import { useAdminAttempts } from '../../hooks/queries/useAdminQueries';
 import PageHeader from '../../components/PageHeader';
 import FilterTabs from '../../components/FilterTabs';
 import Button from '../../components/Button';
@@ -25,16 +25,6 @@ import {
 } from 'lucide-react';
 
 export const ResultsManagementPage = () => {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState({
-    total: 0,
-    passRate: 0,
-    avgScore: 0,
-    passedCount: 0,
-    failedCount: 0,
-    attempts: []
-  });
-
   const [activeModule, setActiveModule] = useState('All');
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -47,35 +37,23 @@ export const ResultsManagementPage = () => {
     { id: 'Full', label: 'Full Assessment' }
   ];
 
-  useEffect(() => {
-    fetchResults();
+  const params = useMemo(() => {
+    const p = {};
+    if (activeModule !== 'All') p.module = activeModule;
+    if (departmentFilter !== 'All') p.department = departmentFilter;
+    if (statusFilter !== 'All') p.status = statusFilter;
+    return p;
   }, [activeModule, departmentFilter, statusFilter]);
 
-  const fetchResults = async () => {
-    setLoading(true);
-    try {
-      const params = {};
-      if (activeModule !== 'All') params.module = activeModule;
-      if (departmentFilter !== 'All') params.department = departmentFilter;
-      if (statusFilter !== 'All') params.status = statusFilter;
-      if (searchQuery.trim()) params.search = searchQuery.trim();
+  const { data: resultsRes, isLoading: loading } = useAdminAttempts(params);
 
-      const res = await api.getAllAttemptsAdmin(params);
-      if (res.success) {
-        setData({
-          total: res.total || 0,
-          passRate: res.passRate || 0,
-          avgScore: res.avgScore || 0,
-          passedCount: res.passedCount || 0,
-          failedCount: res.failedCount || 0,
-          attempts: res.attempts || []
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching admin results:', err);
-    } finally {
-      setLoading(false);
-    }
+  const data = {
+    total: resultsRes?.total || 0,
+    passRate: resultsRes?.passRate || 0,
+    avgScore: resultsRes?.avgScore || 0,
+    passedCount: resultsRes?.passedCount || 0,
+    failedCount: resultsRes?.failedCount || 0,
+    attempts: resultsRes?.attempts || []
   };
 
   const handleSearchSubmit = (e) => {

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import React from 'react';
+import { useAdminAnalytics } from '../../hooks/queries/useAdminQueries';
 import StatCard from '../../components/StatCard';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
@@ -8,25 +8,7 @@ import { BookOpen, FileCheck, TrendingUp, Sparkles, FileText } from 'lucide-reac
 import { Link } from 'react-router-dom';
 
 export const AdminDashboard = () => {
-  const [loading, setLoading] = useState(true);
-  const [analytics, setAnalytics] = useState(null);
-
-  useEffect(() => {
-    fetchAnalytics();
-  }, []);
-
-  const fetchAnalytics = async () => {
-    try {
-      const res = await api.getAdminAnalytics();
-      if (res.success) {
-        setAnalytics(res);
-      }
-    } catch (err) {
-      console.error('Error fetching admin stats:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: analytics, isLoading: loading } = useAdminAnalytics();
 
   if (loading) return <LoadingState message="Loading admin ecosystem overview..." />;
 

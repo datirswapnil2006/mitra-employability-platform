@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../../services/api';
+import { useAssessmentAttemptResult } from '../../hooks/queries/useAssessmentQueries';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
@@ -21,28 +21,13 @@ export const AssessmentResultPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [result, setResult] = useState(location.state?.result || null);
-  const [loading, setLoading] = useState(!location.state?.result);
+  const stateResult = location.state?.result || null;
+  const { data: attemptRes, isLoading: queryLoading } = useAssessmentAttemptResult(id, {
+    enabled: !stateResult && !!id
+  });
 
-  useEffect(() => {
-    if (!result && id) {
-      fetchAttemptResult();
-    }
-  }, [id]);
-
-  const fetchAttemptResult = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getAttemptById(id);
-      if (res.success && res.attempt) {
-        setResult(res.attempt);
-      }
-    } catch (err) {
-      console.error('Error fetching attempt:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const result = stateResult || attemptRes?.attempt || null;
+  const loading = !stateResult && queryLoading;
 
   if (loading) return <LoadingState message="Fetching your test performance report..." />;
 
@@ -106,7 +91,22 @@ export const AssessmentResultPage = () => {
           Time Taken: {mins}m {secs}s • Attempt Recorded Successfully
         </p>
 
+        {result.violationsCount > 0 && (
+          <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
+            <span>Proctoring Warnings Recorded: {result.violationsCount}</span>
+          </div>
+        )}
+
         <div className="mt-6 flex flex-wrap justify-center gap-3">
+          {assessmentId && (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => navigate(`/student/take-assessment/${typeof assessmentId === 'object' ? assessmentId._id : assessmentId}`)}
+            >
+              Retake Assessment
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -117,7 +117,7 @@ export const AssessmentResultPage = () => {
           </Button>
           <Button
             size="sm"
-            variant="primary"
+            variant="outline"
             icon={BookOpen}
             onClick={() => navigate('/student/training')}
           >

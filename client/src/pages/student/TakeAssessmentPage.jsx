@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import Button from '../../components/Button';
@@ -14,10 +14,21 @@ import {
   ChevronRight,
   RotateCcw,
   ShieldAlert,
+  ShieldCheck,
   Play,
   Award,
   BookOpen,
-  FileCheck
+  FileCheck,
+  Camera,
+  Monitor,
+  Maximize2,
+  Eye,
+  Copy,
+  Users,
+  Smartphone,
+  Check,
+  AlertTriangle,
+  Video
 } from 'lucide-react';
 
 export const TakeAssessmentPage = () => {
@@ -26,20 +37,80 @@ export const TakeAssessmentPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [assessment, setAssessment] = useState(null);
+  const [lockedInfo, setLockedInfo] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
 
   // Examination State
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState({});
   const [markedForReview, setMarkedForReview] = useState({});
-  const [timeLeft, setTimeLeft] = useState(1200); // 20 mins default
+  const [timeLeft, setTimeLeft] = useState(1200); // in seconds
   const [submitting, setSubmitting] = useState(false);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
   const [startTime, setStartTime] = useState(Date.now());
 
+  // Proctoring State & Violations
+  const [violationsCount, setViolationsCount] = useState(0);
+  const [proctoringLogs, setProctoringLogs] = useState([]);
+  const [tabWarningModalOpen, setTabWarningModalOpen] = useState(false);
+  const [copyWarningToast, setCopyWarningToast] = useState(false);
+  const [exitWarningModalOpen, setExitWarningModalOpen] = useState(false);
+
+  // Proctoring Hardware Streams
+  const [cameraStream, setCameraStream] = useState(null);
+  const [cameraVerified, setCameraVerified] = useState(false);
+  const [screenStream, setScreenStream] = useState(null);
+  const [screenVerified, setScreenVerified] = useState(false);
+  const [systemCheckLoading, setSystemCheckLoading] = useState(false);
+  const [systemCheckError, setSystemCheckError] = useState('');
+
+  const videoRef = useRef(null);
+  const floatingVideoRef = useRef(null);
+
   useEffect(() => {
     fetchAssessment();
   }, [id]);
+
+  // Intercept Browser Back Button and Tab Closing during active test
+  useEffect(() => {
+    if (!testStarted || submitting) return;
+
+    // Push dummy history entry so back button fires popstate rather than navigating away immediately
+    window.history.pushState({ inAssessmentTest: true }, '');
+
+    const handlePopState = (e) => {
+      e.preventDefault();
+      // Keep student in page history
+      window.history.pushState({ inAssessmentTest: true }, '');
+      setExitWarningModalOpen(true);
+    };
+
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = 'Please complete your test before leaving. If you leave now, you will be restricted from retaking for 24 hours.';
+      return e.returnValue;
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [testStarted, submitting]);
+
+  // Clean up media streams on unmount
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [cameraStream, screenStream]);
 
   // Live Timer Countdown
   useEffect(() => {
@@ -57,11 +128,77 @@ export const TakeAssessmentPage = () => {
     return () => clearInterval(timer);
   }, [testStarted, timeLeft, submitting]);
 
+  // Proctoring Anti-Cheat Event Listeners (Tab switch & Window Blur)
+  useEffect(() => {
+    if (!testStarted || submitting) return;
+
+    const isProctored = assessment?.assessmentMode === 'PROCTORED';
+    const tabSwitchEnabled = assessment?.proctoringSettings?.tabSwitch ?? true;
+
+    if (!isProctored || !tabSwitchEnabled) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        logViolation('TAB_SWITCH', 'Candidate switched browser tab or minimized window.');
+      }
+    };
+
+    const handleWindowBlur = () => {
+      logViolation('WINDOW_BLUR', 'Focus lost from assessment window.');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [testStarted, submitting, assessment]);
+
+  const logViolation = (type, details) => {
+    setViolationsCount((prev) => prev + 1);
+    setProctoringLogs((prev) => [
+      ...prev,
+      {
+        type,
+        timestamp: new Date(),
+        details
+      }
+    ]);
+    setTabWarningModalOpen(true);
+  };
+
+  // Copy/Paste Prevention
+  const handleCopyPasteBlock = (e) => {
+    if (assessment?.assessmentMode === 'PROCTORED' && assessment?.proctoringSettings?.copyPaste) {
+      e.preventDefault();
+      setCopyWarningToast(true);
+      setTimeout(() => setCopyWarningToast(false), 3000);
+      setViolationsCount((prev) => prev + 1);
+      setProctoringLogs((prev) => [
+        ...prev,
+        {
+          type: 'CLIPBOARD_ATTEMPT',
+          timestamp: new Date(),
+          details: 'Clipboard copy/paste blocked.'
+        }
+      ]);
+    }
+  };
+
   const fetchAssessment = async () => {
     setLoading(true);
     try {
       const res = await api.getAssessmentById(id);
-      if (res.success && res.assessment) {
+      if (res.isLocked) {
+        setLockedInfo({
+          message: res.message || 'This assessment is temporarily locked due to a recent attempt or abandonment.',
+          lockedUntil: res.lockedUntil,
+          remainingMinutes: res.remainingMinutes,
+          isAbandoned: res.isAbandoned
+        });
+      } else if (res.success && res.assessment) {
         setAssessment(res.assessment);
         setTimeLeft((res.assessment.timeLimitMinutes || 20) * 60);
       }
@@ -72,9 +209,82 @@ export const TakeAssessmentPage = () => {
     }
   };
 
-  const handleStartTest = () => {
+  // Verify Camera Stream
+  const handleVerifyCamera = async () => {
+    setSystemCheckLoading(true);
+    setSystemCheckError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480 },
+        audio: false
+      });
+      setCameraStream(stream);
+      setCameraVerified(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error('Camera access error:', err);
+      setSystemCheckError('Camera access denied or unavailable. Please enable webcam permissions.');
+    } finally {
+      setSystemCheckLoading(false);
+    }
+  };
+
+  // Verify Screen Share Stream
+  const handleVerifyScreen = async () => {
+    setSystemCheckLoading(true);
+    setSystemCheckError('');
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true
+      });
+      setScreenStream(stream);
+      setScreenVerified(true);
+    } catch (err) {
+      console.error('Screen share error:', err);
+      setSystemCheckError('Screen share permission cancelled or denied.');
+    } finally {
+      setSystemCheckLoading(false);
+    }
+  };
+
+  // Start Test (handles Normal vs Proctored mode)
+  const handleStartTest = async () => {
+    const isProctored = assessment?.assessmentMode === 'PROCTORED';
+    const settings = assessment?.proctoringSettings || {};
+
+    if (isProctored) {
+      if (settings.camera && !cameraVerified) {
+        setSystemCheckError('Please verify your camera before starting the proctored test.');
+        return;
+      }
+      if (settings.screenShare && !screenVerified) {
+        setSystemCheckError('Please share your screen before starting the proctored test.');
+        return;
+      }
+
+      // Trigger Fullscreen if enabled
+      if (settings.fullScreen) {
+        try {
+          if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch (e) {
+          console.warn('Fullscreen request bypassed:', e.message);
+        }
+      }
+    }
+
     setStartTime(Date.now());
     setTestStarted(true);
+
+    // Attach stream to floating video element
+    setTimeout(() => {
+      if (floatingVideoRef.current && cameraStream) {
+        floatingVideoRef.current.srcObject = cameraStream;
+      }
+    }, 200);
   };
 
   const handleSelectOption = (qId, optionText) => {
@@ -103,17 +313,26 @@ export const TakeAssessmentPage = () => {
     if (submitting) return;
     setSubmitting(true);
     try {
+      // Exit fullscreen if active
+      if (document.fullscreenElement && document.exitFullscreen) {
+        try {
+          await document.exitFullscreen();
+        } catch (e) {}
+      }
+
       const formattedAnswers = Object.keys(answers).map((qId) => ({
         questionId: qId,
         studentAnswer: answers[qId]
       }));
 
-      const timeSpentSeconds = Math.round((Date.now() - startTime) / 1000);
+      const timeSpentSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
 
       const res = await api.submitAssessment({
         assessmentId: id,
         timeSpentSeconds,
-        answers: formattedAnswers
+        answers: formattedAnswers,
+        violationsCount,
+        proctoringLogs
       });
 
       if (res.success && res.result) {
@@ -129,6 +348,45 @@ export const TakeAssessmentPage = () => {
   };
 
   if (loading) return <LoadingState message="Preparing examination environment..." />;
+
+  if (lockedInfo) {
+    const hours = Math.floor((lockedInfo.remainingMinutes || 0) / 60);
+    const mins = (lockedInfo.remainingMinutes || 0) % 60;
+    return (
+      <div className="max-w-xl mx-auto text-center p-8 bg-white rounded-3xl border border-amber-200 shadow-sm space-y-6">
+        <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <Clock className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 px-3 py-1 rounded-full">
+            24-Hour Cooldown Active
+          </span>
+          <h2 className="text-xl font-black text-slate-900">
+            Assessment Temporarily Locked
+          </h2>
+          <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto">
+            {lockedInfo.message}
+          </p>
+        </div>
+
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+          <span className="text-[11px] font-bold text-slate-400 block uppercase">Time Remaining Until Next Attempt</span>
+          <span className="text-2xl font-black text-slate-900 mt-1 block">
+            {hours > 0 ? `${hours}h ` : ''}{mins}m
+          </span>
+        </div>
+
+        <Button
+          size="md"
+          variant="primary"
+          onClick={() => navigate('/student/assessments')}
+          className="w-full justify-center bg-blue-600 hover:bg-blue-700 font-bold"
+        >
+          Return to Assessments
+        </Button>
+      </div>
+    );
+  }
 
   if (!assessment) {
     return (
@@ -147,39 +405,56 @@ export const TakeAssessmentPage = () => {
   const currentQ = questions[currentIdx];
   const answeredCount = Object.keys(answers).length;
   const reviewCount = Object.values(markedForReview).filter(Boolean).length;
-  const unansweredCount = questions.length - answeredCount;
+  const unansweredCount = Math.max(0, questions.length - answeredCount);
 
   const formatTimer = (totalSeconds) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
+    const mins = Math.floor(Math.max(0, totalSeconds) / 60);
+    const secs = Math.max(0, totalSeconds) % 60;
     return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // 1. PRE-TEST INSTRUCTIONS SCREEN
+  const isProctored = assessment.assessmentMode === 'PROCTORED';
+  const proctorSettings = assessment.proctoringSettings || {};
+
+  // 1. PRE-TEST INSTRUCTIONS & SYSTEM VERIFICATION SCREEN
   if (!testStarted) {
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 space-y-6">
-          <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shadow-xs">
-              <FileCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200/60">
-                {assessment.module} • {assessment.category}
-              </span>
-              <h1 className="text-xl font-black text-slate-900 mt-1">{assessment.title}</h1>
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-slate-100 pb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shadow-xs">
+                <FileCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200/60">
+                    {assessment.module} • {assessment.category}
+                  </span>
+                  {isProctored ? (
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200/60 flex items-center gap-1">
+                      <ShieldAlert className="w-3 h-3" /> Proctored Test
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" /> Normal Assessment
+                    </span>
+                  )}
+                </div>
+                <h1 className="text-xl font-black text-slate-900 mt-1">{assessment.title}</h1>
+              </div>
             </div>
           </div>
 
           {/* Test Meta Cards */}
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-              <span className="text-[11px] font-bold text-slate-400 block uppercase">Total Questions</span>
+              <span className="text-[11px] font-bold text-slate-400 block uppercase">Questions</span>
               <span className="text-lg font-black text-slate-900">{questions.length}</span>
             </div>
             <div className="p-4 bg-blue-50/70 border border-blue-200/70 rounded-2xl">
-              <span className="text-[11px] font-bold text-blue-600 block uppercase">Time Duration</span>
+              <span className="text-[11px] font-bold text-blue-600 block uppercase">Duration</span>
               <span className="text-lg font-black text-blue-900">{assessment.timeLimitMinutes || 20} Mins</span>
             </div>
             <div className="p-4 bg-emerald-50/70 border border-emerald-200/70 rounded-2xl">
@@ -188,17 +463,114 @@ export const TakeAssessmentPage = () => {
             </div>
           </div>
 
-          {/* Exam Rules & Instructions */}
+          {/* System Check for Proctored Tests */}
+          {isProctored && (
+            <div className="p-5 bg-rose-50/50 border border-rose-200/80 rounded-3xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-rose-600" />
+                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                    Mandatory Proctoring System Check
+                  </h4>
+                </div>
+                <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full uppercase">
+                  Anti-Cheat Active
+                </span>
+              </div>
+
+              {systemCheckError && (
+                <div className="p-3 bg-rose-100 border border-rose-300 text-rose-800 text-xs rounded-xl flex items-center gap-2 font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{systemCheckError}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Camera Verification */}
+                {proctorSettings.camera && (
+                  <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Camera className="w-4 h-4 text-slate-700" />
+                        <span className="text-xs font-bold text-slate-900">Webcam Stream</span>
+                      </div>
+                      {cameraVerified ? (
+                        <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Verified
+                        </span>
+                      ) : (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={handleVerifyCamera}
+                          loading={systemCheckLoading}
+                        >
+                          Enable Camera
+                        </Button>
+                      )}
+                    </div>
+                    {cameraVerified && (
+                      <div className="w-full h-24 rounded-xl bg-slate-950 overflow-hidden relative">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1 right-2 text-[9px] font-bold text-emerald-400 bg-black/60 px-1.5 py-0.5 rounded">
+                          Live Feed Active
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Screen Share Verification */}
+                {proctorSettings.screenShare && (
+                  <div className="p-3.5 bg-white rounded-2xl border border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-slate-700" />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">Screen Sharing</div>
+                        <div className="text-[10px] text-slate-500">Candidate desktop stream</div>
+                      </div>
+                    </div>
+                    {screenVerified ? (
+                      <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" /> Active
+                      </span>
+                    ) : (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={handleVerifyScreen}
+                        loading={systemCheckLoading}
+                      >
+                        Share Screen
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Exam Rules */}
           <div className="space-y-3 bg-slate-50 border border-slate-200/80 rounded-2xl p-5 text-xs text-slate-700">
             <h4 className="font-extrabold text-slate-900 flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-600" />
-              Examination Rules & Instructions:
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+              Examination Guidelines:
             </h4>
             <ul className="list-disc pl-5 space-y-1.5 text-slate-600 leading-relaxed">
               <li>Each question carries 1 mark with no negative marking.</li>
-              <li>You can navigate between questions freely using the Question Palette.</li>
-              <li>The test will auto-submit when the countdown timer reaches 00:00.</li>
-              <li>Ensure a stable internet connection during the test session.</li>
+              <li>You can navigate questions freely using the Question Palette.</li>
+              <li>The test will auto-submit when the countdown reaches 00:00.</li>
+              {isProctored && (
+                <li className="text-rose-700 font-semibold">
+                  Tab switching, minimizing the browser window, or copy-pasting is strictly prohibited and logged.
+                </li>
+              )}
             </ul>
           </div>
 
@@ -208,18 +580,26 @@ export const TakeAssessmentPage = () => {
             onClick={handleStartTest}
             className="w-full justify-center text-sm font-bold shadow-md shadow-blue-500/20"
           >
-            Start Assessment Now
+            {isProctored ? 'Verify & Start Proctored Assessment' : 'Start Assessment Now'}
           </Button>
         </div>
       </div>
     );
   }
 
-  // 2. LIVE EXAMINATION TEST ENGINE
-  const isTimeCritical = timeLeft < 120; // less than 2 minutes
+  // 2. LIVE TEST ENGINE SCREEN
+  const isTimeCritical = timeLeft < 120; // under 2 mins
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div
+      onCopy={handleCopyPasteBlock}
+      onCut={handleCopyPasteBlock}
+      onPaste={handleCopyPasteBlock}
+      onContextMenu={(e) => {
+        if (isProctored && proctorSettings.copyPaste) e.preventDefault();
+      }}
+      className="max-w-6xl mx-auto space-y-5 select-none"
+    >
       {/* Top Examination HUD */}
       <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md">
         <div>
@@ -227,6 +607,11 @@ export const TakeAssessmentPage = () => {
             <span className="text-[10px] font-black uppercase tracking-wider text-blue-400 bg-blue-950/80 px-2.5 py-0.5 rounded border border-blue-800/60">
               {assessment.module} • {assessment.category}
             </span>
+            {isProctored && (
+              <span className="text-[10px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800/60 flex items-center gap-1">
+                <ShieldAlert className="w-3 h-3" /> Proctored Mode
+              </span>
+            )}
             <span className="text-xs text-slate-400 font-semibold">
               Question {currentIdx + 1} of {questions.length}
             </span>
@@ -258,6 +643,16 @@ export const TakeAssessmentPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* Copy/Paste Block Warning Toast */}
+      {copyWarningToast && (
+        <div className="p-3 bg-rose-600 text-white text-xs rounded-2xl shadow-lg flex items-center justify-between font-bold animate-bounce">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>Copy/Paste is disabled during proctored assessments. Violation has been recorded.</span>
+          </div>
+        </div>
+      )}
 
       {/* Main Examination Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -381,8 +776,33 @@ export const TakeAssessmentPage = () => {
           )}
         </div>
 
-        {/* Right Column: Question Palette (Span 1) */}
+        {/* Right Column: Question Palette & Floating Proctoring Widget (Span 1) */}
         <div className="space-y-5">
+          {/* Floating Camera Widget if Proctored with Camera enabled */}
+          {isProctored && proctorSettings.camera && cameraStream && (
+            <div className="bg-slate-900 rounded-3xl p-3 border border-slate-800 shadow-md space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                    Live Proctoring Active
+                  </span>
+                </div>
+                <Video className="w-3.5 h-3.5 text-slate-400" />
+              </div>
+              <div className="w-full h-32 rounded-2xl bg-black overflow-hidden relative">
+                <video
+                  ref={floatingVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Question Palette */}
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
             <h4 className="font-extrabold text-sm text-slate-900 border-b border-slate-100 pb-3">
               Question Navigation Palette
@@ -450,7 +870,36 @@ export const TakeAssessmentPage = () => {
         </div>
       </div>
 
-      {/* Confirmation Modal Before Submission */}
+      {/* Modal: Tab Switch Warning Pop-up */}
+      <Modal
+        isOpen={tabWarningModalOpen}
+        onClose={() => setTabWarningModalOpen(false)}
+        title="Proctoring Warning"
+      >
+        <div className="space-y-4 text-center p-2">
+          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-extrabold text-slate-900">
+            Window Focus Lost / Tab Switch Detected!
+          </h3>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            You have switched away from the active examination window. All focus changes and tab switches are logged for faculty review.
+          </p>
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700">
+            Recorded Violations: <span className="text-rose-600 font-black">{violationsCount}</span>
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => setTabWarningModalOpen(false)}
+            className="w-full justify-center bg-rose-600 hover:bg-rose-700"
+          >
+            I Understand, Resume Test
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Confirmation Modal Before Final Submit */}
       <Modal
         isOpen={confirmSubmitOpen}
         onClose={() => setConfirmSubmitOpen(false)}
@@ -467,6 +916,15 @@ export const TakeAssessmentPage = () => {
               <span className="text-xl font-black text-slate-800">{unansweredCount}</span>
             </div>
           </div>
+
+          {isProctored && violationsCount > 0 && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Note: {violationsCount} proctoring warning(s) were logged during this attempt.
+              </span>
+            </div>
+          )}
 
           <p className="text-xs text-slate-600 text-center leading-relaxed">
             Are you sure you want to submit your assessment? Once submitted, your answers will be auto-graded and cannot be edited.
@@ -487,6 +945,61 @@ export const TakeAssessmentPage = () => {
               className="flex-1 justify-center bg-emerald-600 hover:bg-emerald-700"
             >
               Confirm & Submit
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Exit / Incomplete Test Warning */}
+      <Modal
+        isOpen={exitWarningModalOpen}
+        onClose={() => setExitWarningModalOpen(false)}
+        title="Incomplete Assessment Alert"
+      >
+        <div className="space-y-4 text-center p-2">
+          <div className="w-14 h-14 rounded-3xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto shadow-xs border border-amber-200">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <h3 className="text-base font-extrabold text-slate-900">
+            Please Complete Your Test Before Leaving
+          </h3>
+          <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl text-xs text-amber-900 leading-relaxed text-left space-y-1.5">
+            <p className="font-bold text-amber-950">Important Notice:</p>
+            <p>
+              If you cancel or leave this assessment before submitting:
+            </p>
+            <ul className="list-disc pl-5 space-y-1 text-[11px] font-semibold text-amber-800">
+              <li>Your current answers and progress will be lost.</li>
+              <li>You will be restricted from retaking this assessment for <strong>24 hours</strong>.</li>
+            </ul>
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <Button
+              variant="primary"
+              onClick={() => setExitWarningModalOpen(false)}
+              className="flex-1 justify-center bg-blue-600 hover:bg-blue-700 font-bold"
+            >
+              Continue Test
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await api.abandonAssessment({ assessmentId: id });
+                } catch (e) {
+                  console.error('Error abandoning assessment:', e);
+                }
+                setExitWarningModalOpen(false);
+                if (cameraStream) cameraStream.getTracks().forEach((t) => t.stop());
+                if (screenStream) screenStream.getTracks().forEach((t) => t.stop());
+                if (document.fullscreenElement && document.exitFullscreen) {
+                  document.exitFullscreen().catch(() => {});
+                }
+                navigate('/student/assessments');
+              }}
+              className="text-rose-600 hover:bg-rose-50 border-rose-200 text-xs font-bold"
+            >
+              Abandon & Leave (24h Lock)
             </Button>
           </div>
         </div>

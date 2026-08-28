@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
+import { useStudentProfile, useStudentSupportFeedback } from '../../hooks/queries/useStudentQueries';
+import { useSubmitSupportFeedback } from '../../hooks/mutations/useStudentMutations';
 import PageHeader from '../../components/PageHeader';
 import Card from '../../components/Card';
 import Input from '../../components/Input';
@@ -29,8 +30,13 @@ import {
 
 export const StudentSupportPage = () => {
   const { user } = useAuth();
-  const [profile, setProfile] = useState(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
+  
+  const { data: profileRes, isLoading: loadingProfile } = useStudentProfile();
+  const { data: feedbackRes, isLoading: loadingHistory } = useStudentSupportFeedback();
+  const submitFeedbackMutation = useSubmitSupportFeedback();
+
+  const profile = profileRes?.profile || null;
+  const feedbackList = feedbackRes?.feedback || [];
 
   // Feedback Form State
   const [category, setCategory] = useState('Suggestion / Improvement');
@@ -41,8 +47,6 @@ export const StudentSupportPage = () => {
   const [submitting, setSubmitting] = useState(false);
 
   // History State
-  const [feedbackList, setFeedbackList] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
 
   // Toast Notification
@@ -55,40 +59,6 @@ export const StudentSupportPage = () => {
     'Test/Assessment Issue',
     'Other'
   ];
-
-  // Fetch Student Profile & Previous Submissions
-  useEffect(() => {
-    fetchProfile();
-    fetchHistory();
-  }, []);
-
-  const fetchProfile = async () => {
-    try {
-      setLoadingProfile(true);
-      const res = await api.getProfile();
-      if (res.success) {
-        setProfile(res.profile);
-      }
-    } catch (err) {
-      console.error('Error fetching profile:', err);
-    } finally {
-      setLoadingProfile(false);
-    }
-  };
-
-  const fetchHistory = async () => {
-    try {
-      setLoadingHistory(true);
-      const res = await api.getMySupportFeedback();
-      if (res.success) {
-        setFeedbackList(res.feedback || []);
-      }
-    } catch (err) {
-      console.error('Error fetching support history:', err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -138,7 +108,7 @@ export const StudentSupportPage = () => {
 
     setSubmitting(true);
     try {
-      const res = await api.submitSupportFeedback({
+      const res = await submitFeedbackMutation.mutateAsync({
         category,
         subject: subject.trim(),
         description: description.trim(),
@@ -157,8 +127,6 @@ export const StudentSupportPage = () => {
         setAttachment('');
         setAttachmentName('');
         setCategory('Suggestion / Improvement');
-        // Refresh history
-        fetchHistory();
       } else {
         setToast({
           type: 'error',

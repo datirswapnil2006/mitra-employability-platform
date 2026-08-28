@@ -1,6 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { api, getMediaUrl } from '../../services/api';
+import { getMediaUrl } from '../../services/api';
+import { useAdminStudents } from '../../hooks/queries/useAdminQueries';
+import { useAdminResetStudentPassword } from '../../hooks/mutations/useAdminMutations';
+import { useQueryClient } from '@tanstack/react-query';
+import { ADMIN_KEYS } from '../../hooks/queries/useAdminQueries';
 import Card from '../../components/Card';
 import Input from '../../components/Input';
 import Select from '../../components/Select';
@@ -24,8 +28,9 @@ import {
 import { OFFICIAL_DEPARTMENTS, ACADEMIC_YEARS } from '../../constants/departments';
 
 export const StudentManagementPage = () => {
-  const [loading, setLoading] = useState(true);
-  const [students, setStudents] = useState([]);
+  const queryClient = useQueryClient();
+  const resetPasswordMutation = useAdminResetStudentPassword();
+
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('All');
   const [year, setYear] = useState('All');
@@ -37,28 +42,15 @@ export const StudentManagementPage = () => {
   const departments = ['All', ...OFFICIAL_DEPARTMENTS];
   const years = ['All', ...ACADEMIC_YEARS];
 
-  useEffect(() => {
-    fetchStudents();
+  const params = useMemo(() => {
+    const p = {};
+    if (department !== 'All') p.department = department;
+    if (year !== 'All') p.year = year;
+    return p;
   }, [department, year]);
 
-  const fetchStudents = async () => {
-    setLoading(true);
-    try {
-      const params = {};
-      if (department !== 'All') params.department = department;
-      if (year !== 'All') params.year = year;
-      if (search) params.search = search;
-
-      const res = await api.getAllStudentsAdmin(params);
-      if (res.success) {
-        setStudents(res.students || []);
-      }
-    } catch (err) {
-      console.error('Error fetching students:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: studentsRes, isLoading: loading } = useAdminStudents(params);
+  const students = studentsRes?.students || [];
 
   const filteredStudents = students.filter(s => {
     if (!s || !s.user) return false;
@@ -76,21 +68,9 @@ export const StudentManagementPage = () => {
     setActionLoading(confirmStudent.user._id);
     setActionMsg('');
     try {
-      const res = await api.adminResetStudentPassword(confirmStudent.user._id);
+      const res = await resetPasswordMutation.mutateAsync(confirmStudent.user._id);
       if (res.success) {
-        // Update local state to reflect ENABLED status immediately
-        setStudents(prev =>
-          prev.map(st => {
-            if (st.user?._id === confirmStudent.user._id) {
-              return {
-                ...st,
-                passwordResetStatus: 'ENABLED',
-                passwordResetApprovedAt: new Date()
-              };
-            }
-            return st;
-          })
-        );
+        queryClient.invalidateQueries({ queryKey: ADMIN_KEYS.all });
         setActionMsg(res.message || `Password reset link dispatched to ${confirmStudent.user.email}`);
         setConfirmStudent(null);
         setTimeout(() => setActionMsg(''), 6000);

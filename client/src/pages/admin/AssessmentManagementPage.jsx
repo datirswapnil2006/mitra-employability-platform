@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
+import { useAssessments, ASSESSMENT_KEYS } from '../../hooks/queries/useAssessmentQueries';
+import { useDeleteAssessment } from '../../hooks/mutations/useAdminMutations';
 import PageHeader from '../../components/PageHeader';
 import FilterTabs from '../../components/FilterTabs';
 import Button from '../../components/Button';
@@ -11,6 +14,7 @@ import Modal from '../../components/Modal';
 import LoadingState from '../../components/LoadingState';
 import EmptyState from '../../components/EmptyState';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import AptitudeAssessmentCreateModal from '../../components/assessments/AptitudeAssessmentCreateModal';
 import {
   TRAINING_MODULES,
   MODULE_CATEGORIES,
@@ -29,23 +33,28 @@ import {
   CheckCircle2,
   AlertCircle,
   Building2,
-  Bot
+  Bot,
+  ShieldAlert,
+  ShieldCheck,
+  FileUp
 } from 'lucide-react';
 
 export const AssessmentManagementPage = () => {
+  const queryClient = useQueryClient();
+  const deleteAssessmentMutation = useDeleteAssessment();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const rawModule = searchParams.get('type') || searchParams.get('module') || 'Aptitude';
   const currentModule = normalizeModuleName(rawModule);
+  const isAptitudeModule = currentModule === 'Aptitude';
   const isDomainModule = currentModule === 'Domain Knowledge';
 
-  const [loading, setLoading] = useState(true);
-  const [assessments, setAssessments] = useState([]);
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
+  const [isAptitudeModalOpen, setIsAptitudeModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -86,39 +95,24 @@ export const AssessmentManagementPage = () => {
     { id: 'Full', label: 'Full Assessment' }
   ];
 
-  useEffect(() => {
-    setActiveCategory('All');
-  }, [currentModule]);
-
-  useEffect(() => {
-    fetchAssessments();
-  }, [currentModule, activeCategory]);
-
-  const fetchAssessments = async () => {
-    setLoading(true);
-    try {
-      const params = { module: currentModule };
-      if (activeCategory !== 'All') {
-        if (isDomainModule) {
-          params.department = activeCategory;
-        } else {
-          params.category = activeCategory;
-        }
+  const params = useMemo(() => {
+    const p = { module: currentModule };
+    if (activeCategory !== 'All') {
+      if (isDomainModule) {
+        p.department = activeCategory;
+      } else {
+        p.category = activeCategory;
       }
-
-      const res = await api.getAssessments(params);
-      if (res.success) {
-        setAssessments(res.assessments || []);
-      }
-    } catch (err) {
-      console.error('Error fetching assessments:', err);
-    } finally {
-      setLoading(false);
     }
-  };
+    return p;
+  }, [currentModule, activeCategory, isDomainModule]);
+
+  const { data: assessmentsRes, isLoading: loading } = useAssessments(params);
+  const assessments = assessmentsRes?.assessments || [];
 
   const handleModuleChange = (newModId) => {
     setSearchParams({ type: newModId });
+    setActiveCategory('All');
   };
 
   // Generate AI Assessment
@@ -142,8 +136,8 @@ export const AssessmentManagementPage = () => {
 
       const res = await api.generateAIAssessment(payload);
       if (res.success) {
+        queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
         setIsAIModalOpen(false);
-        fetchAssessments();
       } else {
         setAiError(res.message || 'Failed to generate assessment. Please try again.');
       }
@@ -158,11 +152,11 @@ export const AssessmentManagementPage = () => {
   const handleDeleteAssessment = async () => {
     if (!assessmentToDelete) return;
     try {
-      const res = await api.deleteAssessment(assessmentToDelete._id);
+      const res = await deleteAssessmentMutation.mutateAsync(assessmentToDelete._id);
       if (res.success) {
+        queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
         setDeleteConfirmOpen(false);
         setAssessmentToDelete(null);
-        fetchAssessments();
       }
     } catch (err) {
       console.error('Error deleting assessment:', err);
@@ -192,25 +186,36 @@ export const AssessmentManagementPage = () => {
         ]}
         actions={
           <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              icon={Sparkles}
-              onClick={() => {
-                setAiForm((prev) => ({
-                  ...prev,
-                  module: currentModule,
-                  category: availableCategories[0]?.id || 'General',
-                  department: isDomainModule ? 'CSE' : null,
-                  title: '',
-                  topic: ''
-                }));
-                setAiError('');
-                setIsAIModalOpen(true);
-              }}
-              className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-            >
-              AI Assessment Generator
-            </Button>
+            {isAptitudeModule ? (
+              <Button
+                variant="primary"
+                icon={Sparkles}
+                onClick={() => setIsAptitudeModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-500/20"
+              >
+                Create Assessment
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                icon={Sparkles}
+                onClick={() => {
+                  setAiForm((prev) => ({
+                    ...prev,
+                    module: currentModule,
+                    category: availableCategories[0]?.id || 'General',
+                    department: isDomainModule ? 'CSE' : null,
+                    title: '',
+                    topic: ''
+                  }));
+                  setAiError('');
+                  setIsAIModalOpen(true);
+                }}
+                className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+              >
+                AI Assessment Generator
+              </Button>
+            )}
           </div>
         }
       />
@@ -292,6 +297,15 @@ export const AssessmentManagementPage = () => {
                     >
                       {item.difficulty || 'Medium'}
                     </span>
+                    {item.assessmentMode === 'PROCTORED' ? (
+                      <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200/60 flex items-center gap-1">
+                        <ShieldAlert className="w-3 h-3" /> Proctored
+                      </span>
+                    ) : item.module === 'Aptitude' ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60 flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> Normal
+                      </span>
+                    ) : null}
                   </div>
 
                   <StatusBadge status={item.status || 'published'} />
@@ -330,12 +344,17 @@ export const AssessmentManagementPage = () => {
                   </div>
                 </div>
 
-                {item.isAIGenerated && (
+                {item.creationMethod === 'PDF_EXTRACTION' ? (
+                  <div className="mt-3 flex items-center gap-1.5 text-[11px] text-indigo-700 font-semibold bg-indigo-50/70 border border-indigo-200/50 px-2.5 py-1 rounded-xl">
+                    <FileUp className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>PDF Extraction Document</span>
+                  </div>
+                ) : item.isAIGenerated ? (
                   <div className="mt-3 flex items-center gap-1.5 text-[11px] text-indigo-700 font-semibold bg-indigo-50/70 border border-indigo-200/50 px-2.5 py-1 rounded-xl">
                     <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                     <span>AI-Generated via {item.aiProvider?.toUpperCase() || 'GEMINI'}</span>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Actions Footer */}
@@ -370,19 +389,23 @@ export const AssessmentManagementPage = () => {
           title={`No ${activeCategory === 'All' ? currentModule : activeCategory} Assessments`}
           description={`No assessment evaluations have been published for ${
             activeCategory !== 'All' ? activeCategory : currentModule
-          } yet. Generate one instantly with AI.`}
-          actionText="Generate AI Assessment"
+          } yet.`}
+          actionText={isAptitudeModule ? 'Create Aptitude Assessment' : 'Generate AI Assessment'}
           onAction={() => {
-            setAiForm((prev) => ({
-              ...prev,
-              module: currentModule,
-              category: availableCategories[0]?.id || 'General',
-              department: isDomainModule ? 'CSE' : null,
-              title: '',
-              topic: ''
-            }));
-            setAiError('');
-            setIsAIModalOpen(true);
+            if (isAptitudeModule) {
+              setIsAptitudeModalOpen(true);
+            } else {
+              setAiForm((prev) => ({
+                ...prev,
+                module: currentModule,
+                category: availableCategories[0]?.id || 'General',
+                department: isDomainModule ? 'CSE' : null,
+                title: '',
+                topic: ''
+              }));
+              setAiError('');
+              setIsAIModalOpen(true);
+            }
           }}
         />
       )}
@@ -508,6 +531,16 @@ export const AssessmentManagementPage = () => {
           </Button>
         </form>
       </Modal>
+
+      {/* MODAL: Aptitude Assessment Wizard (AI & PDF Extraction & Review) */}
+      <AptitudeAssessmentCreateModal
+        isOpen={isAptitudeModalOpen}
+        onClose={() => setIsAptitudeModalOpen(false)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
+        }}
+        initialCategory={activeCategory !== 'All' ? activeCategory : 'Quantitative Aptitude'}
+      />
 
       {/* Confirmation Dialog for Delete */}
       <ConfirmDialog

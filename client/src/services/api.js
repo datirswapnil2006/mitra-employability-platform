@@ -317,6 +317,14 @@ export const api = {
     });
     return res.json();
   },
+  abandonAssessment: async (data) => {
+    const res = await fetch(`${API_BASE}/assessments/abandon`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
   getAttemptById: async (id) => {
     const res = await fetch(`${API_BASE}/assessments/attempt/${id}`, { headers: getHeaders() });
     return res.json();
@@ -359,6 +367,22 @@ export const api = {
   },
   generateAIAssessment: async (data) => {
     const res = await fetch(`${API_BASE}/assessments/admin/generate-ai`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  generateQuestionsForReview: async (data) => {
+    const res = await fetch(`${API_BASE}/assessments/admin/generate-questions`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  extractPdfQuestions: async (data) => {
+    const res = await fetch(`${API_BASE}/assessments/admin/extract-pdf`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data)

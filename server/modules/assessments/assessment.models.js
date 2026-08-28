@@ -38,7 +38,7 @@ const assessmentSchema = new mongoose.Schema({
   topic: { type: String, default: '' },
   difficulty: {
     type: String,
-    enum: ['Easy', 'Medium', 'Hard', 'Beginner', 'Intermediate', 'Advanced'],
+    enum: ['Easy', 'Medium', 'Hard', 'Beginner', 'Intermediate', 'Advanced', 'Mixed', 'mixed'],
     default: 'Medium'
   },
   moduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingModule' },
@@ -50,8 +50,27 @@ const assessmentSchema = new mongoose.Schema({
   isAIGenerated: { type: Boolean, default: false },
   aiProvider: {
     type: String,
-    enum: ['manual', 'gemini', 'groq', 'huggingface', 'fallback'],
+    enum: ['manual', 'gemini', 'groq', 'huggingface', 'fallback', 'pdf_extraction'],
     default: 'manual'
+  },
+  creationMethod: {
+    type: String,
+    enum: ['AI_GENERATED', 'PDF_EXTRACTION', 'MANUAL', 'ai_generated', 'pdf_extraction', 'manual'],
+    default: 'AI_GENERATED'
+  },
+  assessmentMode: {
+    type: String,
+    enum: ['NORMAL', 'PROCTORED', 'Normal', 'Proctored'],
+    default: 'NORMAL'
+  },
+  proctoringSettings: {
+    camera: { type: Boolean, default: true },
+    screenShare: { type: Boolean, default: true },
+    fullScreen: { type: Boolean, default: true },
+    tabSwitch: { type: Boolean, default: true },
+    copyPaste: { type: Boolean, default: true },
+    secondPerson: { type: Boolean, default: true },
+    mobileDetection: { type: Boolean, default: true }
   },
   status: { type: String, enum: ['published', 'draft', 'archived'], default: 'published' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -87,6 +106,13 @@ const assessmentAttemptSchema = new mongoose.Schema({
     output: { type: String, default: '0/0' },
     coding: { type: String, default: '0/0' }
   },
+  violationsCount: { type: Number, default: 0 },
+  isAbandoned: { type: Boolean, default: false },
+  proctoringLogs: [{
+    type: { type: String },
+    timestamp: { type: Date, default: Date.now },
+    details: { type: String, default: '' }
+  }],
   attemptedAt: { type: Date, default: Date.now }
 });
 
