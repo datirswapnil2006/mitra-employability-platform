@@ -1064,13 +1064,13 @@ Return ONLY a valid JSON array of ${count} objects with structure:
       let response = null;
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-2.5-flash',
           contents: prompt
         });
       } catch (gemErr) {
-        console.warn(`[Dynamic AI Question Gen Gemini]: gemini-3.6-flash retry (${gemErr.message}), trying gemini-3.5-flash...`);
+        console.warn(`[Dynamic AI Question Gen Gemini]: gemini-2.5-flash retry (${gemErr.message}), trying gemini-1.5-flash...`);
         response = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-1.5-flash',
           contents: prompt
         });
       }
@@ -1493,12 +1493,12 @@ RULES:
       let response = null;
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-2.5-flash',
           contents: prompt
         });
       } catch (synthErr) {
         response = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-1.5-flash',
           contents: prompt
         });
       }

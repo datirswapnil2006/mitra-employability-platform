@@ -167,7 +167,7 @@ Required JSON Structure:
 
   if (geminiKey) {
     const ai = new GoogleGenAI({ apiKey: geminiKey });
-    const geminiModels = ['gemini-3.6-flash', 'gemini-3.5-flash'];
+    const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     for (const model of geminiModels) {
       try {
         const response = await ai.models.generateContent({
@@ -187,7 +187,7 @@ Required JSON Structure:
   }
 
   if (groqKey) {
-    const groqModels = ['qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'groq/compound'];
+    const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
     for (const model of groqModels) {
       try {
         const response = await axios.post(

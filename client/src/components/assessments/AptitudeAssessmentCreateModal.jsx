@@ -395,7 +395,7 @@ export const AptitudeAssessmentCreateModal = ({
 
       const res = await api.createAssessment(payload);
       if (res.success) {
-        if (onSuccess) onSuccess(res.assessment);
+        if (onSuccess) onSuccess(res.assessment, statusToSet);
         onClose();
       } else {
         setErrorMsg(res.message || 'Failed to save assessment.');

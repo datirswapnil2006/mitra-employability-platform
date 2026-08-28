@@ -69,7 +69,7 @@ const cleanAndParseJson = (raw) => {
 // 1. Google Gemini Provider
 const generateWithGemini = async (prompt, apiKey) => {
   const ai = new GoogleGenAI({ apiKey });
-  const modelsToTry = ['gemini-3.6-flash', 'gemini-3.5-flash'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
   let lastError = null;
 
   for (const modelName of modelsToTry) {
@@ -91,7 +91,7 @@ const generateWithGemini = async (prompt, apiKey) => {
 
 // 2. Groq Cloud Provider
 const generateWithGroq = async (prompt, apiKey) => {
-  const modelsToTry = ['qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'groq/compound'];
+  const modelsToTry = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
   let lastError = null;
 
   for (const modelName of modelsToTry) {

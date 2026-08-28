@@ -224,12 +224,12 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
       let response = null;
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-2.5-flash',
           contents: prompt
         });
       } catch (gemErr) {
         response = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-1.5-flash',
           contents: prompt
         });
       }
@@ -247,7 +247,7 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
       const res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
         {
-          model: 'qwen/qwen3.6-27b',
+          model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.3
         },
