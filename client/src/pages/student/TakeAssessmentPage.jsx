@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import Button from '../../components/Button';
@@ -67,6 +67,30 @@ export const TakeAssessmentPage = () => {
   const videoRef = useRef(null);
   const floatingVideoRef = useRef(null);
 
+  // Callback Ref for Pretest Video element
+  const setPretestVideoRef = useCallback((node) => {
+    videoRef.current = node;
+    if (node && cameraStream) {
+      node.srcObject = cameraStream;
+      node.muted = true;
+      node.defaultMuted = true;
+      node.playsInline = true;
+      node.play().catch((e) => console.warn('Pretest video play error:', e));
+    }
+  }, [cameraStream]);
+
+  // Callback Ref for Floating Proctoring Video element
+  const setFloatingVideoRef = useCallback((node) => {
+    floatingVideoRef.current = node;
+    if (node && cameraStream) {
+      node.srcObject = cameraStream;
+      node.muted = true;
+      node.defaultMuted = true;
+      node.playsInline = true;
+      node.play().catch((e) => console.warn('Floating video play error:', e));
+    }
+  }, [cameraStream]);
+
   useEffect(() => {
     fetchAssessment();
   }, [id]);
@@ -115,12 +139,34 @@ export const TakeAssessmentPage = () => {
   // Reliable camera stream attachment for floating proctoring video
   useEffect(() => {
     if (testStarted && floatingVideoRef.current && cameraStream) {
-      floatingVideoRef.current.srcObject = cameraStream;
+      if (floatingVideoRef.current.srcObject !== cameraStream) {
+        floatingVideoRef.current.srcObject = cameraStream;
+      }
+      floatingVideoRef.current.muted = true;
+      floatingVideoRef.current.defaultMuted = true;
+      floatingVideoRef.current.playsInline = true;
       floatingVideoRef.current.play().catch((err) => {
         console.warn('Floating video play error:', err);
       });
     }
   }, [testStarted, cameraStream]);
+
+  // Auto-connect camera if test started with camera enabled
+  useEffect(() => {
+    const isProctored = assessment?.assessmentMode === 'PROCTORED';
+    const settings = assessment?.proctoringSettings || {};
+    if (testStarted && isProctored && settings.camera && (!cameraStream || !cameraStream.active)) {
+      navigator.mediaDevices?.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false
+      }).then((stream) => {
+        setCameraStream(stream);
+        setCameraVerified(true);
+      }).catch((err) => {
+        console.warn('Auto camera stream recovery error:', err);
+      });
+    }
+  }, [testStarted, assessment, cameraStream]);
 
   // Live Timer Countdown
   useEffect(() => {
@@ -182,7 +228,7 @@ export const TakeAssessmentPage = () => {
     const newLog = {
       type,
       timestamp: new Date(),
-      details: `${details} (Cheating attempt ${newCount}/3)`
+      details: `${type}:${details} (Cheating attempt ${newCount}/3)`
     };
 
     setProctoringLogs((prev) => [...prev, newLog]);
@@ -569,10 +615,14 @@ export const TakeAssessmentPage = () => {
                     {cameraVerified && (
                       <div className="w-full h-24 rounded-xl bg-slate-950 overflow-hidden relative">
                         <video
-                          ref={videoRef}
+                          ref={setPretestVideoRef}
                           autoPlay
                           playsInline
                           muted
+                          onLoadedMetadata={(e) => {
+                            e.target.muted = true;
+                            e.target.play().catch(() => {});
+                          }}
                           className="w-full h-full object-cover"
                         />
                         <span className="absolute bottom-1 right-2 text-[9px] font-bold text-emerald-400 bg-black/60 px-1.5 py-0.5 rounded">
@@ -901,7 +951,7 @@ export const TakeAssessmentPage = () => {
         {/* Right Column: Question Palette & Floating Proctoring Widget (Span 1) */}
         <div className="space-y-5">
           {/* Floating Camera Widget if Proctored with Camera enabled */}
-          {isProctored && proctorSettings.camera && cameraStream && (
+          {isProctored && proctorSettings.camera && (
             <div className="bg-slate-900 rounded-3xl p-3 border border-slate-800 shadow-md space-y-2">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-1.5">
@@ -914,10 +964,14 @@ export const TakeAssessmentPage = () => {
               </div>
               <div className="w-full h-32 rounded-2xl bg-black overflow-hidden relative border border-slate-800">
                 <video
-                  ref={floatingVideoRef}
+                  ref={setFloatingVideoRef}
                   autoPlay
                   playsInline
                   muted
+                  onLoadedMetadata={(e) => {
+                    e.target.muted = true;
+                    e.target.play().catch(() => {});
+                  }}
                   className="w-full h-full object-cover"
                 />
               </div>
