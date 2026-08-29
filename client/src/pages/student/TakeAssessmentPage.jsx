@@ -112,6 +112,16 @@ export const TakeAssessmentPage = () => {
     };
   }, [cameraStream, screenStream]);
 
+  // Reliable camera stream attachment for floating proctoring video
+  useEffect(() => {
+    if (testStarted && floatingVideoRef.current && cameraStream) {
+      floatingVideoRef.current.srcObject = cameraStream;
+      floatingVideoRef.current.play().catch((err) => {
+        console.warn('Floating video play error:', err);
+      });
+    }
+  }, [testStarted, cameraStream]);
+
   // Live Timer Countdown
   useEffect(() => {
     if (!testStarted || submitting) return;
@@ -154,19 +164,68 @@ export const TakeAssessmentPage = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [testStarted, submitting, assessment]);
+  }, [testStarted, submitting, assessment, violationsCount]);
 
-  const logViolation = (type, details) => {
-    setViolationsCount((prev) => prev + 1);
-    setProctoringLogs((prev) => [
-      ...prev,
-      {
-        type,
-        timestamp: new Date(),
-        details
+  const lastViolationTimeRef = useRef(0);
+
+  const logViolation = async (type, details) => {
+    if (submitting) return;
+
+    // Debounce violation events within 1.5 seconds to avoid double-counting visibilitychange + blur
+    const now = Date.now();
+    if (now - lastViolationTimeRef.current < 1500) return;
+    lastViolationTimeRef.current = now;
+
+    const newCount = violationsCount + 1;
+    setViolationsCount(newCount);
+
+    const newLog = {
+      type,
+      timestamp: new Date(),
+      details: `${details} (Cheating attempt ${newCount}/3)`
+    };
+
+    setProctoringLogs((prev) => [...prev, newLog]);
+
+    if (newCount >= 3) {
+      // 3 CHEATING ATTEMPTS REACHED: IMMEDIATELY TERMINATE AND LOCK FOR 24 HOURS
+      setTestStarted(false);
+      setTabWarningModalOpen(false);
+      setConfirmSubmitOpen(false);
+
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
       }
-    ]);
-    setTabWarningModalOpen(true);
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
+      }
+      if (document.fullscreenElement && document.exitFullscreen) {
+        try {
+          await document.exitFullscreen();
+        } catch (e) {}
+      }
+
+      try {
+        const res = await api.abandonAssessment({ assessmentId: id });
+        setLockedInfo({
+          message: 'Assessment terminated due to repeated proctoring violations (3 cheating attempts recorded). Retake cooldown enforced for 24 hours.',
+          lockedUntil: res.lockedUntil || new Date(Date.now() + 24 * 60 * 60 * 1000),
+          remainingMinutes: 1440,
+          isAbandoned: true
+        });
+      } catch (err) {
+        console.error('Error locking test on 3 violations:', err);
+        setLockedInfo({
+          message: 'Assessment terminated due to repeated proctoring violations (3 cheating attempts recorded). You can retake this assessment in 24 hours.',
+          lockedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          remainingMinutes: 1440,
+          isAbandoned: true
+        });
+      }
+    } else {
+      // Show Warning Modal for Violation 1 or 2
+      setTabWarningModalOpen(true);
+    }
   };
 
   // Copy/Paste Prevention
@@ -175,15 +234,7 @@ export const TakeAssessmentPage = () => {
       e.preventDefault();
       setCopyWarningToast(true);
       setTimeout(() => setCopyWarningToast(false), 3000);
-      setViolationsCount((prev) => prev + 1);
-      setProctoringLogs((prev) => [
-        ...prev,
-        {
-          type: 'CLIPBOARD_ATTEMPT',
-          timestamp: new Date(),
-          details: 'Clipboard copy/paste blocked.'
-        }
-      ]);
+      logViolation('CLIPBOARD_ATTEMPT', 'Clipboard copy/paste blocked.');
     }
   };
 
@@ -222,6 +273,7 @@ export const TakeAssessmentPage = () => {
       setCameraVerified(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
       }
     } catch (err) {
       console.error('Camera access error:', err);
@@ -278,13 +330,6 @@ export const TakeAssessmentPage = () => {
 
     setStartTime(Date.now());
     setTestStarted(true);
-
-    // Attach stream to floating video element
-    setTimeout(() => {
-      if (floatingVideoRef.current && cameraStream) {
-        floatingVideoRef.current.srcObject = cameraStream;
-      }
-    }, 200);
   };
 
   const handleSelectOption = (qId, optionText) => {
@@ -320,6 +365,14 @@ export const TakeAssessmentPage = () => {
         } catch (e) {}
       }
 
+      // Clean up media tracks on submit
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
+      }
+
       const formattedAnswers = Object.keys(answers).map((qId) => ({
         questionId: qId,
         studentAnswer: answers[qId]
@@ -336,12 +389,16 @@ export const TakeAssessmentPage = () => {
       });
 
       if (res.success && res.result) {
+        setConfirmSubmitOpen(false);
         navigate(`/student/assessment-result/${res.result._id}`, {
           state: { result: res.result }
         });
+      } else {
+        alert(res.message || 'Failed to submit assessment. Please try again.');
       }
     } catch (err) {
       console.error('Error submitting assessment:', err);
+      alert(err.message || 'Network error while submitting assessment.');
     } finally {
       setSubmitting(false);
     }
@@ -944,25 +1001,35 @@ export const TakeAssessmentPage = () => {
       <Modal
         isOpen={tabWarningModalOpen}
         onClose={() => setTabWarningModalOpen(false)}
-        title="Proctoring Warning"
+        title={`Proctoring Alert: Violation ${violationsCount} of 3`}
       >
         <div className="space-y-4 text-center p-2">
-          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-            <AlertTriangle className="w-7 h-7" />
+          <div className="w-14 h-14 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-xs">
+            <AlertTriangle className="w-8 h-8" />
           </div>
-          <h3 className="text-base font-extrabold text-slate-900">
-            Window Focus Lost / Tab Switch Detected!
-          </h3>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            You have switched away from the active examination window. All focus changes and tab switches are logged for faculty review.
+          <div className="space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100 px-3 py-1 rounded-full">
+              Violation {violationsCount} of 3 Recorded
+            </span>
+            <h3 className="text-base font-extrabold text-slate-900 mt-2">
+              Window Focus Lost / Tab Switch Detected!
+            </h3>
+          </div>
+          <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto">
+            You have switched away from the active examination window. All tab switches and focus losses are recorded.
           </p>
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700">
-            Recorded Violations: <span className="text-rose-600 font-black">{violationsCount}</span>
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 font-semibold space-y-1 text-left">
+            <p className="font-bold text-rose-950">Strict 3-Strike Rule:</p>
+            <p className="text-[11px] text-rose-800">
+              {violationsCount === 1
+                ? 'You have 2 remaining warnings. If you reach 3 violations, the test will be immediately closed and locked for 24 hours.'
+                : 'FINAL WARNING! You have 1 warning remaining. If you switch tabs or leave this window one more time, the test will be instantly terminated and locked for 24 hours.'}
+            </p>
           </div>
           <Button
             variant="primary"
             onClick={() => setTabWarningModalOpen(false)}
-            className="w-full justify-center bg-rose-600 hover:bg-rose-700"
+            className="w-full justify-center bg-rose-600 hover:bg-rose-700 font-bold"
           >
             I Understand, Resume Test
           </Button>
