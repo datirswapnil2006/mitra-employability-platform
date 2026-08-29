@@ -289,7 +289,7 @@ export const StudentAssessmentsPage = () => {
                         )}
                         {item.isLocked && (
                           <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-200 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-amber-600" /> Cooldown ({item.remainingHours ? `${item.remainingHours}h ` : ''}${item.remainingMinutes % 60}m)
+                            <Clock className="w-3 h-3 text-amber-600" /> Cooldown ({item.remainingHours ? `${item.remainingHours}h ` : ''}{(item.remainingMinutes || 0) % 60}m)
                           </span>
                         )}
                       </div>
@@ -334,7 +334,7 @@ export const StudentAssessmentsPage = () => {
                         disabled
                         className="w-full justify-center opacity-60 cursor-not-allowed bg-slate-50 text-slate-500 border-slate-200 font-bold"
                       >
-                        Locked (Retake in {item.remainingHours ? `${item.remainingHours}h ` : ''}${item.remainingMinutes % 60}m)
+                        Locked (Retake in {item.remainingHours ? `${item.remainingHours}h ` : ''}{(item.remainingMinutes || 0) % 60}m)
                       </Button>
                     ) : (
                       <Button
