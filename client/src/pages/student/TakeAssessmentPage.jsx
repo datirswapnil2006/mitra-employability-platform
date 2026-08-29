@@ -236,17 +236,20 @@ export const TakeAssessmentPage = () => {
 
     const interval = setInterval(async () => {
       const video = floatingVideoRef.current;
-      if (!video || video.readyState < 2 || isTerminatedRef.current) return;
+      if (!video || video.readyState < 2 || isTerminatedRef.current || isModalOpenRef.current) return;
+
+      const now = Date.now();
+      if (now < lastSecondPersonTimeRef.current) return;
 
       try {
         if (detector) {
           const faces = await detector.detect(video);
           const validFaces = (faces || []).filter(
-            (f) => f.boundingBox && f.boundingBox.width >= 24 && f.boundingBox.height >= 24
+            (f) => f.boundingBox && f.boundingBox.width >= 32 && f.boundingBox.height >= 32
           );
           if (validFaces.length >= 2) {
             consecutiveMultiFaces += 1;
-            if (consecutiveMultiFaces >= 2) {
+            if (consecutiveMultiFaces >= 3) {
               consecutiveMultiFaces = 0;
               logViolation('SECOND_PERSON_DETECTED', `Second person detected in camera frame (${validFaces.length} people present).`);
             }
@@ -292,12 +295,12 @@ export const TakeAssessmentPage = () => {
           }
 
           // If both left and right quadrants have separate substantial skin clusters
-          if (leftSkinCount > 35 && rightSkinCount > 35) {
+          if (leftSkinCount > 40 && rightSkinCount > 40) {
             const leftCentroid = leftSumX / leftSkinCount;
             const rightCentroid = rightSumX / rightSkinCount;
-            if (rightCentroid - leftCentroid > 35) {
+            if (rightCentroid - leftCentroid > 40) {
               consecutiveMultiFaces += 1;
-              if (consecutiveMultiFaces >= 2) {
+              if (consecutiveMultiFaces >= 3) {
                 consecutiveMultiFaces = 0;
                 logViolation('SECOND_PERSON_DETECTED', 'Second person / multiple individuals detected in camera view.');
               }
@@ -343,7 +346,10 @@ export const TakeAssessmentPage = () => {
         let consecutiveVoiceFrames = 0;
 
         voiceInterval = setInterval(() => {
-          if (!analyser || isTerminatedRef.current) return;
+          if (!analyser || isTerminatedRef.current || isModalOpenRef.current) return;
+          const now = Date.now();
+          if (now < lastVoiceTimeRef.current) return;
+
           analyser.getByteFrequencyData(buffer);
           let sum = 0;
           // Focus on vocal frequency bins (~100Hz to 3000Hz)
@@ -351,9 +357,9 @@ export const TakeAssessmentPage = () => {
             sum += buffer[i];
           }
           const vocalEnergy = sum / 36;
-          if (vocalEnergy > 42) {
+          if (vocalEnergy > 45) {
             consecutiveVoiceFrames += 1;
-            if (consecutiveVoiceFrames >= 2) {
+            if (consecutiveVoiceFrames >= 3) {
               consecutiveVoiceFrames = 0;
               logViolation('VOICE_DETECTED', 'Nearby voice or background speech detected.');
             }
@@ -378,7 +384,7 @@ export const TakeAssessmentPage = () => {
 
           recognition.onresult = (event) => {
             const lastResult = event.results[event.results.length - 1];
-            if (lastResult && lastResult[0] && !isTerminatedRef.current) {
+            if (lastResult && lastResult[0] && !isTerminatedRef.current && !isModalOpenRef.current) {
               const text = lastResult[0].transcript.trim();
               if (text.length > 2) {
                 logViolation('VOICE_DETECTED', `Spoken dialogue detected: "${text}"`);
@@ -408,16 +414,38 @@ export const TakeAssessmentPage = () => {
     };
   }, [testStarted, submitting, assessment, cameraStream]);
 
+  const [warningModalInfo, setWarningModalInfo] = useState({
+    title: 'Window Focus Lost / Tab Switch Detected!',
+    message: 'You have switched away from the active examination window. All tab switches and focus losses are recorded.',
+    type: 'TAB_SWITCH'
+  });
+
+  const isModalOpenRef = useRef(false);
   const violationsCountRef = useRef(0);
   const isTerminatedRef = useRef(false);
   const lastViolationTimeRef = useRef(0);
+  const lastSecondPersonTimeRef = useRef(0);
+  const lastVoiceTimeRef = useRef(0);
 
   const logViolation = async (type, details) => {
     if (submitting || isTerminatedRef.current) return;
 
-    // Debounce violation events within 1.5 seconds to avoid double-counting visibilitychange + blur
+    // If modal is currently open on screen, do NOT stack additional strikes while student is looking at warning
+    if (isModalOpenRef.current) return;
+
     const now = Date.now();
-    if (now - lastViolationTimeRef.current < 1500) return;
+    // General debounce
+    if (now - lastViolationTimeRef.current < 2000) return;
+
+    // Specific cooldown for second person & voice detection (at least 6 seconds between separate strikes)
+    if (type === 'SECOND_PERSON_DETECTED') {
+      if (now - lastSecondPersonTimeRef.current < 6000) return;
+      lastSecondPersonTimeRef.current = now + 6000;
+    } else if (type === 'VOICE_DETECTED') {
+      if (now - lastVoiceTimeRef.current < 5000) return;
+      lastVoiceTimeRef.current = now + 5000;
+    }
+
     lastViolationTimeRef.current = now;
 
     violationsCountRef.current += 1;
@@ -450,6 +478,7 @@ export const TakeAssessmentPage = () => {
       // 3 CHEATING ATTEMPTS REACHED: IMMEDIATELY TERMINATE AND LOCK FOR 24 HOURS
       isTerminatedRef.current = true;
       setTestStarted(false);
+      isModalOpenRef.current = false;
       setTabWarningModalOpen(false);
       setConfirmSubmitOpen(false);
 
@@ -484,8 +513,29 @@ export const TakeAssessmentPage = () => {
       }
     } else {
       // Show Warning Modal for Strike 1 or 2
+      let modalTitle = 'Window Focus Lost / Tab Switch Detected!';
+      let modalMsg = 'You have switched away from the active examination window. All tab switches and focus losses are recorded.';
+      if (type === 'SECOND_PERSON_DETECTED') {
+        modalTitle = 'Second Person / Multiple People Detected!';
+        modalMsg = 'Another person was detected in your camera frame. Only the candidate is permitted in the camera view.';
+      } else if (type === 'VOICE_DETECTED') {
+        modalTitle = 'Background Voice / Speech Detected!';
+        modalMsg = 'Conversations or background speech were detected through your microphone.';
+      }
+
+      setWarningModalInfo({ title: modalTitle, message: modalMsg, type });
+      isModalOpenRef.current = true;
       setTabWarningModalOpen(true);
     }
+  };
+
+  const handleDismissWarning = () => {
+    isModalOpenRef.current = false;
+    // 3 seconds grace period after resuming
+    lastViolationTimeRef.current = Date.now() + 3000;
+    lastSecondPersonTimeRef.current = Date.now() + 4000;
+    lastVoiceTimeRef.current = Date.now() + 3000;
+    setTabWarningModalOpen(false);
   };
 
   // Copy/Paste Prevention
@@ -1281,11 +1331,11 @@ export const TakeAssessmentPage = () => {
         </div>
       </div>
 
-      {/* Modal: Tab Switch Warning Pop-up */}
+      {/* Modal: Proctoring Warning Pop-up */}
       <Modal
         isOpen={tabWarningModalOpen}
-        onClose={() => setTabWarningModalOpen(false)}
-        title={`Proctoring Alert: Violation ${violationsCount} of 3`}
+        onClose={handleDismissWarning}
+        title={`Proctoring Alert: Warning ${violationsCount} of 3`}
       >
         <div className="space-y-4 text-center p-2">
           <div className="w-14 h-14 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-xs">
@@ -1293,26 +1343,26 @@ export const TakeAssessmentPage = () => {
           </div>
           <div className="space-y-1">
             <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100 px-3 py-1 rounded-full">
-              Violation {violationsCount} of 3 Recorded
+              Warning {violationsCount} of 3 Recorded
             </span>
             <h3 className="text-base font-extrabold text-slate-900 mt-2">
-              Window Focus Lost / Tab Switch Detected!
+              {warningModalInfo.title}
             </h3>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto">
-            You have switched away from the active examination window. All tab switches and focus losses are recorded.
+            {warningModalInfo.message}
           </p>
           <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 font-semibold space-y-1 text-left">
-            <p className="font-bold text-rose-950">Strict 3-Strike Rule:</p>
+            <p className="font-bold text-rose-950">Strict 3-Strike Policy:</p>
             <p className="text-[11px] text-rose-800">
               {violationsCount === 1
-                ? 'You have 2 remaining warnings. If you reach 3 violations, the test will be immediately closed and locked for 24 hours.'
-                : 'FINAL WARNING! You have 1 warning remaining. If you switch tabs or leave this window one more time, the test will be instantly terminated and locked for 24 hours.'}
+                ? 'You have 2 remaining warnings. Ensure you are alone, quiet, and stay in this examination window. At 3 strikes, the test will be immediately closed and locked for 24 hours.'
+                : 'FINAL WARNING! You have 1 warning remaining. Any further proctoring violation will instantly terminate and lock this test for 24 hours.'}
             </p>
           </div>
           <Button
             variant="primary"
-            onClick={() => setTabWarningModalOpen(false)}
+            onClick={handleDismissWarning}
             className="w-full justify-center bg-rose-600 hover:bg-rose-700 font-bold"
           >
             I Understand, Resume Test
