@@ -28,8 +28,12 @@ import {
   Smartphone,
   Check,
   AlertTriangle,
-  Video
+  Video,
+  Layers,
+  Calculator,
+  Brain
 } from 'lucide-react';
+import { getAssessmentSections } from '../../utils/assessmentSections';
 
 export const TakeAssessmentPage = () => {
   const { id } = useParams();
@@ -472,7 +476,8 @@ export const TakeAssessmentPage = () => {
       snapshot
     };
 
-    setProctoringLogs((prev) => [...prev, newLog]);
+    const updatedLogs = [...proctoringLogs, newLog];
+    setProctoringLogs(updatedLogs);
 
     if (currentStrikes >= 3) {
       // 3 CHEATING ATTEMPTS REACHED: IMMEDIATELY TERMINATE AND LOCK FOR 24 HOURS
@@ -494,10 +499,33 @@ export const TakeAssessmentPage = () => {
         } catch (e) {}
       }
 
+      const formattedAnswers = Object.keys(answers).map((qId) => ({
+        questionId: qId,
+        studentAnswer: answers[qId]
+      }));
+
+      const violationLabel = type === 'SECOND_PERSON_DETECTED'
+        ? 'Second Person Detected in Camera Frame'
+        : type === 'VOICE_DETECTED'
+        ? 'Voice / Background Speech Detected'
+        : type === 'MOBILE_DETECTED'
+        ? 'Mobile / Electronic Device Detected'
+        : 'Tab Switch / Window Focus Lost';
+
+      const terminationReason = `Auto-Terminated: 3 Proctoring Strikes Reached (${violationLabel})`;
+      const timeSpent = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+
       try {
-        const res = await api.abandonAssessment({ assessmentId: id });
+        const res = await api.abandonAssessment({
+          assessmentId: id,
+          violationsCount: currentStrikes,
+          proctoringLogs: updatedLogs,
+          submissionReason: terminationReason,
+          timeSpentSeconds: timeSpent,
+          answers: formattedAnswers
+        });
         setLockedInfo({
-          message: 'Assessment terminated due to repeated proctoring violations (3 cheating strikes recorded). You are restricted from retaking for 24 hours.',
+          message: `Assessment terminated due to repeated proctoring violations (3 cheating strikes recorded - Final Violation: ${violationLabel}). You are restricted from retaking for 24 hours.`,
           lockedUntil: res.lockedUntil || new Date(Date.now() + 24 * 60 * 60 * 1000),
           remainingMinutes: 1440,
           isAbandoned: true
@@ -505,7 +533,7 @@ export const TakeAssessmentPage = () => {
       } catch (err) {
         console.error('Error locking test on 3 violations:', err);
         setLockedInfo({
-          message: 'Assessment terminated due to repeated proctoring violations (3 cheating strikes recorded). You are restricted from retaking for 24 hours.',
+          message: `Assessment terminated due to repeated proctoring violations (3 cheating strikes recorded - Final Violation: ${violationLabel}). You are restricted from retaking for 24 hours.`,
           lockedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
           remainingMinutes: 1440,
           isAbandoned: true
@@ -698,12 +726,18 @@ export const TakeAssessmentPage = () => {
 
       const timeSpentSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
 
+      const currentVCount = violationsCountRef.current || violationsCount || 0;
+      const submissionReason = currentVCount > 0
+        ? `Submitted Normally by Candidate (${currentVCount} Warning(s) Logged)`
+        : 'Submitted Normally by Candidate (Clean Examination)';
+
       const res = await api.submitAssessment({
         assessmentId: id,
         timeSpentSeconds,
         answers: formattedAnswers,
-        violationsCount,
-        proctoringLogs
+        violationsCount: currentVCount,
+        proctoringLogs: proctoringLogs,
+        submissionReason
       });
 
       if (res.success && res.result) {
@@ -979,6 +1013,10 @@ export const TakeAssessmentPage = () => {
   const progressPercentage = questions.length > 0 ? Math.round(((currentIdx + 1) / questions.length) * 100) : 0;
   const answeredPercentage = questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
 
+  // Compute test sections for Mixed / Section-wise assessments
+  const sections = getAssessmentSections(questions, assessment);
+  const activeSection = sections.find((s) => s.questionIndices.includes(currentIdx)) || sections[0];
+
   return (
     <div
       onCopy={handleCopyPasteBlock}
@@ -1065,6 +1103,59 @@ export const TakeAssessmentPage = () => {
         </div>
       </div>
 
+      {/* Section Navigation Tabs for Mixed / Section-wise Assessments */}
+      {sections.length > 1 && (
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-2.5 sm:p-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 px-1.5 shrink-0 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-blue-600" /> Test Sections:
+              </span>
+              {sections.map((sec) => {
+                const isSecActive = activeSection?.id === sec.id;
+                const secTotal = sec.questionIndices.length;
+                const secAnswered = sec.questionIndices.filter((qIdx) => Boolean(answers[questions[qIdx]?._id])).length;
+                const isCompleted = secAnswered === secTotal && secTotal > 0;
+
+                return (
+                  <button
+                    key={sec.id}
+                    type="button"
+                    onClick={() => setCurrentIdx(sec.startIndex)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                      isSecActive
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25 ring-2 ring-blue-600/30'
+                        : isCompleted
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-100'
+                        : 'bg-slate-50 text-slate-700 border border-slate-200/80 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>{sec.name}</span>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        isSecActive
+                          ? 'bg-white/20 text-white'
+                          : isCompleted
+                          ? 'bg-emerald-200/80 text-emerald-900'
+                          : 'bg-slate-200/80 text-slate-700'
+                      }`}
+                    >
+                      {secAnswered}/{secTotal}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:flex items-center gap-2 px-2 text-[11px] font-semibold text-slate-500 shrink-0">
+              <span>Section: <strong className="text-blue-600">{activeSection?.name}</strong></span>
+              <span>•</span>
+              <span>Questions {activeSection?.questionIndices[0] + 1} - {activeSection?.questionIndices[activeSection.questionIndices.length - 1] + 1}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Copy/Paste Block Warning Toast */}
       {copyWarningToast && (
         <div className="p-3.5 bg-rose-600 text-white text-xs rounded-2xl shadow-xl flex items-center justify-between font-bold animate-bounce border border-rose-400">
@@ -1084,13 +1175,18 @@ export const TakeAssessmentPage = () => {
               <div className="space-y-5">
                 {/* Question Info Header */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                       Q{currentIdx + 1}
                     </span>
                     <span className="text-xs font-bold text-slate-700">
                       Question {currentIdx + 1} of {questions.length}
                     </span>
+                    {activeSection && sections.length > 1 && (
+                      <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200 flex items-center gap-1">
+                        <span>{activeSection.shortName}</span>
+                      </span>
+                    )}
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                         currentQ.difficulty === 'Easy'
@@ -1289,34 +1385,98 @@ export const TakeAssessmentPage = () => {
               </div>
             </div>
 
-            {/* Palette Numbers Grid */}
-            <div className="grid grid-cols-5 gap-2 pt-1">
-              {questions.map((q, idx) => {
-                const isAnswered = Boolean(answers[q._id]);
-                const isReview = Boolean(markedForReview[q._id]);
-                const isCurrent = currentIdx === idx;
+            {/* Section-Wise Palette Layout or Standard Grid */}
+            {sections.length > 1 ? (
+              <div className="space-y-3.5 pt-1">
+                {sections.map((sec) => {
+                  const isSecActive = activeSection?.id === sec.id;
+                  const secAnswered = sec.questionIndices.filter((qIdx) => Boolean(answers[questions[qIdx]?._id])).length;
 
-                let btnStyle = 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200';
-                if (isCurrent) {
-                  btnStyle = 'bg-blue-600 text-white font-black ring-2 ring-blue-500/50 shadow-sm';
-                } else if (isReview) {
-                  btnStyle = 'bg-amber-400 text-slate-950 font-bold border-amber-500 shadow-2xs';
-                } else if (isAnswered) {
-                  btnStyle = 'bg-emerald-500 text-white font-bold border-emerald-600 shadow-2xs';
-                }
+                  return (
+                    <div
+                      key={sec.id}
+                      className={`rounded-2xl border p-3 transition-all ${
+                        isSecActive
+                          ? 'border-blue-300 bg-blue-50/40 ring-1 ring-blue-400/30'
+                          : 'border-slate-200/80 bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentIdx(sec.startIndex)}
+                          className="text-xs font-black text-slate-800 flex items-center gap-1.5 hover:text-blue-600 transition cursor-pointer"
+                        >
+                          <span>{sec.shortName}</span>
+                        </button>
+                        <span className="text-[10px] font-black text-slate-600 bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                          {secAnswered} / {sec.questionIndices.length}
+                        </span>
+                      </div>
 
-                return (
-                  <button
-                    key={q._id || idx}
-                    type="button"
-                    onClick={() => setCurrentIdx(idx)}
-                    className={`h-9 rounded-xl border text-xs flex items-center justify-center transition-all ${btnStyle}`}
-                  >
-                    {idx + 1}
-                  </button>
-                );
-              })}
-            </div>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {sec.questionIndices.map((idx) => {
+                          const q = questions[idx];
+                          if (!q) return null;
+                          const isAnswered = Boolean(answers[q._id]);
+                          const isReview = Boolean(markedForReview[q._id]);
+                          const isCurrent = currentIdx === idx;
+
+                          let btnStyle = 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100';
+                          if (isCurrent) {
+                            btnStyle = 'bg-blue-600 text-white font-black ring-2 ring-blue-500/50 shadow-sm';
+                          } else if (isReview) {
+                            btnStyle = 'bg-amber-400 text-slate-950 font-bold border-amber-500 shadow-2xs';
+                          } else if (isAnswered) {
+                            btnStyle = 'bg-emerald-500 text-white font-bold border-emerald-600 shadow-2xs';
+                          }
+
+                          return (
+                            <button
+                              key={q._id || idx}
+                              type="button"
+                              onClick={() => setCurrentIdx(idx)}
+                              className={`h-8 rounded-lg border text-xs flex items-center justify-center transition-all ${btnStyle}`}
+                            >
+                              {idx + 1}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Single Section Standard Numbers Grid */
+              <div className="grid grid-cols-5 gap-2 pt-1">
+                {questions.map((q, idx) => {
+                  const isAnswered = Boolean(answers[q._id]);
+                  const isReview = Boolean(markedForReview[q._id]);
+                  const isCurrent = currentIdx === idx;
+
+                  let btnStyle = 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200';
+                  if (isCurrent) {
+                    btnStyle = 'bg-blue-600 text-white font-black ring-2 ring-blue-500/50 shadow-sm';
+                  } else if (isReview) {
+                    btnStyle = 'bg-amber-400 text-slate-950 font-bold border-amber-500 shadow-2xs';
+                  } else if (isAnswered) {
+                    btnStyle = 'bg-emerald-500 text-white font-bold border-emerald-600 shadow-2xs';
+                  }
+
+                  return (
+                    <button
+                      key={q._id || idx}
+                      type="button"
+                      onClick={() => setCurrentIdx(idx)}
+                      className={`h-9 rounded-xl border text-xs flex items-center justify-center transition-all ${btnStyle}`}
+                    >
+                      {idx + 1}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <Button
               size="md"
@@ -1456,7 +1616,13 @@ export const TakeAssessmentPage = () => {
               variant="outline"
               onClick={async () => {
                 try {
-                  await api.abandonAssessment({ assessmentId: id });
+                  await api.abandonAssessment({
+                    assessmentId: id,
+                    violationsCount: violationsCountRef.current || violationsCount || 0,
+                    proctoringLogs: proctoringLogs,
+                    submissionReason: 'Voluntarily Abandoned by Candidate Before Completion',
+                    timeSpentSeconds: Math.max(1, Math.round((Date.now() - startTime) / 1000))
+                  });
                 } catch (e) {
                   console.error('Error abandoning assessment:', e);
                 }

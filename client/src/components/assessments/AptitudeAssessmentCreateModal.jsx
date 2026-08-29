@@ -552,7 +552,14 @@ export const AptitudeAssessmentCreateModal = ({
                 label="Aptitude Category *"
                 options={APTITUDE_CATEGORIES}
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => {
+                  const newCat = e.target.value;
+                  setCategory(newCat);
+                  if (newCat === 'Mix Assessment' && targetQuestionCount < 15) {
+                    setTargetQuestionCount(30);
+                    setTimeLimitMinutes(30);
+                  }
+                }}
               />
 
               <div className="space-y-1">
@@ -573,6 +580,19 @@ export const AptitudeAssessmentCreateModal = ({
                 )}
               </div>
             </div>
+
+            {/* Mix Assessment Helper Banner */}
+            {category === 'Mix Assessment' && (
+              <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl flex items-start gap-3 text-xs shadow-2xs">
+                <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-extrabold text-indigo-950 block">Comprehensive Aptitude Mix Assessment</span>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
+                    Creates a balanced test distributing questions across <strong>Quantitative Aptitude</strong>, <strong>Logical Reasoning</strong>, and <strong>Verbal Ability</strong>. Recommended for full 30-question placement mock drives.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Assessment Title & Description */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

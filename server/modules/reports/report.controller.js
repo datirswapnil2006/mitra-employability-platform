@@ -228,12 +228,14 @@ exports.exportDepartmentReport = async (req, res) => {
         'Total Marks',
         'Percentage (%)',
         'Result Status',
-        'Submission Reason',
-        'Proctoring Strikes',
-        'Tab Switch Count',
-        'Second Person Count',
-        'Voice/Speech Count',
-        'Proctoring Audit Proof & Log Summary',
+        'Exact Submission / Termination Reason',
+        'Total Proctoring Strikes',
+        'Tab Switch Strikes',
+        'Second Person Strikes',
+        'Voice / Speech Strikes',
+        'Mobile / Device Strikes',
+        'Camera Proof Photos',
+        'Proctoring Proof & Violation Audit Trail',
         'Time Spent (Sec)',
         'Attempt Date & Time'
       ];
@@ -263,19 +265,33 @@ exports.exportDepartmentReport = async (req, res) => {
         const tabSwitchCount = logs.filter((l) => l.type === 'TAB_SWITCH' || l.type === 'WINDOW_BLUR').length;
         const secondPersonCount = logs.filter((l) => l.type === 'SECOND_PERSON_DETECTED').length;
         const voiceCount = logs.filter((l) => l.type === 'VOICE_DETECTED').length;
+        const deviceCount = logs.filter((l) => l.type === 'MOBILE_DETECTED' || l.type === 'DEVICE_DETECTED').length;
+        const snapshotCount = logs.filter((l) => Boolean(l.snapshot)).length;
 
-        let submissionReason = 'Submitted Normally by Candidate';
-        if (a.isAbandoned) {
-          if (a.violationsCount >= 3) {
-            submissionReason = 'Auto-Terminated (3 Proctoring Strikes Exceeded)';
+        // Exact reason of submission / termination
+        let exactSubmissionReason = a.submissionReason;
+        if (!exactSubmissionReason || exactSubmissionReason === 'Normal Submission' || exactSubmissionReason === 'Submitted Normally by Candidate') {
+          if (a.isAbandoned || a.violationsCount >= 3) {
+            const lastViolation = logs[logs.length - 1];
+            const triggerDetail = lastViolation ? `(${lastViolation.type.replace(/_/g, ' ')})` : '';
+            exactSubmissionReason = a.violationsCount >= 3
+              ? `Auto-Terminated: 3 Proctoring Strikes Exceeded ${triggerDetail}`.trim()
+              : 'Abandoned / Window Closed Before Submission';
           } else {
-            submissionReason = 'Abandoned / Left Window Before Submission';
+            exactSubmissionReason = logs.length > 0
+              ? `Submitted Normally by Candidate (${logs.length} Warning(s) Logged)`
+              : 'Submitted Normally by Candidate (Clean Examination)';
           }
         }
 
-        const logSummary = logs.length > 0
-          ? logs.map((l, i) => `${i + 1}. [${new Date(l.timestamp).toLocaleTimeString()}] ${l.type}: ${l.details}${l.snapshot ? ' [Snapshot Evidence Stored]' : ''}`).join(' | ')
-          : 'Clean Examination (Zero Violations)';
+        // Detailed proctoring proof with exact timestamps, violation types, details, and camera snapshot indicators
+        const detailedProofLog = logs.length > 0
+          ? logs.map((l, i) => {
+              const timeStr = l.timestamp ? new Date(l.timestamp).toLocaleTimeString('en-IN') : 'N/A';
+              const snapIndicator = l.snapshot ? ' [Camera Screenshot Evidence Captured]' : '';
+              return `${i + 1}. [${timeStr}] ${l.type}: ${l.details}${snapIndicator}`;
+            }).join(' | ')
+          : 'Clean Examination (Zero Violations Detected)';
 
         return [
           a._id.toString(),
@@ -293,12 +309,14 @@ exports.exportDepartmentReport = async (req, res) => {
           a.totalMarks,
           `${a.percentage}%`,
           a.status,
-          submissionReason,
-          a.violationsCount || 0,
+          exactSubmissionReason,
+          a.violationsCount || logs.length || 0,
           tabSwitchCount,
           secondPersonCount,
           voiceCount,
-          logSummary,
+          deviceCount,
+          snapshotCount > 0 ? `Captured (${snapshotCount} Frames)` : 'None',
+          detailedProofLog,
           a.timeSpentSeconds || 0,
           a.attemptedAt ? new Date(a.attemptedAt).toLocaleString('en-IN') : 'N/A'
         ];
@@ -311,7 +329,7 @@ exports.exportDepartmentReport = async (req, res) => {
       }
 
       const worksheet = workbook.addWorksheet(`Assessments_${department.substring(0, 20)}`);
-      worksheet.mergeCells('A1:W2');
+      worksheet.mergeCells('A1:Y2');
       const titleCell = worksheet.getCell('A1');
       titleCell.value = `MITRA EMPLOYABILITY PORTAL — ASSESSMENT ATTEMPTS & PROCTORING AUDIT (${department} | Batch: ${batch})`;
       titleCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FFFFFF' } };
@@ -334,7 +352,7 @@ exports.exportDepartmentReport = async (req, res) => {
         row.eachCell((cell, colNum) => {
           cell.alignment = {
             vertical: 'middle',
-            horizontal: colNum === 2 || colNum === 3 || colNum === 8 || colNum === 21 ? 'left' : 'center'
+            horizontal: colNum === 2 || colNum === 3 || colNum === 8 || colNum === 16 || colNum === 23 ? 'left' : 'center'
           };
         });
       });
@@ -342,8 +360,8 @@ exports.exportDepartmentReport = async (req, res) => {
       worksheet.columns.forEach((col) => { col.width = 18; });
       worksheet.getColumn(2).width = 16; // ERP Number
       worksheet.getColumn(8).width = 24; // Title
-      worksheet.getColumn(16).width = 30; // Submission Reason
-      worksheet.getColumn(21).width = 45; // Proctoring Log Summary
+      worksheet.getColumn(16).width = 38; // Submission Reason
+      worksheet.getColumn(23).width = 50; // Proctoring Log Summary
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}.xlsx"`);

@@ -17,7 +17,8 @@ export const MODULE_CATEGORIES = {
   Aptitude: [
     { id: 'Quantitative', label: 'Quantitative Aptitude' },
     { id: 'Reasoning', label: 'Logical Reasoning' },
-    { id: 'Verbal', label: 'Verbal Ability' }
+    { id: 'Verbal', label: 'Verbal Ability' },
+    { id: 'Mix Assessment', label: 'Mix Assessment' }
   ],
   Domain: OFFICIAL_DEPARTMENTS.map((dept) => ({ id: dept, label: dept })),
   'Domain Knowledge': OFFICIAL_DEPARTMENTS.map((dept) => ({ id: dept, label: dept })),

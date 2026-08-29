@@ -108,6 +108,7 @@ const assessmentAttemptSchema = new mongoose.Schema({
   },
   violationsCount: { type: Number, default: 0 },
   isAbandoned: { type: Boolean, default: false },
+  submissionReason: { type: String, default: 'Submitted Normally by Candidate' },
   proctoringLogs: [{
     type: { type: String },
     timestamp: { type: Date, default: Date.now },

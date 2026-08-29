@@ -137,6 +137,8 @@ export const StudentAssessmentsPage = () => {
         ? 'Logical Reasoning'
         : activeSubfilter === 'Verbal' || activeSubfilter === 'Verbal Ability'
         ? 'Verbal Ability'
+        : activeSubfilter === 'Mix Assessment' || activeSubfilter === 'Mix'
+        ? 'Mix Assessment'
         : activeSubfilter;
     return APTITUDE_TOPICS[fullCat] || [];
   }, [isAptitudeModule, activeSubfilter]);

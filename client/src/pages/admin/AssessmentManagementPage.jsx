@@ -64,6 +64,8 @@ export const AssessmentManagementPage = () => {
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [previewAssessment, setPreviewAssessment] = useState(null);
+  const [previewInitialTab, setPreviewInitialTab] = useState('inspector');
+  const [previewAutoStartSim, setPreviewAutoStartSim] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [assessmentToDelete, setAssessmentToDelete] = useState(null);
 
@@ -422,12 +424,31 @@ export const AssessmentManagementPage = () => {
               <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
                 <Button
                   size="sm"
-                  variant="primary"
+                  variant="outline"
                   icon={Eye}
-                  onClick={() => setPreviewAssessment(item)}
-                  className="flex-1 justify-center shadow-xs"
+                  onClick={() => {
+                    setPreviewAssessment(item);
+                    setPreviewInitialTab('inspector');
+                    setPreviewAutoStartSim(false);
+                  }}
+                  className="flex-1 justify-center shadow-2xs text-xs"
                 >
-                  Preview Test
+                  Review
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Play}
+                  onClick={() => {
+                    setPreviewAssessment(item);
+                    setPreviewInitialTab('simulator');
+                    setPreviewAutoStartSim(true);
+                  }}
+                  className="flex-1 justify-center shadow-xs text-xs bg-indigo-600 hover:bg-indigo-700 font-bold"
+                  title="Simulate candidate test-taking experience"
+                >
+                  Simulate View
                 </Button>
 
                 <button
@@ -436,7 +457,7 @@ export const AssessmentManagementPage = () => {
                     setAssessmentToDelete(item);
                     setDeleteConfirmOpen(true);
                   }}
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
                   title="Delete Assessment"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -590,6 +611,8 @@ export const AssessmentManagementPage = () => {
         isOpen={Boolean(previewAssessment)}
         onClose={() => setPreviewAssessment(null)}
         assessment={previewAssessment}
+        initialTab={previewInitialTab}
+        autoStartSim={previewAutoStartSim}
         onStatusChange={(updated) => {
           queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
           setPreviewAssessment(updated);

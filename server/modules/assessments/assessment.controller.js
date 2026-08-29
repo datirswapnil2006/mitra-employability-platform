@@ -135,10 +135,17 @@ exports.getAssessmentById = async (req, res) => {
   }
 };
 
-// Record Abandoned Assessment Attempt (locks for 24 hours)
+// Record Abandoned / Terminated Assessment Attempt (locks for 24 hours)
 exports.abandonAssessment = async (req, res) => {
   try {
-    const { assessmentId } = req.body;
+    const {
+      assessmentId,
+      violationsCount = 1,
+      proctoringLogs = [],
+      submissionReason = '',
+      timeSpentSeconds = 0,
+      answers = []
+    } = req.body;
     const userId = req.user.id || req.user._id;
 
     const assessment = await Assessment.findById(assessmentId);
@@ -147,6 +154,22 @@ exports.abandonAssessment = async (req, res) => {
     }
 
     const totalQuestions = assessment.questions?.length || 1;
+    const vCount = parseInt(violationsCount, 10) || 1;
+
+    let finalReason = submissionReason;
+    if (!finalReason) {
+      finalReason = vCount >= 3
+        ? 'Auto-Terminated: 3 Proctoring Strikes Reached'
+        : 'Candidate abandoned assessment before submission';
+    }
+
+    let logs = Array.isArray(proctoringLogs) && proctoringLogs.length > 0 ? proctoringLogs : [
+      {
+        type: 'TEST_ABANDONED',
+        timestamp: new Date(),
+        details: `${finalReason}. 24-hour retake cooldown enforced.`
+      }
+    ];
 
     const attempt = await AssessmentAttempt.create({
       user: userId,
@@ -158,24 +181,19 @@ exports.abandonAssessment = async (req, res) => {
       percentage: 0,
       status: 'FAILED',
       isAbandoned: true,
-      timeSpentSeconds: 0,
-      answers: [],
+      submissionReason: finalReason,
+      timeSpentSeconds: parseInt(timeSpentSeconds, 10) || 0,
+      answers: Array.isArray(answers) ? answers : [],
       categoryBreakdown: { mcq: '0/0', sql: '0/0', conceptual: '0/0', output: '0/0', coding: '0/0' },
-      violationsCount: 1,
-      proctoringLogs: [
-        {
-          type: 'TEST_ABANDONED',
-          timestamp: new Date(),
-          details: 'Candidate abandoned assessment before submission. 24-hour retake cooldown enforced.'
-        }
-      ]
+      violationsCount: vCount,
+      proctoringLogs: logs
     });
 
     const unlockTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     res.json({
       success: true,
-      message: 'Assessment marked as abandoned. You can retake this assessment in 24 hours.',
+      message: 'Assessment marked as abandoned/terminated. You can retake this assessment in 24 hours.',
       lockedUntil: unlockTime,
       attempt
     });
@@ -187,8 +205,15 @@ exports.abandonAssessment = async (req, res) => {
 // Submit assessment answers & auto-grade attempt
 exports.submitAssessment = async (req, res) => {
   try {
-    const { assessmentId, timeSpentSeconds, answers, violationsCount = 0, proctoringLogs = [] } = req.body;
-    const userId = req.user.id;
+    const {
+      assessmentId,
+      timeSpentSeconds,
+      answers,
+      violationsCount = 0,
+      proctoringLogs = [],
+      submissionReason = 'Submitted Normally by Candidate'
+    } = req.body;
+    const userId = req.user.id || req.user._id;
 
     const assessment = await Assessment.findById(assessmentId);
     if (!assessment) {
@@ -273,6 +298,7 @@ exports.submitAssessment = async (req, res) => {
       percentage,
       status,
       attemptNumber,
+      submissionReason: submissionReason || 'Submitted Normally by Candidate',
       timeSpentSeconds: timeSpentSeconds || 0,
       answers: gradedAnswers,
       categoryBreakdown,
@@ -391,7 +417,11 @@ exports.extractPdfQuestions = async (req, res) => {
       questions
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('[PDF AI Controller Error]:', err);
+    res.status(500).json({
+      success: false,
+      message: 'PDF extraction is temporarily unavailable. Please try again later.'
+    });
   }
 };
 

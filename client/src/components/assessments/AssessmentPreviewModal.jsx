@@ -33,22 +33,27 @@ import {
   ToggleLeft,
   ToggleRight,
   HelpCircle,
-  Layers
+  Layers,
+  Calculator,
+  Brain
 } from 'lucide-react';
+import { getAssessmentSections } from '../../utils/assessmentSections';
 
 export const AssessmentPreviewModal = ({
   isOpen,
   onClose,
   assessment,
-  onStatusChange
+  onStatusChange,
+  initialTab = 'inspector',
+  autoStartSim = false
 }) => {
-  const [activeTab, setActiveTab] = useState('inspector'); // 'inspector' | 'simulator'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'inspector' | 'simulator'
   const [selectedQuestionIdx, setSelectedQuestionIdx] = useState(0);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [localAssessment, setLocalAssessment] = useState(assessment);
 
   // Simulator State
-  const [simStarted, setSimStarted] = useState(false);
+  const [simStarted, setSimStarted] = useState(autoStartSim);
   const [simQuestionIdx, setSimQuestionIdx] = useState(0);
   const [simAnswers, setSimAnswers] = useState({});
   const [simMarked, setSimMarked] = useState({});
@@ -59,11 +64,14 @@ export const AssessmentPreviewModal = ({
   useEffect(() => {
     if (isOpen && assessment) {
       setLocalAssessment(assessment);
-      setActiveTab('inspector');
+      setActiveTab(initialTab || 'inspector');
       setSelectedQuestionIdx(0);
       resetSimulator(assessment);
+      if (autoStartSim) {
+        setSimStarted(true);
+      }
     }
-  }, [isOpen, assessment]);
+  }, [isOpen, assessment, initialTab, autoStartSim]);
 
   const resetSimulator = (testData) => {
     const test = testData || localAssessment;
@@ -99,6 +107,7 @@ export const AssessmentPreviewModal = ({
   const currentQ = questions[selectedQuestionIdx] || questions[0];
   const isProctored = localAssessment.assessmentMode === 'PROCTORED';
   const proctorSettings = localAssessment.proctoringSettings || {};
+  const sections = getAssessmentSections(questions, localAssessment);
 
   // Status Toggle (Draft <-> Published)
   const handleToggleStatus = async () => {
@@ -839,6 +848,57 @@ export const AssessmentPreviewModal = ({
                   </div>
                 </div>
 
+                {/* Section Navigation Tabs for Mixed / Section-wise Assessments in Simulation */}
+                {sections.length > 1 && (
+                  <div className="bg-white rounded-2xl border border-slate-200/90 p-2.5 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-1.5 shrink-0 flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-indigo-600" /> Sections:
+                        </span>
+                        {sections.map((sec) => {
+                          const isSecActive = (sections.find((s) => s.questionIndices.includes(simQuestionIdx)) || sections[0])?.id === sec.id;
+                          const secTotal = sec.questionIndices.length;
+                          const secAnswered = sec.questionIndices.filter((qIdx) => Boolean(simAnswers[qIdx])).length;
+                          const isCompleted = secAnswered === secTotal && secTotal > 0;
+
+                          return (
+                            <button
+                              key={sec.id}
+                              type="button"
+                              onClick={() => setSimQuestionIdx(sec.startIndex)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                                isSecActive
+                                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20 ring-2 ring-indigo-600/30'
+                                  : isCompleted
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-100'
+                                  : 'bg-slate-50 text-slate-700 border border-slate-200/80 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span>{sec.name}</span>
+                              <span
+                                className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                                  isSecActive
+                                    ? 'bg-white/20 text-white'
+                                    : isCompleted
+                                    ? 'bg-emerald-200/80 text-emerald-900'
+                                    : 'bg-slate-200/80 text-slate-700'
+                                }`}
+                              >
+                                {secAnswered}/{secTotal}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="hidden md:flex items-center gap-1.5 px-2 text-[10px] font-semibold text-slate-500 shrink-0">
+                        <span>Current Section: <strong className="text-indigo-600">{(sections.find((s) => s.questionIndices.includes(simQuestionIdx)) || sections[0])?.name}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                   {/* Left: Active Question */}
                   <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
@@ -847,17 +907,23 @@ export const AssessmentPreviewModal = ({
                       if (!simQ) return null;
                       const chosenAnswer = simAnswers[simQuestionIdx] || '';
                       const isMarked = Boolean(simMarked[simQuestionIdx]);
+                      const currentSec = sections.find((s) => s.questionIndices.includes(simQuestionIdx)) || sections[0];
 
                       return (
                         <>
                           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
                                 Q{simQuestionIdx + 1}
                               </span>
                               <span className="text-xs font-bold text-slate-700">
                                 Question {simQuestionIdx + 1} of {questions.length}
                               </span>
+                              {currentSec && sections.length > 1 && (
+                                <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1">
+                                  <span>{currentSec.shortName}</span>
+                                </span>
+                              )}
                             </div>
 
                             <button
@@ -970,36 +1036,102 @@ export const AssessmentPreviewModal = ({
 
                   {/* Right: Question Palette */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-4">
-                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                      Question Palette
-                    </h4>
-
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {questions.map((_, idx) => {
-                        const isCurrent = simQuestionIdx === idx;
-                        const isAnswered = Boolean(simAnswers[idx]);
-                        const isMarked = Boolean(simMarked[idx]);
-
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setSimQuestionIdx(idx)}
-                            className={`h-8 rounded-lg text-xs font-bold transition-all border ${
-                              isCurrent
-                                ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-500/30'
-                                : isMarked
-                                ? 'bg-amber-400 text-slate-900 border-amber-500'
-                                : isAnswered
-                                ? 'bg-emerald-500 text-white border-emerald-600'
-                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                            }`}
-                          >
-                            {idx + 1}
-                          </button>
-                        );
-                      })}
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        Question Palette
+                      </h4>
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {questions.length} Items
+                      </span>
                     </div>
+
+                    {/* Section-Wise Palette Layout or Standard Grid */}
+                    {sections.length > 1 ? (
+                      <div className="space-y-3 pt-1">
+                        {sections.map((sec) => {
+                          const isSecActive = (sections.find((s) => s.questionIndices.includes(simQuestionIdx)) || sections[0])?.id === sec.id;
+                          const secAnswered = sec.questionIndices.filter((qIdx) => Boolean(simAnswers[qIdx])).length;
+
+                          return (
+                            <div
+                              key={sec.id}
+                              className={`rounded-xl border p-2.5 transition-all ${
+                                isSecActive
+                                  ? 'border-indigo-300 bg-indigo-50/40 ring-1 ring-indigo-400/30'
+                                  : 'border-slate-200/80 bg-slate-50/50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setSimQuestionIdx(sec.startIndex)}
+                                  className="text-[11px] font-black text-slate-800 flex items-center gap-1 hover:text-indigo-600 transition cursor-pointer"
+                                >
+                                  <span>{sec.shortName}</span>
+                                </button>
+                                <span className="text-[9px] font-black text-slate-600 bg-white px-1.5 py-0.5 rounded-full border border-slate-200">
+                                  {secAnswered} / {sec.questionIndices.length}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-5 gap-1">
+                                {sec.questionIndices.map((idx) => {
+                                  const isCurrent = simQuestionIdx === idx;
+                                  const isAnswered = Boolean(simAnswers[idx]);
+                                  const isMarked = Boolean(simMarked[idx]);
+
+                                  return (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => setSimQuestionIdx(idx)}
+                                      className={`h-7 rounded-md text-[11px] font-bold transition-all border ${
+                                        isCurrent
+                                          ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-500/30 shadow-xs'
+                                          : isMarked
+                                          ? 'bg-amber-400 text-slate-900 border-amber-500'
+                                          : isAnswered
+                                          ? 'bg-emerald-500 text-white border-emerald-600'
+                                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      {idx + 1}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {questions.map((_, idx) => {
+                          const isCurrent = simQuestionIdx === idx;
+                          const isAnswered = Boolean(simAnswers[idx]);
+                          const isMarked = Boolean(simMarked[idx]);
+
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setSimQuestionIdx(idx)}
+                              className={`h-8 rounded-lg text-xs font-bold transition-all border ${
+                                isCurrent
+                                  ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-500/30'
+                                  : isMarked
+                                  ? 'bg-amber-400 text-slate-900 border-amber-500'
+                                  : isAnswered
+                                  ? 'bg-emerald-500 text-white border-emerald-600'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                              }`}
+                            >
+                              {idx + 1}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     <div className="space-y-1.5 pt-2 border-t border-slate-100 text-[10px] text-slate-600">
                       <div className="flex items-center gap-2">
