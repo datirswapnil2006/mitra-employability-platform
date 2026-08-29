@@ -236,16 +236,19 @@ export const TakeAssessmentPage = () => {
 
     const interval = setInterval(async () => {
       const video = floatingVideoRef.current;
-      if (!video || video.readyState < 2) return;
+      if (!video || video.readyState < 2 || isTerminatedRef.current) return;
 
       try {
         if (detector) {
           const faces = await detector.detect(video);
-          if (faces && faces.length >= 2) {
+          const validFaces = (faces || []).filter(
+            (f) => f.boundingBox && f.boundingBox.width >= 24 && f.boundingBox.height >= 24
+          );
+          if (validFaces.length >= 2) {
             consecutiveMultiFaces += 1;
             if (consecutiveMultiFaces >= 2) {
               consecutiveMultiFaces = 0;
-              logViolation('SECOND_PERSON_DETECTED', `Multiple faces detected in camera feed (${faces.length} people present).`);
+              logViolation('SECOND_PERSON_DETECTED', `Second person detected in camera frame (${validFaces.length} people present).`);
             }
           } else {
             consecutiveMultiFaces = 0;
@@ -261,17 +264,20 @@ export const TakeAssessmentPage = () => {
           let leftSumX = 0;
           let rightSumX = 0;
 
-          for (let y = 10; y < 110; y += 4) {
-            for (let x = 10; x < 150; x += 4) {
+          for (let y = 10; y < 110; y += 3) {
+            for (let x = 10; x < 150; x += 3) {
               const idx = (y * 160 + x) * 4;
               const r = data[idx];
               const g = data[idx + 1];
               const b = data[idx + 2];
 
               // Skin tone heuristic check
-              const isSkin = (r > 95 && g > 40 && b > 20 &&
-                (Math.max(r, g, b) - Math.min(r, g, b) > 15) &&
-                Math.abs(r - g) > 15 && r > g && r > b);
+              const isSkin = (
+                r > 80 && g > 30 && b > 15 &&
+                r > g && r > b &&
+                (r - g) > 10 &&
+                (Math.max(r, g, b) - Math.min(r, g, b) > 12)
+              );
 
               if (isSkin) {
                 if (x < 75) {
@@ -289,11 +295,11 @@ export const TakeAssessmentPage = () => {
           if (leftSkinCount > 35 && rightSkinCount > 35) {
             const leftCentroid = leftSumX / leftSkinCount;
             const rightCentroid = rightSumX / rightSkinCount;
-            if (rightCentroid - leftCentroid > 45) {
+            if (rightCentroid - leftCentroid > 35) {
               consecutiveMultiFaces += 1;
               if (consecutiveMultiFaces >= 2) {
                 consecutiveMultiFaces = 0;
-                logViolation('SECOND_PERSON_DETECTED', 'Multiple people / second person detected in camera view.');
+                logViolation('SECOND_PERSON_DETECTED', 'Second person / multiple individuals detected in camera view.');
               }
             }
           } else {
@@ -303,7 +309,7 @@ export const TakeAssessmentPage = () => {
       } catch (err) {
         // Silent catch for image frame analysis
       }
-    }, 1200);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [testStarted, submitting, assessment, cameraStream]);
@@ -337,7 +343,7 @@ export const TakeAssessmentPage = () => {
         let consecutiveVoiceFrames = 0;
 
         voiceInterval = setInterval(() => {
-          if (!analyser) return;
+          if (!analyser || isTerminatedRef.current) return;
           analyser.getByteFrequencyData(buffer);
           let sum = 0;
           // Focus on vocal frequency bins (~100Hz to 3000Hz)
@@ -372,7 +378,7 @@ export const TakeAssessmentPage = () => {
 
           recognition.onresult = (event) => {
             const lastResult = event.results[event.results.length - 1];
-            if (lastResult && lastResult[0]) {
+            if (lastResult && lastResult[0] && !isTerminatedRef.current) {
               const text = lastResult[0].transcript.trim();
               if (text.length > 2) {
                 logViolation('VOICE_DETECTED', `Spoken dialogue detected: "${text}"`);
@@ -382,7 +388,7 @@ export const TakeAssessmentPage = () => {
 
           recognition.onerror = () => {};
           recognition.onend = () => {
-            if (testStarted && !submitting) {
+            if (testStarted && !submitting && !isTerminatedRef.current) {
               try { recognition.start(); } catch (e) {}
             }
           };
@@ -402,29 +408,33 @@ export const TakeAssessmentPage = () => {
     };
   }, [testStarted, submitting, assessment, cameraStream]);
 
+  const violationsCountRef = useRef(0);
+  const isTerminatedRef = useRef(false);
   const lastViolationTimeRef = useRef(0);
 
   const logViolation = async (type, details) => {
-    if (submitting) return;
+    if (submitting || isTerminatedRef.current) return;
 
     // Debounce violation events within 1.5 seconds to avoid double-counting visibilitychange + blur
     const now = Date.now();
     if (now - lastViolationTimeRef.current < 1500) return;
     lastViolationTimeRef.current = now;
 
-    const newCount = violationsCount + 1;
-    setViolationsCount(newCount);
+    violationsCountRef.current += 1;
+    const currentStrikes = violationsCountRef.current;
+    setViolationsCount(currentStrikes);
 
     const newLog = {
       type,
       timestamp: new Date(),
-      details: `${type}:${details} (Cheating attempt ${newCount}/3)`
+      details: `${type}: ${details} (Strike ${currentStrikes}/3)`
     };
 
     setProctoringLogs((prev) => [...prev, newLog]);
 
-    if (newCount >= 3) {
+    if (currentStrikes >= 3) {
       // 3 CHEATING ATTEMPTS REACHED: IMMEDIATELY TERMINATE AND LOCK FOR 24 HOURS
+      isTerminatedRef.current = true;
       setTestStarted(false);
       setTabWarningModalOpen(false);
       setConfirmSubmitOpen(false);
@@ -444,7 +454,7 @@ export const TakeAssessmentPage = () => {
       try {
         const res = await api.abandonAssessment({ assessmentId: id });
         setLockedInfo({
-          message: 'Assessment terminated due to repeated proctoring violations (3 cheating attempts recorded). Retake cooldown enforced for 24 hours.',
+          message: 'Assessment terminated due to repeated proctoring violations (3 cheating strikes recorded). You are restricted from retaking for 24 hours.',
           lockedUntil: res.lockedUntil || new Date(Date.now() + 24 * 60 * 60 * 1000),
           remainingMinutes: 1440,
           isAbandoned: true
@@ -452,14 +462,14 @@ export const TakeAssessmentPage = () => {
       } catch (err) {
         console.error('Error locking test on 3 violations:', err);
         setLockedInfo({
-          message: 'Assessment terminated due to repeated proctoring violations (3 cheating attempts recorded). You can retake this assessment in 24 hours.',
+          message: 'Assessment terminated due to repeated proctoring violations (3 cheating strikes recorded). You are restricted from retaking for 24 hours.',
           lockedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
           remainingMinutes: 1440,
           isAbandoned: true
         });
       }
     } else {
-      // Show Warning Modal for Violation 1 or 2
+      // Show Warning Modal for Strike 1 or 2
       setTabWarningModalOpen(true);
     }
   };
