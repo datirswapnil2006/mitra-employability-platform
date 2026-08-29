@@ -467,132 +467,96 @@ export const AdminSupportPage = () => {
       </div>
 
       {/* 1. Dashboard Summary KPI Cards (Interactive Filter Triggers) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        <div
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 items-stretch">
+        <StatCard
+          title="Total Tickets"
+          value={stats.total || 0}
+          icon={LifeBuoy}
+          color="indigo"
+          subtitle="All student queries"
           onClick={() => {
             setStatus('All');
             setCategory('All');
             setPage(1);
           }}
-          className={`cursor-pointer transition-all duration-200 rounded-2xl ${
-            status === 'All' && category === 'All'
-              ? 'ring-2 ring-blue-500 shadow-md scale-[1.02]'
-              : 'hover:scale-[1.01]'
-          }`}
-        >
-          <StatCard
-            title="Total Tickets"
-            value={stats.total || 0}
-            icon={LifeBuoy}
-            color="indigo"
-            subtitle="All student queries"
-          />
-        </div>
+          active={status === 'All' && category === 'All'}
+          activeColor="blue"
+        />
 
-        <div
+        <StatCard
+          title="New"
+          value={stats.new || 0}
+          icon={Clock}
+          color="sky"
+          subtitle="Pending triage"
           onClick={() => {
             setStatus('New');
             setCategory('All');
             setPage(1);
           }}
-          className={`cursor-pointer transition-all duration-200 rounded-2xl ${
-            status === 'New'
-              ? 'ring-2 ring-blue-500 shadow-md scale-[1.02]'
-              : 'hover:scale-[1.01]'
-          }`}
-        >
-          <StatCard
-            title="New"
-            value={stats.new || 0}
-            icon={Clock}
-            color="sky"
-            subtitle="Pending triage"
-          />
-        </div>
+          active={status === 'New'}
+          activeColor="blue"
+        />
 
-        <div
+        <StatCard
+          title="In Review"
+          value={stats.inReview || 0}
+          icon={AlertCircle}
+          color="amber"
+          subtitle="Investigating"
           onClick={() => {
             setStatus('In Review');
             setCategory('All');
             setPage(1);
           }}
-          className={`cursor-pointer transition-all duration-200 rounded-2xl ${
-            status === 'In Review'
-              ? 'ring-2 ring-amber-500 shadow-md scale-[1.02]'
-              : 'hover:scale-[1.01]'
-          }`}
-        >
-          <StatCard
-            title="In Review"
-            value={stats.inReview || 0}
-            icon={AlertCircle}
-            color="amber"
-            subtitle="Investigating"
-          />
-        </div>
+          active={status === 'In Review'}
+          activeColor="amber"
+        />
 
-        <div
+        <StatCard
+          title="Resolved"
+          value={stats.resolved || 0}
+          icon={CheckCircle2}
+          color="emerald"
+          subtitle="Closed tickets"
           onClick={() => {
             setStatus('Resolved');
             setCategory('All');
             setPage(1);
           }}
-          className={`cursor-pointer transition-all duration-200 rounded-2xl ${
-            status === 'Resolved'
-              ? 'ring-2 ring-emerald-500 shadow-md scale-[1.02]'
-              : 'hover:scale-[1.01]'
-          }`}
-        >
-          <StatCard
-            title="Resolved"
-            value={stats.resolved || 0}
-            icon={CheckCircle2}
-            color="emerald"
-            subtitle="Closed tickets"
-          />
-        </div>
+          active={status === 'Resolved'}
+          activeColor="emerald"
+        />
 
-        <div
+        <StatCard
+          title="Suggestions"
+          value={stats.suggestions || 0}
+          icon={Sparkles}
+          color="indigo"
+          subtitle="Ideas & features"
           onClick={() => {
             setCategory('Suggestion / Improvement');
             setStatus('All');
             setPage(1);
           }}
-          className={`cursor-pointer transition-all duration-200 rounded-2xl ${
-            category === 'Suggestion / Improvement'
-              ? 'ring-2 ring-indigo-500 shadow-md scale-[1.02]'
-              : 'hover:scale-[1.01]'
-          }`}
-        >
-          <StatCard
-            title="Suggestions"
-            value={stats.suggestions || 0}
-            icon={Sparkles}
-            color="indigo"
-            subtitle="Ideas & features"
-          />
-        </div>
+          active={category === 'Suggestion / Improvement'}
+          activeColor="indigo"
+        />
 
-        <div
+        <StatCard
+          title="Problems"
+          value={stats.problems || 0}
+          icon={Wrench}
+          color="rose"
+          subtitle="Bugs & glitches"
           onClick={() => {
             setCategory('Technical Problem');
             setStatus('All');
             setPage(1);
           }}
-          className={`cursor-pointer transition-all duration-200 rounded-2xl ${
-            category === 'Technical Problem'
-              ? 'ring-2 ring-rose-500 shadow-md scale-[1.02]'
-              : 'hover:scale-[1.01]'
-          }`}
-        >
-          <StatCard
-            title="Problems"
-            value={stats.problems || 0}
-            icon={Wrench}
-            color="rose"
-            subtitle="Bugs & glitches"
-          />
-        </div>
+          active={category === 'Technical Problem'}
+          activeColor="rose"
+        />
       </div>
 
       {/* 2. Department-Wise & Batch-Wise Excel Export Hub (Collapsible / Dynamic) */}

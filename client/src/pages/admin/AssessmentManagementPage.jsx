@@ -16,6 +16,7 @@ import EmptyState from '../../components/EmptyState';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import AptitudeAssessmentCreateModal from '../../components/assessments/AptitudeAssessmentCreateModal';
+import AssessmentPreviewModal from '../../components/assessments/AssessmentPreviewModal';
 import {
   TRAINING_MODULES,
   MODULE_CATEGORIES,
@@ -30,6 +31,7 @@ import {
   Trash2,
   Edit2,
   Play,
+  Eye,
   FileCheck,
   CheckCircle2,
   AlertCircle,
@@ -38,6 +40,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   FileUp,
+  FileText,
   BookOpen
 } from 'lucide-react';
 
@@ -60,6 +63,7 @@ export const AssessmentManagementPage = () => {
   const [isAptitudeModalOpen, setIsAptitudeModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [previewAssessment, setPreviewAssessment] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [assessmentToDelete, setAssessmentToDelete] = useState(null);
 
@@ -346,6 +350,26 @@ export const AssessmentManagementPage = () => {
                         <ShieldCheck className="w-3 h-3" /> Normal
                       </span>
                     ) : null}
+
+                    {item.isAIGenerated && (
+                      <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-purple-500" />
+                        {item.aiProvider === 'gemini'
+                          ? 'Gemini 3.6 Flash'
+                          : item.aiProvider === 'groq'
+                          ? 'Groq Cloud'
+                          : item.aiProvider === 'huggingface'
+                          ? 'Hugging Face'
+                          : 'AI Generated'}
+                      </span>
+                    )}
+
+                    {item.creationMethod === 'PDF_EXTRACTION' && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/60 flex items-center gap-1">
+                        <FileText className="w-3 h-3 text-indigo-500" />
+                        PDF Extracted
+                      </span>
+                    )}
                   </div>
 
                   <StatusBadge status={item.status || 'published'} />
@@ -399,8 +423,8 @@ export const AssessmentManagementPage = () => {
                 <Button
                   size="sm"
                   variant="primary"
-                  icon={Play}
-                  onClick={() => navigate(`/student/take-assessment/${item._id}`)}
+                  icon={Eye}
+                  onClick={() => setPreviewAssessment(item)}
                   className="flex-1 justify-center shadow-xs"
                 >
                   Preview Test
@@ -454,33 +478,6 @@ export const AssessmentManagementPage = () => {
         title={`AI Assessment Generator (${currentModule})`}
       >
         <form onSubmit={handleGenerateAI} className="space-y-4">
-          {/* AI Provider */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">Select AI LLM Engine *</label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {AI_PROVIDERS.map((provider) => {
-                const isSelected = aiForm.provider === provider.id;
-                return (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    onClick={() => setAiForm({ ...aiForm, provider: provider.id })}
-                    className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between ${
-                      isSelected
-                        ? 'bg-indigo-50 border-indigo-600 text-indigo-950 font-bold ring-2 ring-indigo-500/20'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-extrabold">{provider.name}</span>
-                      <Bot className={`w-4 h-4 ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`} />
-                    </div>
-                    <span className="text-[10px] text-slate-500">{provider.model}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
@@ -586,6 +583,22 @@ export const AssessmentManagementPage = () => {
           });
         }}
         initialCategory={activeCategory !== 'All' ? activeCategory : 'Quantitative Aptitude'}
+      />
+
+      {/* MODAL: Assessment Preview & Review */}
+      <AssessmentPreviewModal
+        isOpen={Boolean(previewAssessment)}
+        onClose={() => setPreviewAssessment(null)}
+        assessment={previewAssessment}
+        onStatusChange={(updated) => {
+          queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
+          setPreviewAssessment(updated);
+          setToast({
+            type: 'success',
+            title: 'Status Updated',
+            message: `Assessment status updated to ${updated.status}.`
+          });
+        }}
       />
 
       {/* Confirmation Dialog for Delete */}

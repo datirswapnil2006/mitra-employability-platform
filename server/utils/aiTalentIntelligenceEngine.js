@@ -1064,15 +1064,22 @@ Return ONLY a valid JSON array of ${count} objects with structure:
       let response = null;
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: prompt
         });
       } catch (gemErr) {
-        console.warn(`[Dynamic AI Question Gen Gemini]: gemini-2.5-flash retry (${gemErr.message}), trying gemini-1.5-flash...`);
-        response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: prompt
-        });
+        console.warn(`[Dynamic AI Question Gen Gemini]: gemini-3.6-flash retry (${gemErr.message}), trying gemini-2.5-flash...`);
+        try {
+          response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt
+          });
+        } catch (gemErr2) {
+          response = await ai.models.generateContent({
+            model: 'gemini-1.5-flash',
+            contents: prompt
+          });
+        }
       }
 
       const rawText = response?.text || '';
@@ -1493,14 +1500,21 @@ RULES:
       let response = null;
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: prompt
         });
       } catch (synthErr) {
-        response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: prompt
-        });
+        try {
+          response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt
+          });
+        } catch (synthErr2) {
+          response = await ai.models.generateContent({
+            model: 'gemini-1.5-flash',
+            contents: prompt
+          });
+        }
       }
 
       const text = (response.text || '').trim();

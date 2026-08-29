@@ -224,14 +224,21 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
       let response = null;
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: prompt
         });
       } catch (gemErr) {
-        response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: prompt
-        });
+        try {
+          response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt
+          });
+        } catch (gemErr2) {
+          response = await ai.models.generateContent({
+            model: 'gemini-1.5-flash',
+            contents: prompt
+          });
+        }
       }
       const cleaned = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleaned);
@@ -243,26 +250,30 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
 
   // Try Groq
   if (groqKey) {
-    try {
-      const res = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          model: 'llama-3.3-70b-versatile',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3
-        },
-        {
-          headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-          timeout: 12000
+    const groqModels = ['qwen/qwen3.6-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'llama-3.3-70b-versatile'];
+    for (const model of groqModels) {
+      try {
+        const res = await axios.post(
+          'https://api.groq.com/openai/v1/chat/completions',
+          {
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3
+          },
+          {
+            headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+            timeout: 12000
+          }
+        );
+        const raw = res.data?.choices?.[0]?.message?.content || '';
+        const cleanedGroq = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json/gi, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleanedGroq || '{}');
+        if (parsed.strengths && parsed.careerFit) {
+          return { ...parsed, aiProvider: 'groq' };
         }
-      );
-      const cleanedGroq = (res.data?.choices?.[0]?.message?.content || '').replace(/```json/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleanedGroq || '{}');
-      if (parsed.strengths && parsed.careerFit) {
-        return { ...parsed, aiProvider: 'groq' };
+      } catch (err) {
+        console.warn(`[Groq Psychometric ${model}]:`, err.message);
       }
-    } catch (err) {
-      console.warn('[Groq Psychometric]:', err.message);
     }
   }
 

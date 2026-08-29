@@ -493,7 +493,7 @@ export const AptitudeAssessmentCreateModal = ({
                   <div>
                     <div className="text-sm font-extrabold text-slate-900">Option 1 — AI Generated</div>
                     <p className="text-xs text-slate-500 font-normal mt-0.5">
-                      Generate high-standard questions using Google Gemini, Groq, or Hugging Face.
+                      Automatically generate high-standard questions, options, and explanations with AI.
                     </p>
                   </div>
                 </button>
@@ -519,36 +519,6 @@ export const AptitudeAssessmentCreateModal = ({
                 </button>
               </div>
             </div>
-
-            {/* AI Provider Selector (If AI Generated) */}
-            {creationMethod === 'AI_GENERATED' && (
-              <div className="space-y-2 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                <label className="block text-xs font-bold text-slate-700">Select AI LLM Engine *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {AI_PROVIDERS.map((provider) => {
-                    const isSelected = aiProvider === provider.id;
-                    return (
-                      <button
-                        key={provider.id}
-                        type="button"
-                        onClick={() => setAiProvider(provider.id)}
-                        className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                          isSelected
-                            ? 'bg-white border-blue-600 text-blue-950 font-bold ring-2 ring-blue-500/20'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-extrabold">{provider.name}</span>
-                          <Bot className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
-                        </div>
-                        <span className="text-[10px] text-slate-500">{provider.model}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* PDF Upload Box (If PDF Extraction) */}
             {creationMethod === 'PDF_EXTRACTION' && (

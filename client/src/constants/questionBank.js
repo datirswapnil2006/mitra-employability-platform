@@ -28,9 +28,9 @@ export const QUESTION_CATEGORIES = {
 };
 
 export const AI_PROVIDERS = [
-  { id: 'gemini', name: 'Google Gemini', model: 'Gemini 2.5 Flash', badge: 'Google AI' },
-  { id: 'groq', name: 'Groq Cloud', model: 'Llama 3.3 70B', badge: 'Ultra-Fast Groq' },
-  { id: 'huggingface', name: 'Hugging Face', model: 'Mistral / Llama 3', badge: 'Open Source HF' }
+  { id: 'gemini', name: 'Google Gemini', model: 'Gemini 3.6 Flash', badge: 'Google AI' },
+  { id: 'groq', name: 'Groq Cloud', model: 'Qwen / Llama 3', badge: 'Ultra-Fast Groq' },
+  { id: 'huggingface', name: 'Hugging Face', model: 'DeepSeek / Mistral', badge: 'Open Source HF' }
 ];
 
 export const QUESTION_DIFFICULTIES = ['Easy', 'Medium', 'Hard'];

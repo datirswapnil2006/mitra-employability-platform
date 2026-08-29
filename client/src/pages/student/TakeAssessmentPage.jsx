@@ -589,6 +589,8 @@ export const TakeAssessmentPage = () => {
 
   // 2. LIVE TEST ENGINE SCREEN
   const isTimeCritical = timeLeft < 120; // under 2 mins
+  const progressPercentage = questions.length > 0 ? Math.round(((currentIdx + 1) / questions.length) * 100) : 0;
+  const answeredPercentage = questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
 
   return (
     <div
@@ -598,108 +600,169 @@ export const TakeAssessmentPage = () => {
       onContextMenu={(e) => {
         if (isProctored && proctorSettings.copyPaste) e.preventDefault();
       }}
-      className="max-w-6xl mx-auto space-y-5 select-none"
+      className="max-w-7xl mx-auto space-y-5 select-none animate-in fade-in duration-300 pb-12"
     >
       {/* Top Examination HUD */}
-      <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-blue-400 bg-blue-950/80 px-2.5 py-0.5 rounded border border-blue-800/60">
-              {assessment.module} • {assessment.category}
-            </span>
-            {isProctored && (
-              <span className="text-[10px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800/60 flex items-center gap-1">
-                <ShieldAlert className="w-3 h-3" /> Proctored Mode
+      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 text-white rounded-3xl p-4 sm:p-6 shadow-xl border border-slate-800 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-300 bg-blue-900/60 px-2.5 py-0.5 rounded-md border border-blue-700/60">
+                {assessment.module} • {assessment.category}
               </span>
-            )}
-            <span className="text-xs text-slate-400 font-semibold">
-              Question {currentIdx + 1} of {questions.length}
-            </span>
+              {assessment.topic && (
+                <span className="text-[10px] font-bold text-violet-300 bg-violet-900/60 px-2.5 py-0.5 rounded-md border border-violet-700/60 flex items-center gap-1">
+                  <BookOpen className="w-3 h-3 text-violet-400" />
+                  {assessment.topic}
+                </span>
+              )}
+              {isProctored ? (
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-300 bg-rose-950/80 px-2.5 py-0.5 rounded-md border border-rose-800/80 flex items-center gap-1">
+                  <ShieldAlert className="w-3 h-3 text-rose-400" /> Proctored Examination
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-800/80 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Standard Assessment
+                </span>
+              )}
+            </div>
+            <h2 className="text-lg sm:text-xl font-black text-white tracking-tight truncate">
+              {assessment.title}
+            </h2>
           </div>
-          <h2 className="text-base sm:text-lg font-black text-white line-clamp-1">{assessment.title}</h2>
+
+          {/* Right Action & Continuous Countdown Timer */}
+          <div className="flex items-center gap-3 sm:gap-4 self-stretch sm:self-auto justify-between sm:justify-end">
+            <div
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl border font-mono font-black text-sm shadow-inner transition-all ${
+                isTimeCritical
+                  ? 'bg-rose-950/90 border-rose-600 text-rose-300 animate-pulse ring-2 ring-rose-500/40'
+                  : 'bg-slate-800/90 border-slate-700 text-amber-300'
+              }`}
+            >
+              <Clock className={`w-4 h-4 ${isTimeCritical ? 'text-rose-400' : 'text-amber-400'} shrink-0`} />
+              <div className="flex flex-col">
+                <span className="text-[9px] font-sans font-bold text-slate-400 uppercase leading-none">Remaining</span>
+                <span className="text-sm sm:text-base leading-tight mt-0.5">{formatTimer(timeLeft)}</span>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              variant="primary"
+              icon={Send}
+              onClick={() => setConfirmSubmitOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 font-bold shadow-md shadow-emerald-600/30 text-xs sm:text-sm px-4 py-2"
+            >
+              Submit Exam
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-          {/* Live Countdown Timer */}
-          <div
-            className={`flex items-center gap-2 px-4 py-2 rounded-2xl border font-mono font-black text-sm shadow-inner transition-colors ${
-              isTimeCritical
-                ? 'bg-rose-950/80 border-rose-600 text-rose-300 animate-pulse'
-                : 'bg-slate-800 border-slate-700 text-amber-300'
-            }`}
-          >
-            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>{formatTimer(timeLeft)}</span>
+        {/* Progress Bar Track */}
+        <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
+            <span>
+              Question <strong className="text-white">{currentIdx + 1}</strong> of <strong className="text-white">{questions.length}</strong>
+            </span>
+            <span>
+              <strong className="text-emerald-400">{answeredCount}</strong> answered ({answeredPercentage}%)
+            </span>
           </div>
-
-          <Button
-            size="sm"
-            variant="primary"
-            icon={Send}
-            onClick={() => setConfirmSubmitOpen(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 font-bold"
-          >
-            Submit Test
-          </Button>
+          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-blue-500 to-emerald-500 h-full rounded-full transition-all duration-300"
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
         </div>
       </div>
 
       {/* Copy/Paste Block Warning Toast */}
       {copyWarningToast && (
-        <div className="p-3 bg-rose-600 text-white text-xs rounded-2xl shadow-lg flex items-center justify-between font-bold animate-bounce">
+        <div className="p-3.5 bg-rose-600 text-white text-xs rounded-2xl shadow-xl flex items-center justify-between font-bold animate-bounce border border-rose-400">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>Copy/Paste is disabled during proctored assessments. Violation has been recorded.</span>
+            <span>Copy/Paste is restricted during proctored assessments. Violation has been recorded.</span>
           </div>
         </div>
       )}
 
       {/* Main Examination Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Question & Options (Span 2) */}
         <div className="lg:col-span-2 space-y-5">
           {currentQ && (
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6 flex flex-col justify-between min-h-[480px]">
-              <div className="space-y-4">
+            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-8 space-y-6 flex flex-col justify-between min-h-[500px]">
+              <div className="space-y-5">
                 {/* Question Info Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-xl bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center border border-blue-200/60">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                       Q{currentIdx + 1}
                     </span>
-                    <span className="text-xs font-bold text-slate-500">
-                      • {currentQ.difficulty || 'Medium'} ({currentQ.marks || 1} Mark)
+                    <span className="text-xs font-bold text-slate-700">
+                      Question {currentIdx + 1} of {questions.length}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        currentQ.difficulty === 'Easy'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : currentQ.difficulty === 'Hard'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}
+                    >
+                      {currentQ.difficulty || 'Medium'}
+                    </span>
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                      {currentQ.marks || 1} Mark{(currentQ.marks || 1) > 1 ? 's' : ''}
                     </span>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => handleToggleReview(currentQ._id)}
-                    className={`flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl border transition ${
+                    className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition-all ${
                       markedForReview[currentQ._id]
-                        ? 'bg-purple-50 text-purple-700 border-purple-300'
-                        : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                        ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    <Bookmark className="w-3.5 h-3.5 fill-current" />
+                    <Bookmark
+                      className={`w-3.5 h-3.5 ${
+                        markedForReview[currentQ._id] ? 'fill-amber-600 text-amber-600' : 'text-slate-400'
+                      }`}
+                    />
                     <span>{markedForReview[currentQ._id] ? 'Marked for Review' : 'Mark for Review'}</span>
                   </button>
                 </div>
 
                 {/* Question Text */}
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">
                   {currentQ.questionText}
                 </h3>
 
                 {/* Code snippet if present */}
                 {currentQ.codeSnippet && (
-                  <div className="bg-slate-950 text-emerald-400 p-4 rounded-2xl font-mono text-xs overflow-x-auto shadow-inner">
+                  <div className="bg-slate-950 text-emerald-400 p-4 rounded-2xl font-mono text-xs overflow-x-auto shadow-inner border border-slate-800">
                     <pre>{currentQ.codeSnippet}</pre>
+                  </div>
+                )}
+
+                {/* SQL Schema if present */}
+                {currentQ.schemaSql && (
+                  <div className="bg-slate-900 text-cyan-300 p-4 rounded-2xl font-mono text-xs overflow-x-auto shadow-inner border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block mb-1 uppercase font-sans">Schema SQL:</span>
+                    <pre>{currentQ.schemaSql}</pre>
                   </div>
                 )}
 
                 {/* Options List */}
                 <div className="space-y-3 pt-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Select the correct answer:
+                  </span>
                   {currentQ.options?.map((opt, oIdx) => {
                     const isSelected = answers[currentQ._id] === opt;
                     const letter = String.fromCharCode(65 + oIdx);
@@ -709,16 +772,16 @@ export const TakeAssessmentPage = () => {
                         onClick={() => handleSelectOption(currentQ._id, opt)}
                         className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between text-xs sm:text-sm ${
                           isSelected
-                            ? 'bg-blue-50 border-blue-600 text-blue-950 font-bold ring-2 ring-blue-500/20 shadow-xs'
-                            : 'bg-slate-50/60 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                            ? 'bg-blue-50/90 border-blue-600 text-blue-950 font-bold ring-2 ring-blue-500/20 shadow-xs'
+                            : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3.5">
                           <span
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                            className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs shrink-0 transition-colors ${
                               isSelected
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-slate-200 text-slate-600'
+                                ? 'bg-blue-600 text-white shadow-2xs'
+                                : 'bg-white border border-slate-200 text-slate-600'
                             }`}
                           >
                             {letter}
@@ -727,8 +790,8 @@ export const TakeAssessmentPage = () => {
                         </div>
 
                         <div
-                          className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
-                            isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
+                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
                           }`}
                         >
                           {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
@@ -739,14 +802,15 @@ export const TakeAssessmentPage = () => {
                 </div>
               </div>
 
-              {/* Bottom Nav Bar */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+              {/* Bottom Nav Action Bar */}
+              <div className="pt-5 mt-4 border-t border-slate-100 flex items-center justify-between gap-3">
                 <Button
                   size="sm"
                   variant="outline"
                   icon={ChevronLeft}
                   disabled={currentIdx === 0}
                   onClick={() => setCurrentIdx((prev) => prev - 1)}
+                  className="font-bold text-xs"
                 >
                   Previous
                 </Button>
@@ -755,7 +819,7 @@ export const TakeAssessmentPage = () => {
                   <button
                     type="button"
                     onClick={() => handleClearResponse(currentQ._id)}
-                    className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1 font-semibold transition"
+                    className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1.5 font-semibold transition py-1 px-2.5 rounded-lg hover:bg-rose-50"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Clear Selection</span>
@@ -768,8 +832,9 @@ export const TakeAssessmentPage = () => {
                   icon={ChevronRight}
                   disabled={currentIdx === questions.length - 1}
                   onClick={() => setCurrentIdx((prev) => prev + 1)}
+                  className="font-bold text-xs"
                 >
-                  Next Question
+                  {currentIdx === questions.length - 1 ? 'Last Question' : 'Save & Next'}
                 </Button>
               </div>
             </div>
@@ -790,7 +855,7 @@ export const TakeAssessmentPage = () => {
                 </div>
                 <Video className="w-3.5 h-3.5 text-slate-400" />
               </div>
-              <div className="w-full h-32 rounded-2xl bg-black overflow-hidden relative">
+              <div className="w-full h-32 rounded-2xl bg-black overflow-hidden relative border border-slate-800">
                 <video
                   ref={floatingVideoRef}
                   autoPlay
@@ -803,33 +868,38 @@ export const TakeAssessmentPage = () => {
           )}
 
           {/* Question Palette */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
-            <h4 className="font-extrabold text-sm text-slate-900 border-b border-slate-100 pb-3">
-              Question Navigation Palette
-            </h4>
+          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h4 className="font-extrabold text-sm text-slate-900">
+                Question Palette
+              </h4>
+              <span className="text-xs font-bold text-slate-400">
+                {questions.length} Items
+              </span>
+            </div>
 
             {/* Status Legend */}
-            <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-600">
+            <div className="grid grid-cols-2 gap-2.5 text-[11px] font-semibold text-slate-600 bg-slate-50 p-3 rounded-2xl border border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-md bg-emerald-600 shrink-0" />
+                <span className="w-3 h-3 rounded-md bg-emerald-500 shrink-0" />
                 <span>Answered ({answeredCount})</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-md bg-purple-600 shrink-0" />
-                <span>Marked for Review ({reviewCount})</span>
+                <span className="w-3 h-3 rounded-md bg-amber-400 shrink-0" />
+                <span>Review ({reviewCount})</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-md bg-blue-600 shrink-0" />
-                <span>Current Question</span>
+                <span className="w-3 h-3 rounded-md bg-blue-600 shrink-0" />
+                <span>Current</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-md bg-slate-100 border border-slate-300 shrink-0" />
+                <span className="w-3 h-3 rounded-md bg-slate-200 shrink-0" />
                 <span>Unanswered ({unansweredCount})</span>
               </div>
             </div>
 
             {/* Palette Numbers Grid */}
-            <div className="grid grid-cols-5 gap-2 pt-2">
+            <div className="grid grid-cols-5 gap-2 pt-1">
               {questions.map((q, idx) => {
                 const isAnswered = Boolean(answers[q._id]);
                 const isReview = Boolean(markedForReview[q._id]);
@@ -837,11 +907,11 @@ export const TakeAssessmentPage = () => {
 
                 let btnStyle = 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200';
                 if (isCurrent) {
-                  btnStyle = 'bg-blue-600 text-white font-black ring-2 ring-blue-400 shadow-sm';
+                  btnStyle = 'bg-blue-600 text-white font-black ring-2 ring-blue-500/50 shadow-sm';
                 } else if (isReview) {
-                  btnStyle = 'bg-purple-600 text-white font-bold shadow-xs';
+                  btnStyle = 'bg-amber-400 text-slate-950 font-bold border-amber-500 shadow-2xs';
                 } else if (isAnswered) {
-                  btnStyle = 'bg-emerald-600 text-white font-bold shadow-xs';
+                  btnStyle = 'bg-emerald-500 text-white font-bold border-emerald-600 shadow-2xs';
                 }
 
                 return (
@@ -849,7 +919,7 @@ export const TakeAssessmentPage = () => {
                     key={q._id || idx}
                     type="button"
                     onClick={() => setCurrentIdx(idx)}
-                    className={`h-10 rounded-xl border text-xs flex items-center justify-center transition-all ${btnStyle}`}
+                    className={`h-9 rounded-xl border text-xs flex items-center justify-center transition-all ${btnStyle}`}
                   >
                     {idx + 1}
                   </button>
@@ -862,7 +932,7 @@ export const TakeAssessmentPage = () => {
               variant="primary"
               icon={Send}
               onClick={() => setConfirmSubmitOpen(true)}
-              className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 font-bold"
+              className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 font-bold shadow-md shadow-emerald-600/20"
             >
               Submit Final Assessment
             </Button>
