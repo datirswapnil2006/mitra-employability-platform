@@ -415,5 +415,39 @@ exports.adminResetStudentPassword = async (req, res) => {
   }
 };
 
+// Get distinct graduation batches from registered students + default years up to max year
+exports.getDistinctBatches = async (req, res) => {
+  try {
+    const rawBatches = await StudentProfile.distinct('batch');
+    const validBatches = (rawBatches || [])
+      .filter((b) => b && String(b).trim().length > 0)
+      .map((b) => String(b).trim());
+
+    const currentYear = new Date().getFullYear();
+    let maxYear = currentYear + 4;
+    validBatches.forEach((b) => {
+      const num = parseInt(b, 10);
+      if (!isNaN(num) && num > maxYear) {
+        maxYear = num;
+      }
+    });
+
+    const yearsSet = new Set();
+    for (let y = 2024; y <= maxYear; y++) {
+      yearsSet.add(String(y));
+    }
+    validBatches.forEach((b) => yearsSet.add(b));
+
+    const sortedBatches = Array.from(yearsSet).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+
+    res.json({
+      success: true,
+      batches: ['All', ...sortedBatches]
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 
 

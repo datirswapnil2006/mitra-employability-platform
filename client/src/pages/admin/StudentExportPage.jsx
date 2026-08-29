@@ -47,7 +47,21 @@ export const StudentExportPage = () => {
 
   const departments = ['All', ...OFFICIAL_DEPARTMENTS];
   const years = ['All', ...ACADEMIC_YEARS];
-  const batches = ['All', '2024', '2025', '2026', '2027', '2028'];
+  const [batches, setBatches] = useState(['All', '2024', '2025', '2026', '2027', '2028', '2029', '2030']);
+
+  useEffect(() => {
+    const fetchBatches = async () => {
+      try {
+        const res = await api.getBatches();
+        if (res.success && Array.isArray(res.batches)) {
+          setBatches(res.batches);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch batches:', err);
+      }
+    };
+    fetchBatches();
+  }, []);
 
   const tenthOptions = [
     { value: '', label: 'All 10th Scores' },

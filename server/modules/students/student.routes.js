@@ -5,11 +5,13 @@ const {
   updateStudentProfile,
   uploadProfilePhoto,
   getAllStudentsAdmin,
-  adminResetStudentPassword
+  adminResetStudentPassword,
+  getDistinctBatches
 } = require('./student.controller');
 const { protect } = require('../../middleware/authMiddleware');
 const { authorize } = require('../../middleware/roleMiddleware');
 
+router.get('/batches', protect, getDistinctBatches);
 router.get('/profile', protect, getStudentProfile);
 router.put('/profile', protect, updateStudentProfile);
 router.post('/profile/photo', protect, uploadProfilePhoto);

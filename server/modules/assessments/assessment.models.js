@@ -111,7 +111,8 @@ const assessmentAttemptSchema = new mongoose.Schema({
   proctoringLogs: [{
     type: { type: String },
     timestamp: { type: Date, default: Date.now },
-    details: { type: String, default: '' }
+    details: { type: String, default: '' },
+    snapshot: { type: String, default: '' }
   }],
   attemptedAt: { type: Date, default: Date.now }
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PageHeader from '../../components/PageHeader';
 import Card from '../../components/Card';
 import Select from '../../components/Select';
@@ -19,12 +19,26 @@ import {
 export const ReportsPage = () => {
   const [reportType, setReportType] = useState('students');
   const [department, setDepartment] = useState('All');
-  const [batch, setBatch] = useState('2026');
+  const [batch, setBatch] = useState('All');
   const [format, setFormat] = useState('xlsx');
   const [downloading, setDownloading] = useState(false);
+  const [batches, setBatches] = useState(['All', '2024', '2025', '2026', '2027', '2028', '2029', '2030']);
+
+  useEffect(() => {
+    const fetchBatches = async () => {
+      try {
+        const res = await api.getBatches();
+        if (res.success && Array.isArray(res.batches)) {
+          setBatches(res.batches);
+        }
+      } catch (err) {
+        console.warn('Failed to load dynamic batches:', err);
+      }
+    };
+    fetchBatches();
+  }, []);
 
   const departments = ['All', ...OFFICIAL_DEPARTMENTS];
-  const batches = ['All', '2024', '2025', '2026', '2027'];
 
   const reportTypes = [
     {
@@ -36,7 +50,7 @@ export const ReportsPage = () => {
     {
       id: 'assessments',
       title: 'Assessment Attempts & Audit Log',
-      description: 'Granular exam submissions, individual marks awarded, pass/fail status, and dates.',
+      description: 'Granular exam submissions with ERP numbers, proctoring violation counts, camera proofs, and submission reason.',
       icon: FileText
     },
     {

@@ -214,66 +214,114 @@ exports.exportDepartmentReport = async (req, res) => {
     if (type === 'assessments') {
       const headers = [
         'Attempt ID',
-        'Student Name',
         'ERP Number',
+        'Student Name',
+        'Email',
         'Department',
         'Year',
+        'Batch',
         'Assessment Title',
+        'Mode',
         'Module',
         'Category',
         'Score',
         'Total Marks',
-        'Percentage',
-        'Status',
+        'Percentage (%)',
+        'Result Status',
+        'Submission Reason',
+        'Proctoring Strikes',
+        'Tab Switch Count',
+        'Second Person Count',
+        'Voice/Speech Count',
+        'Proctoring Audit Proof & Log Summary',
         'Time Spent (Sec)',
-        'Attempt Date'
+        'Attempt Date & Time'
       ];
 
       const attempts = await AssessmentAttempt.find()
-        .populate('user', 'name email department year erpNumber')
-        .populate('assessmentId', 'title module category')
+        .populate('user', 'name email department year phone')
+        .populate('assessmentId', 'title module category assessmentMode')
         .sort({ attemptedAt: -1 });
+
+      const userIds = attempts.map((a) => a.user?._id).filter(Boolean);
+      const studentProfiles = await StudentProfile.find({ user: { $in: userIds } });
+      const profileMap = new Map(studentProfiles.map((p) => [p.user.toString(), p]));
 
       const filtered = attempts.filter((a) => {
         if (!a.user) return false;
+        const prof = profileMap.get(a.user._id.toString());
         if (department !== 'All' && a.user.department !== department) return false;
+        if (batch !== 'All' && prof?.batch !== batch) return false;
         if (status !== 'All' && a.status !== status) return false;
         return true;
       });
 
-      const rows = filtered.map((a) => [
-        a._id.toString(),
-        a.user?.name || 'N/A',
-        a.user?.erpNumber || 'N/A',
-        a.user?.department || 'N/A',
-        a.user?.year || 'FE',
-        a.assessmentId?.title || 'Assessment',
-        a.assessmentId?.module || 'General',
-        a.assessmentId?.category || 'General',
-        a.score,
-        a.totalMarks,
-        `${a.percentage}%`,
-        a.status,
-        a.timeSpentSeconds || 0,
-        a.attemptedAt ? new Date(a.attemptedAt).toISOString() : 'N/A'
-      ]);
+      const rows = filtered.map((a) => {
+        const prof = profileMap.get(a.user._id.toString());
+        const logs = a.proctoringLogs || [];
+
+        const tabSwitchCount = logs.filter((l) => l.type === 'TAB_SWITCH' || l.type === 'WINDOW_BLUR').length;
+        const secondPersonCount = logs.filter((l) => l.type === 'SECOND_PERSON_DETECTED').length;
+        const voiceCount = logs.filter((l) => l.type === 'VOICE_DETECTED').length;
+
+        let submissionReason = 'Submitted Normally by Candidate';
+        if (a.isAbandoned) {
+          if (a.violationsCount >= 3) {
+            submissionReason = 'Auto-Terminated (3 Proctoring Strikes Exceeded)';
+          } else {
+            submissionReason = 'Abandoned / Left Window Before Submission';
+          }
+        }
+
+        const logSummary = logs.length > 0
+          ? logs.map((l, i) => `${i + 1}. [${new Date(l.timestamp).toLocaleTimeString()}] ${l.type}: ${l.details}${l.snapshot ? ' [Snapshot Evidence Stored]' : ''}`).join(' | ')
+          : 'Clean Examination (Zero Violations)';
+
+        return [
+          a._id.toString(),
+          prof?.erpNumber || prof?.rollNo || 'N/A',
+          a.user?.name || 'N/A',
+          a.user?.email || 'N/A',
+          a.user?.department || 'N/A',
+          prof?.year || a.user?.year || 'FE',
+          prof?.batch || 'N/A',
+          a.assessmentId?.title || 'Assessment',
+          a.assessmentId?.assessmentMode || 'NORMAL',
+          a.assessmentId?.module || 'General',
+          a.assessmentId?.category || 'General',
+          a.score,
+          a.totalMarks,
+          `${a.percentage}%`,
+          a.status,
+          submissionReason,
+          a.violationsCount || 0,
+          tabSwitchCount,
+          secondPersonCount,
+          voiceCount,
+          logSummary,
+          a.timeSpentSeconds || 0,
+          a.attemptedAt ? new Date(a.attemptedAt).toLocaleString('en-IN') : 'N/A'
+        ];
+      });
+
+      const sanitizedFilename = `MITRA_Assessment_Results_${department}_Batch_${batch}_${Date.now()}`;
 
       if (format === 'csv') {
-        return streamCsv(res, `MITRA_Assessment_Results_${department}.csv`, headers, rows);
+        return streamCsv(res, `${sanitizedFilename}.csv`, headers, rows);
       }
 
-      const worksheet = workbook.addWorksheet(`Assessments_${department}`);
-      worksheet.mergeCells('A1:N2');
+      const worksheet = workbook.addWorksheet(`Assessments_${department.substring(0, 20)}`);
+      worksheet.mergeCells('A1:W2');
       const titleCell = worksheet.getCell('A1');
-      titleCell.value = `MITRA EMPLOYABILITY PORTAL — ASSESSMENT ATTEMPTS AUDIT (${department})`;
-      titleCell.font = { name: 'Arial', size: 13, bold: true, color: { argb: 'FFFFFF' } };
+      titleCell.value = `MITRA EMPLOYABILITY PORTAL — ASSESSMENT ATTEMPTS & PROCTORING AUDIT (${department} | Batch: ${batch})`;
+      titleCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FFFFFF' } };
       titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
       titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F172A' } };
 
       worksheet.getRow(4).values = headers;
       const headerRow = worksheet.getRow(4);
       headerRow.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFF' } };
-      headerRow.height = 24;
+      headerRow.height = 25;
       headerRow.eachCell((cell) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4F46E5' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -284,14 +332,21 @@ exports.exportDepartmentReport = async (req, res) => {
         row.values = r;
         row.height = 20;
         row.eachCell((cell, colNum) => {
-          cell.alignment = { vertical: 'middle', horizontal: colNum === 2 || colNum === 6 ? 'left' : 'center' };
+          cell.alignment = {
+            vertical: 'middle',
+            horizontal: colNum === 2 || colNum === 3 || colNum === 8 || colNum === 21 ? 'left' : 'center'
+          };
         });
       });
 
       worksheet.columns.forEach((col) => { col.width = 18; });
-      const filename = `MITRA_Assessment_Results_${department}.xlsx`;
+      worksheet.getColumn(2).width = 16; // ERP Number
+      worksheet.getColumn(8).width = 24; // Title
+      worksheet.getColumn(16).width = 30; // Submission Reason
+      worksheet.getColumn(21).width = 45; // Proctoring Log Summary
+
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}.xlsx"`);
       await workbook.xlsx.write(res);
       return res.end();
     }

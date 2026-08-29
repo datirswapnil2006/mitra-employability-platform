@@ -424,10 +424,24 @@ export const TakeAssessmentPage = () => {
     const currentStrikes = violationsCountRef.current;
     setViolationsCount(currentStrikes);
 
+    // Capture lightweight video snapshot as audit evidence if camera is active
+    let snapshot = '';
+    try {
+      if (floatingVideoRef.current && floatingVideoRef.current.readyState >= 2) {
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = 160;
+        snapCanvas.height = 120;
+        const snapCtx = snapCanvas.getContext('2d');
+        snapCtx.drawImage(floatingVideoRef.current, 0, 0, 160, 120);
+        snapshot = snapCanvas.toDataURL('image/jpeg', 0.5);
+      }
+    } catch (e) {}
+
     const newLog = {
       type,
       timestamp: new Date(),
-      details: `${type}: ${details} (Strike ${currentStrikes}/3)`
+      details: `${type}: ${details} (Strike ${currentStrikes}/3)`,
+      snapshot
     };
 
     setProctoringLogs((prev) => [...prev, newLog]);

@@ -1,4 +1,5 @@
 const { Assessment, AssessmentAttempt } = require('./assessment.models');
+const { StudentProfile } = require('../students/student.model');
 const StudentProgress = require('../progress/progress.model');
 const { evaluateSqlQuery } = require('../../utils/sqlEvaluator');
 const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
@@ -309,9 +310,9 @@ exports.getAttemptById = async (req, res) => {
 // Get student test result attempts
 exports.getStudentAttempts = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
     const attempts = await AssessmentAttempt.find({ user: userId })
-      .populate('assessmentId', 'title passingScorePercentage module category topic')
+      .populate('assessmentId', 'title passingScorePercentage module category topic assessmentMode timeLimitMinutes difficulty totalMarks')
       .sort({ attemptedAt: -1 });
 
     res.json({ success: true, count: attempts.length, attempts });
@@ -525,7 +526,7 @@ exports.deleteAssessment = async (req, res) => {
 // Admin Results & Performance Overview
 exports.getAllAttemptsAdmin = async (req, res) => {
   try {
-    const { module: moduleName, department, status, search, page = 1, limit = 50 } = req.query;
+    const { module: moduleName, department, batch, status, search, page = 1, limit = 50 } = req.query;
     const filter = {};
 
     if (status && status !== 'All') {
@@ -533,12 +534,28 @@ exports.getAllAttemptsAdmin = async (req, res) => {
     }
 
     const attempts = await AssessmentAttempt.find(filter)
-      .populate('user', 'name email department year erpNumber phone')
-      .populate('assessmentId', 'title module category topic passingScorePercentage timeLimitMinutes difficulty')
+      .populate('user', 'name email department year phone')
+      .populate('assessmentId', 'title module category topic passingScorePercentage timeLimitMinutes difficulty assessmentMode')
       .sort({ attemptedAt: -1 });
 
-    // Client-side populated filters
-    const filtered = attempts.filter((att) => {
+    const userIds = attempts.map((a) => a.user?._id).filter(Boolean);
+    const studentProfiles = await StudentProfile.find({ user: { $in: userIds } });
+    const profileMap = new Map(studentProfiles.map((p) => [p.user.toString(), p]));
+
+    // Client-side populated filters & profile enrichment
+    const enrichedAttempts = attempts.map((att) => {
+      const obj = att.toObject();
+      const prof = att.user ? profileMap.get(att.user._id.toString()) : null;
+      if (obj.user) {
+        obj.user.erpNumber = prof?.erpNumber || prof?.rollNo || '';
+        obj.user.batch = prof?.batch || '';
+        obj.user.year = prof?.year || obj.user.year || 'FE';
+        obj.user.phone = prof?.phone || obj.user.phone || '';
+      }
+      return obj;
+    });
+
+    const filtered = enrichedAttempts.filter((att) => {
       if (!att.user) return false;
 
       // Module filter
@@ -554,6 +571,13 @@ exports.getAllAttemptsAdmin = async (req, res) => {
       // Department filter
       if (department && department !== 'All') {
         if (att.user.department !== department && att.assessmentId?.department !== department) {
+          return false;
+        }
+      }
+
+      // Batch filter
+      if (batch && batch !== 'All') {
+        if (att.user.batch !== batch) {
           return false;
         }
       }

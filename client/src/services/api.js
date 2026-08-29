@@ -517,7 +517,7 @@ export const api = {
     });
     return res.json();
   },
-  getStudentAttempts: async () => {
+  getStudentPsychometricAttempts: async () => {
     const res = await fetch(`${API_BASE}/psychometric/attempts/my`, { headers: getHeaders() });
     return res.json();
   },
@@ -583,6 +583,10 @@ export const api = {
   },
 
   // Analytics & Reports
+  getBatches: async () => {
+    const res = await fetch(`${API_BASE}/students/batches`, { headers: getHeaders() });
+    return res.json();
+  },
   getAdminAnalytics: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE}/analytics/admin?${query}`, { headers: getHeaders() });
