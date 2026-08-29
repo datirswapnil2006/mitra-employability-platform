@@ -212,6 +212,196 @@ export const TakeAssessmentPage = () => {
     };
   }, [testStarted, submitting, assessment, violationsCount]);
 
+  // Proctoring: Second Person & Multi-Face Detection
+  useEffect(() => {
+    if (!testStarted || submitting) return;
+    const isProctored = assessment?.assessmentMode === 'PROCTORED';
+    const secondPersonEnabled = assessment?.proctoringSettings?.secondPerson ?? true;
+
+    if (!isProctored || !secondPersonEnabled || !cameraStream) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    let detector = null;
+    if (typeof window !== 'undefined' && window.FaceDetector) {
+      try {
+        detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
+      } catch (e) {}
+    }
+
+    let consecutiveMultiFaces = 0;
+
+    const interval = setInterval(async () => {
+      const video = floatingVideoRef.current;
+      if (!video || video.readyState < 2) return;
+
+      try {
+        if (detector) {
+          const faces = await detector.detect(video);
+          if (faces && faces.length >= 2) {
+            consecutiveMultiFaces += 1;
+            if (consecutiveMultiFaces >= 2) {
+              consecutiveMultiFaces = 0;
+              logViolation('SECOND_PERSON_DETECTED', `Multiple faces detected in camera feed (${faces.length} people present).`);
+            }
+          } else {
+            consecutiveMultiFaces = 0;
+          }
+        } else if (ctx) {
+          // Fast canvas skin/face centroid clustering
+          ctx.drawImage(video, 0, 0, 160, 120);
+          const imgData = ctx.getImageData(0, 0, 160, 120);
+          const data = imgData.data;
+
+          let leftSkinCount = 0;
+          let rightSkinCount = 0;
+          let leftSumX = 0;
+          let rightSumX = 0;
+
+          for (let y = 10; y < 110; y += 4) {
+            for (let x = 10; x < 150; x += 4) {
+              const idx = (y * 160 + x) * 4;
+              const r = data[idx];
+              const g = data[idx + 1];
+              const b = data[idx + 2];
+
+              // Skin tone heuristic check
+              const isSkin = (r > 95 && g > 40 && b > 20 &&
+                (Math.max(r, g, b) - Math.min(r, g, b) > 15) &&
+                Math.abs(r - g) > 15 && r > g && r > b);
+
+              if (isSkin) {
+                if (x < 75) {
+                  leftSkinCount++;
+                  leftSumX += x;
+                } else if (x > 85) {
+                  rightSkinCount++;
+                  rightSumX += x;
+                }
+              }
+            }
+          }
+
+          // If both left and right quadrants have separate substantial skin clusters
+          if (leftSkinCount > 35 && rightSkinCount > 35) {
+            const leftCentroid = leftSumX / leftSkinCount;
+            const rightCentroid = rightSumX / rightSkinCount;
+            if (rightCentroid - leftCentroid > 45) {
+              consecutiveMultiFaces += 1;
+              if (consecutiveMultiFaces >= 2) {
+                consecutiveMultiFaces = 0;
+                logViolation('SECOND_PERSON_DETECTED', 'Multiple people / second person detected in camera view.');
+              }
+            }
+          } else {
+            consecutiveMultiFaces = 0;
+          }
+        }
+      } catch (err) {
+        // Silent catch for image frame analysis
+      }
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [testStarted, submitting, assessment, cameraStream]);
+
+  // Proctoring: Nearby Voice & Background Speech Detection
+  useEffect(() => {
+    if (!testStarted || submitting || !cameraStream) return;
+    const isProctored = assessment?.assessmentMode === 'PROCTORED';
+    if (!isProctored) return;
+
+    const audioTracks = cameraStream.getAudioTracks();
+    if (audioTracks.length === 0) return;
+
+    let audioCtx = null;
+    let analyser = null;
+    let microphone = null;
+    let voiceInterval = null;
+    let recognition = null;
+
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        audioCtx = new AudioContextClass();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.8;
+        microphone = audioCtx.createMediaStreamSource(cameraStream);
+        microphone.connect(analyser);
+
+        const buffer = new Uint8Array(analyser.frequencyBinCount);
+        let consecutiveVoiceFrames = 0;
+
+        voiceInterval = setInterval(() => {
+          if (!analyser) return;
+          analyser.getByteFrequencyData(buffer);
+          let sum = 0;
+          // Focus on vocal frequency bins (~100Hz to 3000Hz)
+          for (let i = 4; i < 40; i++) {
+            sum += buffer[i];
+          }
+          const vocalEnergy = sum / 36;
+          if (vocalEnergy > 42) {
+            consecutiveVoiceFrames += 1;
+            if (consecutiveVoiceFrames >= 2) {
+              consecutiveVoiceFrames = 0;
+              logViolation('VOICE_DETECTED', 'Nearby voice or background speech detected.');
+            }
+          } else {
+            consecutiveVoiceFrames = 0;
+          }
+        }, 800);
+      }
+    } catch (e) {
+      console.warn('AudioContext voice detector init error:', e);
+    }
+
+    // Web Speech Recognition for Dialogue Detection
+    if (typeof window !== 'undefined') {
+      const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognitionClass) {
+        try {
+          recognition = new SpeechRecognitionClass();
+          recognition.continuous = true;
+          recognition.interimResults = false;
+          recognition.lang = 'en-US';
+
+          recognition.onresult = (event) => {
+            const lastResult = event.results[event.results.length - 1];
+            if (lastResult && lastResult[0]) {
+              const text = lastResult[0].transcript.trim();
+              if (text.length > 2) {
+                logViolation('VOICE_DETECTED', `Spoken dialogue detected: "${text}"`);
+              }
+            }
+          };
+
+          recognition.onerror = () => {};
+          recognition.onend = () => {
+            if (testStarted && !submitting) {
+              try { recognition.start(); } catch (e) {}
+            }
+          };
+          recognition.start();
+        } catch (e) {}
+      }
+    }
+
+    return () => {
+      if (voiceInterval) clearInterval(voiceInterval);
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+      if (audioCtx && audioCtx.state !== 'closed') {
+        try { audioCtx.close(); } catch (e) {}
+      }
+    };
+  }, [testStarted, submitting, assessment, cameraStream]);
+
   const lastViolationTimeRef = useRef(0);
 
   const logViolation = async (type, details) => {
@@ -311,10 +501,18 @@ export const TakeAssessmentPage = () => {
     setSystemCheckLoading(true);
     setSystemCheckError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480 },
-        audio: false
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: 'user' },
+          audio: true
+        });
+      } catch (audioErr) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: 'user' },
+          audio: false
+        });
+      }
       setCameraStream(stream);
       setCameraVerified(true);
       if (videoRef.current) {
@@ -450,11 +648,19 @@ export const TakeAssessmentPage = () => {
     }
   };
 
+  const formatRemainingLockout = (remainingMinutes) => {
+    const totalMins = remainingMinutes || 0;
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    if (h > 0) {
+      return h + ' hours ' + m + ' mins';
+    }
+    return m + ' mins';
+  };
+
   if (loading) return <LoadingState message="Preparing examination environment..." />;
 
   if (lockedInfo) {
-    const hours = Math.floor((lockedInfo.remainingMinutes || 0) / 60);
-    const mins = (lockedInfo.remainingMinutes || 0) % 60;
     return (
       <div className="max-w-xl mx-auto text-center p-8 bg-white rounded-3xl border border-amber-200 shadow-sm space-y-6">
         <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
@@ -475,7 +681,7 @@ export const TakeAssessmentPage = () => {
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
           <span className="text-[11px] font-bold text-slate-400 block uppercase">Time Remaining Until Next Attempt</span>
           <span className="text-2xl font-black text-slate-900 mt-1 block">
-            {hours > 0 ? `${hours}h ` : ''}{mins}m
+            {formatRemainingLockout(lockedInfo.remainingMinutes)}
           </span>
         </div>
 

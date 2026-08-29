@@ -181,12 +181,12 @@ export const StudentDashboard = () => {
               </div>
 
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3 shadow-xs">
-                <Sparkles className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <FileCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                 <div>
-                  <h5 className="font-bold text-xs text-blue-900">AI Adaptive Assessment</h5>
-                  <p className="text-[11px] text-slate-500 mt-1">Grounded question generation</p>
-                  <Link to="/student/training" className="text-xs font-bold text-blue-600 hover:underline inline-block mt-2">
-                    Generate AI Test →
+                  <h5 className="font-bold text-xs text-blue-900">Quantitative Aptitude Test 1</h5>
+                  <p className="text-[11px] text-slate-500 mt-1">25 Marks • 20 Mins</p>
+                  <Link to="/student/assessments" className="text-xs font-bold text-blue-600 hover:underline inline-block mt-2">
+                    Take Assessment →
                   </Link>
                 </div>
               </div>

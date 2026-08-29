@@ -18,13 +18,7 @@ export const AssessmentCard = ({
     }`}>
       <div className="flex justify-between items-start mb-3">
         <div className="flex gap-2">
-          {isAIGenerated ? (
-            <Badge variant="warning" className="flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> AI Assessment
-            </Badge>
-          ) : (
-            <Badge variant="primary">Mock Assessment</Badge>
-          )}
+          <Badge variant="primary">Assessment</Badge>
         </div>
 
         {isUnlocked ? (

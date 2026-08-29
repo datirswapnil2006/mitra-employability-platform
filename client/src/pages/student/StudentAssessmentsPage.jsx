@@ -156,8 +156,8 @@ export const StudentAssessmentsPage = () => {
         title={`${currentModule} Assessments`}
         subtitle={
           isCommunicationModule
-            ? "Practice and evaluate your real-world communication skills through AI-powered conversations and receive personalized feedback."
-            : "Timed candidate evaluations, topic mock tests, and AI-generated placement assessments."
+            ? "Practice and evaluate your real-world communication skills through conversational practice and receive personalized feedback."
+            : "Timed candidate evaluations and topic mock assessments."
         }
         breadcrumbs={[
           { label: 'Student', link: '/student/dashboard' },
@@ -321,13 +321,6 @@ export const StudentAssessmentsPage = () => {
                         <span className="text-sm font-black text-emerald-600">{item.passingScorePercentage || 70}%</span>
                       </div>
                     </div>
-
-                    {item.isAIGenerated && (
-                      <div className="mt-3 flex items-center gap-1.5 text-[11px] text-indigo-700 font-semibold bg-indigo-50/70 border border-indigo-200/50 px-2.5 py-1 rounded-xl">
-                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>AI-Generated Assessment</span>
-                      </div>
-                    )}
                   </div>
 
                   {/* Start Test Action */}
