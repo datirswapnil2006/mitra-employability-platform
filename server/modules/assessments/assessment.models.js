@@ -90,14 +90,14 @@ const assessmentAttemptSchema = new mongoose.Schema({
   attemptNumber: { type: Number, default: 1 },
   timeSpentSeconds: { type: Number, default: 0 },
   answers: [{
-    questionId: String,
-    questionText: String,
-    type: String,
-    studentAnswer: String,
-    correctAnswer: String,
-    isCorrect: Boolean,
-    marksAwarded: Number,
-    explanation: String
+    questionId: { type: String },
+    questionText: { type: String },
+    type: { type: String, default: 'mcq' },
+    studentAnswer: { type: String, default: '' },
+    correctAnswer: { type: String, default: '' },
+    isCorrect: { type: Boolean, default: false },
+    marksAwarded: { type: Number, default: 0 },
+    explanation: { type: String, default: '' }
   }],
   categoryBreakdown: {
     mcq: { type: String, default: '0/0' },
