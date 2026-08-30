@@ -24,6 +24,78 @@ const getHeaders = () => {
   };
 };
 
+let refreshPromise = null;
+
+const customFetch = async (url, options = {}) => {
+  const opts = {
+    ...options,
+    credentials: 'include'
+  };
+
+  let res = await window.fetch(url, opts);
+
+  // If 401 on non-auth endpoints, attempt transparent token refresh and retry
+  const isAuthEndpoint = typeof url === 'string' && (
+    url.includes('/auth/login') ||
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/register') ||
+    url.includes('/auth/forgot-password') ||
+    url.includes('/auth/reset-password')
+  );
+
+  if (res.status === 401 && !isAuthEndpoint) {
+    try {
+      if (!refreshPromise) {
+        refreshPromise = (async () => {
+          const refreshRes = await window.fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await refreshRes.json();
+          if (data.success && data.token) {
+            localStorage.setItem('mitra_token', data.token);
+            return data.token;
+          }
+          throw new Error(data.message || 'Session refresh failed');
+        })().finally(() => {
+          refreshPromise = null;
+        });
+      }
+
+      const newToken = await refreshPromise;
+      if (newToken) {
+        // Update Authorization header with the new token and retry
+        const retryOpts = { ...opts };
+        if (retryOpts.headers) {
+          if (typeof retryOpts.headers.set === 'function') {
+            retryOpts.headers.set('Authorization', `Bearer ${newToken}`);
+          } else if (Array.isArray(retryOpts.headers)) {
+            retryOpts.headers = retryOpts.headers.filter(([k]) => k.toLowerCase() !== 'authorization');
+            retryOpts.headers.push(['Authorization', `Bearer ${newToken}`]);
+          } else {
+            retryOpts.headers = {
+              ...retryOpts.headers,
+              Authorization: `Bearer ${newToken}`
+            };
+          }
+        } else {
+          retryOpts.headers = { Authorization: `Bearer ${newToken}` };
+        }
+        res = await window.fetch(url, retryOpts);
+      }
+    } catch (refreshErr) {
+      localStorage.removeItem('mitra_token');
+      window.dispatchEvent(new CustomEvent('mitra:auth-expired', { detail: { reason: refreshErr.message } }));
+    }
+  }
+
+  return res;
+};
+
+// Aliasing fetch to customFetch within this module
+const fetch = customFetch;
+
 export const api = {
   // Auth
   login: async (email, password) => {
@@ -39,6 +111,42 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData)
+    });
+    return res.json();
+  },
+  refreshToken: async () => {
+    const res = await window.fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.json();
+  },
+  logout: async () => {
+    const res = await window.fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  logoutAll: async () => {
+    const res = await fetch(`${API_BASE}/auth/logout-all`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  getSessions: async () => {
+    const res = await fetch(`${API_BASE}/auth/sessions`, {
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  revokeSession: async (sessionId) => {
+    const res = await fetch(`${API_BASE}/auth/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
     });
     return res.json();
   },

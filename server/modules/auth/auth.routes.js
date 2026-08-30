@@ -3,6 +3,11 @@ const router = express.Router();
 const {
   register,
   login,
+  refreshToken,
+  logout,
+  logoutAll,
+  getSessions,
+  revokeSession,
   getMe,
   forgotPassword,
   verifyResetToken,
@@ -15,6 +20,12 @@ const { protect } = require('../../middleware/authMiddleware');
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/refresh', refreshToken);
+router.post('/logout', logout);
+router.post('/logout-all', protect, logoutAll);
+router.get('/sessions', protect, getSessions);
+router.delete('/sessions/:sessionId', protect, revokeSession);
+
 router.post('/forgot-password', forgotPassword);
 router.get('/verify-reset-token', verifyResetToken);
 router.post('/reset-password', resetPassword);
@@ -27,4 +38,3 @@ router.get('/test-email', testEmailSend);
 router.post('/test-email', testEmailSend);
 
 module.exports = router;
-

@@ -22,7 +22,7 @@ import { Link } from 'react-router-dom';
 import { getMediaUrl } from '../services/api';
 
 export const Navbar = ({ onMenuToggle }) => {
-  const { user, profileCompletion, logout } = useAuth();
+  const { user, profileCompletion, logout, logoutAll } = useAuth();
   const { preferences, effectiveMode, isDark, openCustomizer, updateTheme } = useTheme();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -251,7 +251,7 @@ export const Navbar = ({ onMenuToggle }) => {
               </div>
 
               {/* Logout Option */}
-              <div className="pt-2 mt-1 border-t border-slate-100 dark:border-slate-800/80">
+              <div className="pt-2 mt-1 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -262,6 +262,18 @@ export const Navbar = ({ onMenuToggle }) => {
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Sign Out of Portal</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileDropdownOpen(false);
+                    logoutAll();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50/50 dark:text-slate-400 dark:hover:bg-rose-950/20 transition cursor-pointer"
+                  title="Terminate all active sessions on other computers or phones"
+                >
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>Sign Out All Devices</span>
                 </button>
               </div>
             </div>

@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Settings, Shield, User, Bell, Key, Check } from 'lucide-react';
 
 export const StudentSettingsPage = () => {
-  const { user } = useAuth();
+  const { user, logoutAll } = useAuth();
   const [saved, setSaved] = useState(false);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [assessmentReminders, setAssessmentReminders] = useState(true);
@@ -112,6 +112,32 @@ export const StudentSettingsPage = () => {
                 onChange={(e) => setEmailNotifications(e.target.checked)}
                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
               />
+            </div>
+          </div>
+        </Card>
+
+        {/* Security & Sessions */}
+        <Card title="Security & Active Sessions" subtitle="Manage session security and connected devices">
+          <div className="space-y-4 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200/80 gap-3">
+              <div className="space-y-0.5">
+                <span className="font-bold text-slate-900 block flex items-center gap-1.5">
+                  <Shield className="w-4 h-4 text-blue-600" />
+                  Multi-Device Session Security
+                </span>
+                <span className="text-slate-500 text-[11px]">
+                  Protected with rotating JWT credentials and automatic inactivity timeout. You can revoke all connected devices instantly.
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => logoutAll()}
+                className="text-rose-600 border-rose-200 hover:bg-rose-50 font-bold shrink-0"
+              >
+                Log Out All Devices
+              </Button>
             </div>
           </div>
         </Card>

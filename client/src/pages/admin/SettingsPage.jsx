@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
-import { Settings, ShieldCheck, Check } from 'lucide-react';
+import { Settings, ShieldCheck, Shield, Check } from 'lucide-react';
 
 export const SettingsPage = () => {
+  const { logoutAll } = useAuth();
   const [requiredFields, setRequiredFields] = useState([
     'erpNumber',
     'department',
@@ -105,6 +107,30 @@ export const SettingsPage = () => {
         <div className="pt-6 mt-4 border-t border-slate-100 flex justify-end">
           <Button size="lg" variant="primary" icon={ShieldCheck} loading={saving} onClick={handleSave}>
             Save Gating Configuration
+          </Button>
+        </div>
+      </Card>
+
+      {/* Security & Sessions */}
+      <Card title="Administrator Security & Session Management" subtitle="Manage active sessions and credentials">
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <span className="font-bold text-slate-900 text-xs block flex items-center gap-1.5">
+              <Shield className="w-4 h-4 text-blue-600" />
+              Administrative Multi-Device Session Security
+            </span>
+            <span className="text-slate-500 text-[11px]">
+              Active sessions are protected with 15-minute rotating JWT access tokens and HttpOnly session cookies.
+            </span>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => logoutAll()}
+            className="text-rose-600 border-rose-200 hover:bg-rose-50 font-bold shrink-0 text-xs"
+          >
+            Log Out All Devices
           </Button>
         </div>
       </Card>
