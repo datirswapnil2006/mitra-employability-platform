@@ -17,8 +17,7 @@ export const MODULE_CATEGORIES = {
   Aptitude: [
     { id: 'Quantitative', label: 'Quantitative Aptitude' },
     { id: 'Reasoning', label: 'Logical Reasoning' },
-    { id: 'Verbal', label: 'Verbal Ability' },
-    { id: 'Mix Assessment', label: 'Mix Assessment' }
+    { id: 'Verbal', label: 'Verbal Ability' }
   ],
   Domain: OFFICIAL_DEPARTMENTS.map((dept) => ({ id: dept, label: dept })),
   'Domain Knowledge': OFFICIAL_DEPARTMENTS.map((dept) => ({ id: dept, label: dept })),
@@ -48,6 +47,16 @@ export const MODULE_CATEGORIES = {
     { id: 'Behavioral Questions', label: 'Behavioral Questions' },
     { id: 'Company Preparation', label: 'Company Preparation' },
     { id: 'Mock Interview', label: 'Mock Interview' }
+  ]
+};
+
+export const ASSESSMENT_MODULE_CATEGORIES = {
+  ...MODULE_CATEGORIES,
+  Aptitude: [
+    { id: 'Quantitative', label: 'Quantitative Aptitude' },
+    { id: 'Reasoning', label: 'Logical Reasoning' },
+    { id: 'Verbal', label: 'Verbal Ability' },
+    { id: 'Mix Assessment', label: 'Mix Assessment' }
   ]
 };
 

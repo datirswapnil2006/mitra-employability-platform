@@ -14,8 +14,7 @@ export const QUESTION_CATEGORIES = {
   Aptitude: [
     { id: 'Quantitative', label: 'Quantitative Aptitude' },
     { id: 'Reasoning', label: 'Logical Reasoning' },
-    { id: 'Verbal', label: 'Verbal Ability' },
-    { id: 'Mix Assessment', label: 'Mix Assessment' }
+    { id: 'Verbal', label: 'Verbal Ability' }
   ],
   Technical: [
     { id: 'Data Structures', label: 'Data Structures' },

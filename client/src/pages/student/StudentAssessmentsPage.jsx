@@ -11,6 +11,7 @@ import EmptyState from '../../components/EmptyState';
 import {
   TRAINING_MODULES,
   MODULE_CATEGORIES,
+  ASSESSMENT_MODULE_CATEGORIES,
   normalizeModuleName
 } from '../../constants/trainingModules';
 import { APTITUDE_TOPICS } from '../../constants/aptitudeTopics';
@@ -47,8 +48,8 @@ export const StudentAssessmentsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const availableCategories =
-    MODULE_CATEGORIES[currentModule] ||
-    MODULE_CATEGORIES[rawModule] ||
+    ASSESSMENT_MODULE_CATEGORIES[currentModule] ||
+    ASSESSMENT_MODULE_CATEGORIES[rawModule] ||
     [];
 
   const filterTabs = isAptitudeModule

@@ -20,6 +20,7 @@ import AssessmentPreviewModal from '../../components/assessments/AssessmentPrevi
 import {
   TRAINING_MODULES,
   MODULE_CATEGORIES,
+  ASSESSMENT_MODULE_CATEGORIES,
   normalizeModuleName
 } from '../../constants/trainingModules';
 import { AI_PROVIDERS, QUESTION_DIFFICULTIES } from '../../constants/questionBank';
@@ -89,8 +90,8 @@ export const AssessmentManagementPage = () => {
 
   // Subcategory tabs for active module
   const availableCategories =
-    MODULE_CATEGORIES[currentModule] ||
-    MODULE_CATEGORIES[rawModule] ||
+    ASSESSMENT_MODULE_CATEGORIES[currentModule] ||
+    ASSESSMENT_MODULE_CATEGORIES[rawModule] ||
     [];
 
   const filterTabs = [
