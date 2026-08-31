@@ -426,6 +426,7 @@ export const TakeAssessmentPage = () => {
 
   const isModalOpenRef = useRef(false);
   const violationsCountRef = useRef(0);
+  const proctoringLogsRef = useRef([]);
   const isTerminatedRef = useRef(false);
   const lastViolationTimeRef = useRef(0);
   const lastSecondPersonTimeRef = useRef(0);
@@ -476,7 +477,8 @@ export const TakeAssessmentPage = () => {
       snapshot
     };
 
-    const updatedLogs = [...proctoringLogs, newLog];
+    proctoringLogsRef.current = [...proctoringLogsRef.current, newLog];
+    const updatedLogs = proctoringLogsRef.current;
     setProctoringLogs(updatedLogs);
 
     if (currentStrikes >= 3) {
@@ -727,6 +729,7 @@ export const TakeAssessmentPage = () => {
       const timeSpentSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
 
       const currentVCount = violationsCountRef.current || violationsCount || 0;
+      const currentLogs = proctoringLogsRef.current.length > 0 ? proctoringLogsRef.current : (proctoringLogs || []);
       const submissionReason = currentVCount > 0
         ? `Submitted Normally by Candidate (${currentVCount} Warning(s) Logged)`
         : 'Submitted Normally by Candidate (Clean Examination)';
@@ -736,7 +739,7 @@ export const TakeAssessmentPage = () => {
         timeSpentSeconds,
         answers: formattedAnswers,
         violationsCount: currentVCount,
-        proctoringLogs: proctoringLogs,
+        proctoringLogs: currentLogs,
         submissionReason
       });
 
@@ -1616,10 +1619,11 @@ export const TakeAssessmentPage = () => {
               variant="outline"
               onClick={async () => {
                 try {
+                  const currentLogs = proctoringLogsRef.current.length > 0 ? proctoringLogsRef.current : (proctoringLogs || []);
                   await api.abandonAssessment({
                     assessmentId: id,
                     violationsCount: violationsCountRef.current || violationsCount || 0,
-                    proctoringLogs: proctoringLogs,
+                    proctoringLogs: currentLogs,
                     submissionReason: 'Voluntarily Abandoned by Candidate Before Completion',
                     timeSpentSeconds: Math.max(1, Math.round((Date.now() - startTime) / 1000))
                   });

@@ -262,11 +262,18 @@ exports.exportDepartmentReport = async (req, res) => {
         const prof = profileMap.get(a.user._id.toString());
         const logs = a.proctoringLogs || [];
 
-        const tabSwitchCount = logs.filter((l) => l.type === 'TAB_SWITCH' || l.type === 'WINDOW_BLUR').length;
-        const secondPersonCount = logs.filter((l) => l.type === 'SECOND_PERSON_DETECTED').length;
-        const voiceCount = logs.filter((l) => l.type === 'VOICE_DETECTED').length;
-        const deviceCount = logs.filter((l) => l.type === 'MOBILE_DETECTED' || l.type === 'DEVICE_DETECTED').length;
+        const isMatch = (l, keywords) => {
+          const typeStr = String(l.type || '').toUpperCase();
+          const detailsStr = String(l.details || '').toUpperCase();
+          return keywords.some((k) => typeStr.includes(k) || detailsStr.includes(k));
+        };
+
+        const tabSwitchCount = logs.filter((l) => isMatch(l, ['TAB_SWITCH', 'WINDOW_BLUR', 'TAB SWITCH', 'WINDOW FOCUS'])).length;
+        const secondPersonCount = logs.filter((l) => isMatch(l, ['SECOND_PERSON', 'SECOND PERSON', 'MULTIPLE_FACES', 'MULTI_FACE', 'MULTIPLE INDIVIDUALS', '2 PEOPLE'])).length;
+        const voiceCount = logs.filter((l) => isMatch(l, ['VOICE_DETECTED', 'VOICE', 'SPEECH', 'AUDIO', 'SPOKEN DIALOGUE'])).length;
+        const deviceCount = logs.filter((l) => isMatch(l, ['MOBILE_DETECTED', 'DEVICE_DETECTED', 'MOBILE', 'DEVICE', 'PHONE'])).length;
         const snapshotCount = logs.filter((l) => Boolean(l.snapshot)).length;
+        const totalViolations = Math.max(a.violationsCount || 0, tabSwitchCount + secondPersonCount + voiceCount + deviceCount, logs.filter((l) => l.type !== 'TEST_ABANDONED').length);
 
         // Exact reason of submission / termination
         let exactSubmissionReason = a.submissionReason;
@@ -278,8 +285,8 @@ exports.exportDepartmentReport = async (req, res) => {
               ? `Auto-Terminated: 3 Proctoring Strikes Exceeded ${triggerDetail}`.trim()
               : 'Abandoned / Window Closed Before Submission';
           } else {
-            exactSubmissionReason = logs.length > 0
-              ? `Submitted Normally by Candidate (${logs.length} Warning(s) Logged)`
+            exactSubmissionReason = totalViolations > 0
+              ? `Submitted Normally by Candidate (${totalViolations} Warning(s) Logged)`
               : 'Submitted Normally by Candidate (Clean Examination)';
           }
         }
@@ -310,7 +317,7 @@ exports.exportDepartmentReport = async (req, res) => {
           `${a.percentage}%`,
           a.status,
           exactSubmissionReason,
-          a.violationsCount || logs.length || 0,
+          totalViolations,
           tabSwitchCount,
           secondPersonCount,
           voiceCount,

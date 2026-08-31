@@ -163,13 +163,16 @@ exports.abandonAssessment = async (req, res) => {
         : 'Candidate abandoned assessment before submission';
     }
 
-    let logs = Array.isArray(proctoringLogs) && proctoringLogs.length > 0 ? proctoringLogs : [
+    const incomingLogs = Array.isArray(proctoringLogs) ? proctoringLogs : [];
+    let logs = incomingLogs.length > 0 ? incomingLogs : [
       {
         type: 'TEST_ABANDONED',
         timestamp: new Date(),
         details: `${finalReason}. 24-hour retake cooldown enforced.`
       }
     ];
+
+    const finalViolationsCount = Math.max(vCount, incomingLogs.length > 0 ? incomingLogs.length : vCount);
 
     const attempt = await AssessmentAttempt.create({
       user: userId,
@@ -185,7 +188,7 @@ exports.abandonAssessment = async (req, res) => {
       timeSpentSeconds: parseInt(timeSpentSeconds, 10) || 0,
       answers: Array.isArray(answers) ? answers : [],
       categoryBreakdown: { mcq: '0/0', sql: '0/0', conceptual: '0/0', output: '0/0', coding: '0/0' },
-      violationsCount: vCount,
+      violationsCount: finalViolationsCount,
       proctoringLogs: logs
     });
 
@@ -302,7 +305,7 @@ exports.submitAssessment = async (req, res) => {
       timeSpentSeconds: timeSpentSeconds || 0,
       answers: gradedAnswers,
       categoryBreakdown,
-      violationsCount: parseInt(violationsCount, 10) || 0,
+      violationsCount: Math.max(parseInt(violationsCount, 10) || 0, Array.isArray(proctoringLogs) ? proctoringLogs.length : 0),
       proctoringLogs: Array.isArray(proctoringLogs) ? proctoringLogs : []
     });
 
