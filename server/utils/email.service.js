@@ -23,8 +23,86 @@ let cachedTransporter = null;
 let cachedPort = null;
 
 /**
+ * Sends email via HTTP REST API (Resend or Brevo) using native fetch (Port 443).
+ * This completely bypasses Render Free Tier's firewall blocks on raw SMTP ports (25, 465, 587).
+ */
+const sendViaHttpApi = async ({ from, to, subject, html }) => {
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
+
+  // 1. Resend REST API (Port 443 HTTPS - 100% cloud firewall proof)
+  if (resendApiKey) {
+    console.log('[Email Service]: Dispatching via Resend HTTP REST API (Port 443)...');
+    const sender = from.includes('@') ? from : 'MITRA Portal <onboarding@resend.dev>';
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: sender,
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.message || data.error || `Resend API error: HTTP ${res.status}`);
+    }
+
+    return {
+      method: 'resend_http_api',
+      messageId: data.id || 'resend-delivered'
+    };
+  }
+
+  // 2. Brevo REST API (Port 443 HTTPS)
+  if (brevoApiKey) {
+    console.log('[Email Service]: Dispatching via Brevo HTTP REST API (Port 443)...');
+    let senderName = 'MITRA Employability Portal';
+    let senderEmail = (process.env.MAIL_USER || 'contact@mitraemployabilityportal.in').trim();
+    const match = from.match(/^(?:["']?(.*?)["']?\s*)?<([^>]+)>$/);
+    if (match) {
+      if (match[1]) senderName = match[1].trim();
+      if (match[2]) senderEmail = match[2].trim();
+    }
+
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': brevoApiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.message || data.error || `Brevo API error: HTTP ${res.status}`);
+    }
+
+    return {
+      method: 'brevo_http_api',
+      messageId: data.messageId || 'brevo-delivered'
+    };
+  }
+
+  return null;
+};
+
+/**
  * Resolves a hostname strictly to its IPv4 address (e.g. smtp.hostinger.com -> 172.65.255.143)
- * Completely eliminates ENETUNREACH IPv6 routing errors on cloud hosts like Render.
  */
 const resolveIPv4 = async (hostname) => {
   try {
@@ -45,7 +123,7 @@ const resolveIPv4 = async (hostname) => {
 const getSender = () => {
   let from = (process.env.EMAIL_FROM || '').trim();
 
-  // Strip accidental outer quotes added in Render dashboard or .env files
+  // Strip accidental outer quotes
   if ((from.startsWith('"') && from.endsWith('"')) || (from.startsWith("'") && from.endsWith("'"))) {
     from = from.slice(1, -1).trim();
   }
@@ -53,6 +131,9 @@ const getSender = () => {
   const mailUser = (process.env.MAIL_USER || '').trim();
 
   if (!from && !mailUser) {
+    if (process.env.RESEND_API_KEY) {
+      return '"MITRA Employability Portal" <onboarding@resend.dev>';
+    }
     throw new Error('Neither EMAIL_FROM nor MAIL_USER is configured in environment variables');
   }
 
@@ -90,23 +171,23 @@ const createTransporterForPort = async (port) => {
   const ipv4Address = await resolveIPv4(host);
 
   const transportOptions = {
-    host: ipv4Address, // Direct IPv4 connection (e.g. 172.65.255.143)
+    host: ipv4Address,
     port,
-    secure: isSecure,  // true for 465 (SSL), false for 587 (STARTTLS)
-    family: 4,         // Force IPv4 socket
+    secure: isSecure,
+    family: 4,
     auth: {
       user,
       pass
     },
     requireTLS: port === 587,
     tls: {
-      servername: host, // Crucial: sets TLS SNI to match the certificate for smtp.hostinger.com
+      servername: host,
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
   };
 
   return nodemailer.createTransport(transportOptions);
@@ -143,15 +224,24 @@ const resetTransporter = () => {
 };
 
 /**
- * Unified dispatch helper: uses IPv4-enforced SMTP with automatic fallback between Port 465 and Port 587.
- * If Port 465 is blocked or drops, it immediately retries via Port 587 (STARTTLS).
+ * Unified dispatch helper:
+ * 1. Checks HTTP API (Resend / Brevo) first (Port 443 HTTPS - bypasses Render Free firewall).
+ * 2. Falls back to Nodemailer SMTP (Port 465 / 587) over IPv4.
+ * 3. Provides actionable error message if Render blocks SMTP ports.
  */
 const dispatchEmail = async ({ to, subject, html }) => {
   const from = getSender();
+
+  // 1. Try HTTP API first (Bypasses Render Free Tier raw SMTP blocks)
+  const apiResult = await sendViaHttpApi({ from, to, subject, html });
+  if (apiResult) {
+    return apiResult;
+  }
+
+  // 2. SMTP dispatch over IPv4
   const configuredPort = parseInt((process.env.MAIL_PORT || '465').trim(), 10) || 465;
   const fallbackPort = configuredPort === 465 ? 587 : 465;
 
-  // 1. Primary Attempt: using configured port (strictly over IPv4)
   try {
     const transporter = await getTransporter(configuredPort);
     const info = await transporter.sendMail({
@@ -168,10 +258,9 @@ const dispatchEmail = async ({ to, subject, html }) => {
       response: info.response
     };
   } catch (primaryErr) {
-    console.warn(`[Email Service]: Primary port ${configuredPort} failed (${primaryErr.code || primaryErr.message}). Switching to fallback port ${fallbackPort}...`);
+    console.warn(`[Email Service]: Primary port ${configuredPort} failed (${primaryErr.code || primaryErr.message}). Trying fallback port ${fallbackPort}...`);
     resetTransporter();
 
-    // 2. Secondary Attempt: fallback to alternate port (465 <-> 587)
     try {
       const fallbackTransporter = await createTransporterForPort(fallbackPort);
       const info = await fallbackTransporter.sendMail({
@@ -191,7 +280,15 @@ const dispatchEmail = async ({ to, subject, html }) => {
         response: info.response
       };
     } catch (fallbackErr) {
-      console.error(`[Email Service]: Both port ${configuredPort} and port ${fallbackPort} failed: ${fallbackErr.message}`);
+      const isTimeout = fallbackErr.code === 'ETIMEDOUT' || fallbackErr.message?.includes('timeout');
+      const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+
+      if (isTimeout && isRender) {
+        throw new Error(
+          'Render Free Tier blocks raw SMTP ports (25, 465, 587), causing connection timeout. To fix this on Render, configure a free RESEND_API_KEY in Render environment variables to send over HTTPS (Port 443), or upgrade Render to a paid plan.'
+        );
+      }
+
       throw fallbackErr;
     }
   }
@@ -444,17 +541,67 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, resetToken, rese
 };
 
 /**
- * Live connection verifier for SMTP credentials.
- * Runs an active handshake with the mail server without sending an email.
+ * Live connection verifier for credentials.
  */
 exports.verifyConnection = async () => {
   const startTime = Date.now();
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
+
+  // 1. Resend API Check
+  if (resendApiKey) {
+    try {
+      const res = await fetch('https://api.resend.com/api_keys', {
+        headers: { Authorization: `Bearer ${resendApiKey}` },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!res.ok) throw new Error(`Resend returned HTTP ${res.status}`);
+      return {
+        success: true,
+        provider: 'Resend HTTPS API (Port 443)',
+        latencyMs: Date.now() - startTime,
+        message: 'Resend API key is valid and connected over HTTPS Port 443 (Render firewall proof).'
+      };
+    } catch (err) {
+      return {
+        success: false,
+        provider: 'Resend HTTPS API',
+        latencyMs: Date.now() - startTime,
+        error: err.message
+      };
+    }
+  }
+
+  // 2. Brevo API Check
+  if (brevoApiKey) {
+    try {
+      const res = await fetch('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': brevoApiKey },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!res.ok) throw new Error(`Brevo returned HTTP ${res.status}`);
+      return {
+        success: true,
+        provider: 'Brevo HTTPS API (Port 443)',
+        latencyMs: Date.now() - startTime,
+        message: 'Brevo API key is valid and connected over HTTPS Port 443 (Render firewall proof).'
+      };
+    } catch (err) {
+      return {
+        success: false,
+        provider: 'Brevo HTTPS API',
+        latencyMs: Date.now() - startTime,
+        error: err.message
+      };
+    }
+  }
+
+  // 3. SMTP Check
   const host = (process.env.MAIL_HOST || 'smtp.hostinger.com').trim();
   const configuredPort = parseInt((process.env.MAIL_PORT || '465').trim(), 10) || 465;
   const user = (process.env.MAIL_USER || '').trim();
   const from = getSender();
 
-  // Try configured port first
   try {
     const transporter = await getTransporter(configuredPort);
     await transporter.verify();
@@ -467,7 +614,7 @@ exports.verifyConnection = async () => {
       user,
       from,
       latencyMs: Date.now() - startTime,
-      message: `Successfully authenticated and connected with ${host}:${configuredPort} (IPv4)`
+      message: `Successfully authenticated with ${host}:${configuredPort} (IPv4)`
     };
   } catch (primaryErr) {
     const fallbackPort = configuredPort === 465 ? 587 : 465;
@@ -485,15 +632,15 @@ exports.verifyConnection = async () => {
         user,
         from,
         latencyMs: Date.now() - startTime,
-        message: `Successfully authenticated and connected with ${host}:${fallbackPort} (Fallback IPv4)`
+        message: `Successfully authenticated with ${host}:${fallbackPort} (Fallback IPv4)`
       };
     } catch (fallbackErr) {
       resetTransporter();
       let hint = 'Check your SMTP credentials and cloud network settings.';
       if (primaryErr.code === 'EAUTH') {
         hint = 'Authentication failed. Please verify MAIL_USER and MAIL_PASSWORD in Render.';
-      } else if (primaryErr.code === 'ETIMEDOUT' || primaryErr.code === 'ENETUNREACH') {
-        hint = 'Connection timed out or network unreachable on Render. Verify outbound networking or test port 587.';
+      } else if (primaryErr.code === 'ETIMEDOUT' || primaryErr.message?.includes('timeout')) {
+        hint = 'Render Free Tier blocks raw SMTP ports (465, 587). Add a RESEND_API_KEY in Render to send via HTTPS (Port 443).';
       }
 
       return {
@@ -512,6 +659,8 @@ exports.verifyConnection = async () => {
  * Diagnostic helper to inspect email configuration status
  */
 exports.getEmailDiagnostics = async (verifyLive = false) => {
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
   const host = (process.env.MAIL_HOST || 'smtp.hostinger.com').trim();
   const port = (process.env.MAIL_PORT || '465').trim();
   const user = (process.env.MAIL_USER || '').trim();
@@ -526,10 +675,14 @@ exports.getEmailDiagnostics = async (verifyLive = false) => {
     sender = user ? `"MITRA Portal" <${user}>` : 'NOT_SET';
   }
 
-  const isConfigured = Boolean(host && user && pass);
+  const isConfigured = Boolean(resendApiKey || brevoApiKey || (host && user && pass));
 
   let provider = `Custom SMTP (${host}:${port})`;
-  if (host.toLowerCase().includes('hostinger')) {
+  if (resendApiKey) {
+    provider = 'Resend HTTPS API (Port 443 - Render Firewall Proof)';
+  } else if (brevoApiKey) {
+    provider = 'Brevo HTTPS API (Port 443 - Render Firewall Proof)';
+  } else if (host.toLowerCase().includes('hostinger')) {
     provider = `Hostinger Secure SMTP (${host}:${port})`;
   } else if (host.toLowerCase().includes('gmail')) {
     provider = `Gmail SMTP (${host}:${port})`;
@@ -542,6 +695,7 @@ exports.getEmailDiagnostics = async (verifyLive = false) => {
     isRender,
     status: isConfigured ? 'Ready' : 'Incomplete Configuration',
     config: {
+      usingHttpsApi: Boolean(resendApiKey || brevoApiKey),
       smtpHost: host || 'NOT_SET',
       smtpPort: port,
       smtpUser: user || 'NOT_SET',
@@ -577,7 +731,11 @@ exports.sendTestEmail = async (targetEmail) => {
   const sender = getSender();
   const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
 
-  const providerName = host.toLowerCase().includes('hostinger')
+  const providerName = process.env.RESEND_API_KEY
+    ? 'Resend HTTPS API'
+    : process.env.BREVO_API_KEY
+    ? 'Brevo HTTPS API'
+    : host.toLowerCase().includes('hostinger')
     ? `Hostinger Secure SMTP (${host}:${port})`
     : `SMTP (${host}:${port})`;
 
@@ -614,19 +772,11 @@ exports.sendTestEmail = async (targetEmail) => {
     const errMsg = err.message || 'Failed to dispatch test email';
     console.error(`[Email Service]: Test email failed to ${recipient}: ${errMsg} (${latencyMs}ms)`);
 
-    let hint = 'Verify your email password and server port configuration in Render.';
-    if (err.code === 'EAUTH') {
-      hint = 'Authentication failed. Check your MAIL_USER and MAIL_PASSWORD in Render environment variables.';
-    } else if (err.code === 'ETIMEDOUT') {
-      hint = 'Connection timed out. On Render, verify whether port 465 (SSL) or port 587 (TLS) is open for your host.';
-    }
-
     return {
       success: false,
       status: 'Email Failed',
       error: errMsg,
       code: err.code || null,
-      hint,
       to: recipient,
       sender,
       latencyMs
