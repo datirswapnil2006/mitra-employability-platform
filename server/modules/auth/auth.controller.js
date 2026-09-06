@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('./user.model');
 const Session = require('./session.model');
 const { StudentProfile } = require('../students/student.model');
-const { sendCredentialEmail, sendPasswordResetEmail, getEmailDiagnostics, sendTestEmail } = require('../../utils/email.service');
+const { sendCredentialEmail, sendPasswordResetEmail, getEmailDiagnostics, sendTestEmail, verifyConnection } = require('../../utils/email.service');
 const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
 const {
   generateAccessToken,
@@ -581,29 +581,378 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-exports.getEmailStatus = (req, res) => {
+exports.getEmailStatus = async (req, res) => {
   try {
-    const diagnostic = getEmailDiagnostics();
-    res.json({ success: true, diagnostics: diagnostic });
+    const shouldVerify = req.query?.verify === 'true';
+    const diagnostics = await getEmailDiagnostics(shouldVerify);
+    res.json({
+      success: true,
+      diagnostics
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
+/**
+ * Helper to generate an interactive browser-based testing console for Render deployment
+ */
+const renderEmailTestConsoleHtml = ({ diagnostics, testResult = null, targetEmail = '' }) => {
+  const isConfigured = diagnostics.configured;
+  const provider = diagnostics.provider;
+  const envName = diagnostics.environment;
+  const sender = diagnostics.config.senderAddress;
+  const host = diagnostics.config.smtpHost;
+  const port = diagnostics.config.smtpPort;
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>MITRA Portal - Email Test Console</title>
+      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --bg-main: #f8fafc;
+          --card-bg: #ffffff;
+          --text-primary: #0f172a;
+          --text-muted: #64748b;
+          --primary: #2563eb;
+          --primary-hover: #1d4ed8;
+          --success: #16a34a;
+          --error: #dc2626;
+          --border: #e2e8f0;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 100%);
+          color: var(--text-primary);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+        }
+        .container {
+          max-width: 680px;
+          width: 100%;
+          background: var(--card-bg);
+          border-radius: 20px;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+          border: 1px solid var(--border);
+          overflow: hidden;
+        }
+        .header {
+          background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+          color: white;
+          padding: 32px 28px;
+          text-align: center;
+        }
+        .header h1 {
+          font-size: 24px;
+          font-weight: 800;
+          letter-spacing: -0.5px;
+          margin-bottom: 6px;
+        }
+        .header p {
+          font-size: 14px;
+          color: #bfdbfe;
+        }
+        .content {
+          padding: 28px;
+        }
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 12px;
+          border-radius: 9999px;
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .badge-success { background: #dcfce7; color: #15803d; }
+        .badge-warning { background: #fef3c7; color: #b45309; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .info-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+          gap: 12px;
+          margin-bottom: 24px;
+        }
+        .info-card {
+          background: #f8fafc;
+          padding: 12px 14px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+        }
+        .info-card .label {
+          font-size: 11px;
+          text-transform: uppercase;
+          color: var(--text-muted);
+          font-weight: 700;
+          letter-spacing: 0.5px;
+          margin-bottom: 4px;
+        }
+        .info-card .val {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--text-primary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .result-box {
+          padding: 16px;
+          border-radius: 12px;
+          margin-bottom: 24px;
+          font-size: 14px;
+        }
+        .result-success {
+          background: #ecfdf5;
+          border: 1px solid #a7f3d0;
+          color: #065f46;
+        }
+        .result-error {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
+        }
+        .form-group {
+          margin-bottom: 20px;
+        }
+        .form-label {
+          display: block;
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 8px;
+          color: var(--text-primary);
+        }
+        .input-row {
+          display: flex;
+          gap: 10px;
+        }
+        .input-row input {
+          flex: 1;
+          padding: 12px 16px;
+          border-radius: 10px;
+          border: 1.5px solid var(--border);
+          font-size: 14px;
+          font-family: inherit;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .input-row input:focus {
+          border-color: var(--primary);
+        }
+        .btn {
+          padding: 12px 22px;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          border: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.2s;
+          text-decoration: none;
+        }
+        .btn-primary {
+          background: var(--primary);
+          color: white;
+        }
+        .btn-primary:hover {
+          background: var(--primary-hover);
+        }
+        .btn-secondary {
+          background: #e2e8f0;
+          color: #334155;
+          font-size: 13px;
+          padding: 8px 14px;
+        }
+        .btn-secondary:hover {
+          background: #cbd5e1;
+        }
+        .footer-links {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 24px;
+          padding-top: 16px;
+          border-top: 1px solid var(--border);
+          font-size: 12px;
+          color: var(--text-muted);
+        }
+        .footer-links a {
+          color: var(--primary);
+          text-decoration: none;
+          font-weight: 600;
+        }
+        .mono {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 12px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>MITRA Email Service Tester</h1>
+          <p>Verify custom domain mail delivery on Render Cloud & Local environments</p>
+        </div>
+        <div class="content">
+          <!-- Status Grid -->
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="label">Status</div>
+              <div class="val">
+                <span class="badge ${isConfigured ? 'badge-success' : 'badge-warning'}">
+                  ${isConfigured ? 'Ready' : 'Incomplete'}
+                </span>
+              </div>
+            </div>
+            <div class="info-card">
+              <div class="label">Environment</div>
+              <div class="val mono">${envName}</div>
+            </div>
+            <div class="info-card">
+              <div class="label">Provider</div>
+              <div class="val">${provider}</div>
+            </div>
+            <div class="info-card">
+              <div class="label">SMTP Server</div>
+              <div class="val mono">${host}:${port}</div>
+            </div>
+          </div>
+
+          <div style="background: #f1f5f9; padding: 10px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 20px; color: #475569;">
+            <strong>Sender Identity:</strong> <span class="mono">${sender}</span>
+          </div>
+
+          ${
+            testResult
+              ? `
+            <div class="result-box ${testResult.success ? 'result-success' : 'result-error'}">
+              <div style="font-weight: 800; font-size: 15px; margin-bottom: 6px;">
+                ${testResult.success ? '✓ Test Email Dispatched Successfully!' : '✗ Email Dispatch Failed'}
+              </div>
+              <div>${testResult.message || testResult.error}</div>
+              ${testResult.latencyMs ? `<div style="margin-top: 6px; font-size: 12px; opacity: 0.9;"><strong>Latency:</strong> ${testResult.latencyMs}ms</div>` : ''}
+              ${testResult.messageId ? `<div style="margin-top: 4px; font-size: 12px; opacity: 0.9;"><strong>Message ID:</strong> <span class="mono">${testResult.messageId}</span></div>` : ''}
+              ${testResult.hint ? `<div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 6px; font-size: 12px;"><strong>Tip:</strong> ${testResult.hint}</div>` : ''}
+            </div>
+          `
+              : ''
+          }
+
+          <!-- Test Dispatch Form -->
+          <form method="GET" action="">
+            <div class="form-group">
+              <label class="form-label" for="targetEmail">Send Live Test Email To:</label>
+              <div class="input-row">
+                <input
+                  type="email"
+                  id="targetEmail"
+                  name="to"
+                  placeholder="e.g. your_email@gmail.com"
+                  value="${targetEmail}"
+                  required
+                />
+                <button type="submit" class="btn btn-primary">
+                  Send Test Email
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <div class="footer-links">
+            <div>
+              <a href="?verify=true" class="btn-secondary" style="border-radius: 6px; padding: 6px 12px; display: inline-block;">
+                ⚡ Test Live Handshake
+              </a>
+            </div>
+            <div>
+              <a href="/api/auth/email-diagnostic?verify=true" target="_blank">View JSON Diagnostics &rarr;</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
 exports.testEmailSend = async (req, res) => {
   try {
-    const targetEmail = req.body?.to || req.query?.to;
+    const targetEmail = (req.body?.to || req.query?.to || '').trim();
+    const wantsHtml = req.accepts('html') && !req.xhr && !req.headers['accept']?.includes('application/json') && req.query?.format !== 'json';
+
+    // If user accessed in browser with ?verify=true (handshake check)
+    if (req.query?.verify === 'true' && wantsHtml) {
+      const diag = await getEmailDiagnostics(true);
+      const handshakeSuccess = diag.liveVerification?.success;
+      return res.send(
+        renderEmailTestConsoleHtml({
+          diagnostics: diag,
+          testResult: {
+            success: handshakeSuccess,
+            message: handshakeSuccess
+              ? `Live SMTP Handshake Successful: ${diag.liveVerification?.message}`
+              : `Handshake Failed: ${diag.liveVerification?.error || 'Unknown error'}`,
+            hint: diag.liveVerification?.hint,
+            latencyMs: diag.liveVerification?.latencyMs
+          }
+        })
+      );
+    }
+
+    // If accessed in browser without target email, display the interactive test console
     if (!targetEmail) {
+      if (wantsHtml) {
+        const diagnostics = await getEmailDiagnostics(false);
+        return res.send(renderEmailTestConsoleHtml({ diagnostics }));
+      }
+
       return res.status(400).json({
         success: false,
         message: 'Please provide a target email address in request body {"to": "..."} or query parameter ?to=...'
       });
     }
+
+    // Dispatch test email
     const result = await sendTestEmail(targetEmail);
+    const diagnostics = await getEmailDiagnostics(false);
+
+    if (wantsHtml) {
+      return res.status(result.success ? 200 : 500).send(
+        renderEmailTestConsoleHtml({
+          diagnostics,
+          targetEmail,
+          testResult: {
+            success: result.success,
+            message: result.success
+              ? `Test email dispatched successfully to ${result.to} via ${result.providerName || result.provider}. Check your inbox or spam folder.`
+              : `Delivery failed: ${result.error}`,
+            messageId: result.messageId,
+            latencyMs: result.latencyMs,
+            hint: result.hint
+          }
+        })
+      );
+    }
+
     res.status(result.success ? 200 : 500).json({
       success: result.success,
       status: result.status,
-      message: result.success ? 'Test email dispatched successfully to Mailtrap.' : 'Test email failed. Check Mailtrap SMTP configuration.',
+      message: result.success
+        ? `Test email dispatched successfully to ${result.to} via ${result.providerName || result.provider}.`
+        : `Test email delivery failed: ${result.error}`,
       details: result
     });
   } catch (err) {
