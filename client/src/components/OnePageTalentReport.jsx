@@ -198,22 +198,22 @@ export const OnePageTalentReport = ({
         </div>
 
         {/* 2. Student Information Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200/90 mb-2.5 text-[10.5px]">
-          <div>
+        <div className="grid grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/90 mb-2.5 text-[10.5px] whitespace-nowrap">
+          <div className="min-w-0">
             <span className="text-[8px] font-bold uppercase text-slate-400 block">Candidate Name</span>
             <span className="font-black text-slate-900 truncate block text-[10.5px]">{studentName}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-[8px] font-bold uppercase text-slate-400 block">Department & Batch</span>
-            <span className="font-bold text-indigo-900 block text-[10.5px]">{department} • {batch}</span>
+            <span className="font-bold text-indigo-900 truncate block text-[10.5px]">{department} • {batch}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-[8px] font-bold uppercase text-slate-400 block">Roll / ERP No</span>
-            <span className="font-mono font-bold text-slate-700 block text-[10.5px]">{erpNumber}</span>
+            <span className="font-mono font-bold text-slate-700 truncate block text-[10.5px]">{erpNumber}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-[8px] font-bold uppercase text-slate-400 block">Evaluation Date</span>
-            <span className="font-bold text-slate-700 block text-[10.5px]">{assessmentDate}</span>
+            <span className="font-bold text-slate-700 truncate block text-[10.5px]">{assessmentDate}</span>
           </div>
         </div>
 

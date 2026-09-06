@@ -268,13 +268,17 @@ export const StudentExportPage = () => {
     {
       header: 'ERP Number',
       accessor: 'erpNumber',
-      render: (row) => <span className="font-mono text-slate-700 font-bold">{row.erpNumber || row.rollNo || 'N/A'}</span>
+      render: (row) => (
+        <span className="font-mono text-xs font-bold text-slate-800 whitespace-nowrap bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 inline-block shadow-2xs">
+          {row.erpNumber || row.rollNo || 'N/A'}
+        </span>
+      )
     },
     {
-      header: 'Student Name',
+      header: 'Student Name & ERP',
       accessor: 'name',
       render: (row) => (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 whitespace-nowrap min-w-[240px]">
           {row.profilePhoto || row.user?.profilePhoto ? (
             <img
               src={getMediaUrl(row.profilePhoto || row.user?.profilePhoto)}
@@ -286,9 +290,14 @@ export const StudentExportPage = () => {
               {row.user?.name ? row.user.name.charAt(0).toUpperCase() : 'S'}
             </div>
           )}
-          <div>
-            <p className="font-bold text-slate-900">{row.user?.name}</p>
-            <p className="text-[11px] text-slate-500">{row.user?.email} • {row.gender || 'Male'}</p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <span className="font-bold text-slate-900 whitespace-nowrap">{row.user?.name || 'Student'}</span>
+              <span className="font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/80 shrink-0 whitespace-nowrap">
+                {row.erpNumber || row.rollNo || 'N/A'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 whitespace-nowrap mt-0.5">{row.user?.email} • {row.gender || 'Male'}</p>
           </div>
         </div>
       )
@@ -297,16 +306,16 @@ export const StudentExportPage = () => {
       header: 'Dept / Batch',
       accessor: 'department',
       render: (row) => (
-        <div>
+        <div className="whitespace-nowrap">
           <Badge variant="primary">{row.department}</Badge>
-          <p className="text-[10px] text-slate-500 mt-1 font-semibold">Batch: {row.batch || '2026'}</p>
+          <p className="text-[10px] text-slate-500 mt-1 font-semibold whitespace-nowrap">Batch: {row.batch || '2026'}</p>
         </div>
       )
     },
     {
       header: 'Year / Sec',
       accessor: 'year',
-      render: (row) => <span className="text-xs text-slate-600 font-semibold">{row.year} - Sec {row.section || 'A'}</span>
+      render: (row) => <span className="text-xs text-slate-600 font-semibold whitespace-nowrap">{row.year} - Sec {row.section || 'A'}</span>
     },
     {
       header: '10th %',
@@ -367,8 +376,8 @@ export const StudentExportPage = () => {
       header: 'Identity Details',
       accessor: 'hometown',
       render: (row) => (
-        <div className="text-[11px] text-slate-600">
-          <p className="font-medium truncate max-w-[140px]" title={row.hometown}>{row.hometown || '—'}</p>
+        <div className="text-[11px] text-slate-600 whitespace-nowrap min-w-[150px]">
+          <p className="font-semibold text-slate-900 truncate max-w-[160px]" title={row.hometown}>{row.hometown || '—'}</p>
           {row.aadhaarNumber && <p className="text-[10px] text-slate-400 font-mono whitespace-nowrap">Aadhaar: {row.aadhaarNumber}</p>}
         </div>
       )
@@ -703,6 +712,7 @@ export const StudentExportPage = () => {
           <DataTable
             columns={columns}
             data={filteredStudents}
+            tableClassName="min-w-[1380px] w-full"
             emptyMessage="No students match the current criteria. Try adjusting the score thresholds or department filters."
           />
         )}

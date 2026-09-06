@@ -88,13 +88,13 @@ export const StudentManagementPage = () => {
     {
       header: 'ERP Number',
       accessor: 'erpNumber',
-      render: (row) => <span className="font-mono text-slate-700 font-bold">{row.erpNumber || row.rollNo || 'N/A'}</span>
+      render: (row) => <span className="font-mono text-slate-700 font-bold whitespace-nowrap">{row.erpNumber || row.rollNo || 'N/A'}</span>
     },
     {
       header: 'Student Name',
       accessor: 'name',
       render: (row) => (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-[240px]">
           {row.profilePhoto || row.user?.profilePhoto ? (
             <img
               src={getMediaUrl(row.profilePhoto || row.user?.profilePhoto)}
@@ -106,10 +106,10 @@ export const StudentManagementPage = () => {
               {row.user?.name ? row.user.name.charAt(0).toUpperCase() : 'S'}
             </div>
           )}
-          <div>
-            <p className="font-bold text-slate-900">{row.user?.name}</p>
-            <p className="text-[11px] text-slate-500">{row.user?.email} • {row.hometown || row.gender || 'Male'}</p>
-            {row.aadhaarNumber && <p className="text-[10px] text-slate-400 font-mono">Aadhaar: {row.aadhaarNumber}</p>}
+          <div className="min-w-0">
+            <p className="font-bold text-slate-900 whitespace-nowrap">{row.user?.name}</p>
+            <p className="text-[11px] text-slate-500 whitespace-nowrap">{row.user?.email} • {row.hometown || row.gender || 'Male'}</p>
+            {row.aadhaarNumber && <p className="text-[10px] text-slate-400 font-mono whitespace-nowrap">Aadhaar: {row.aadhaarNumber}</p>}
           </div>
         </div>
       )
@@ -117,18 +117,18 @@ export const StudentManagementPage = () => {
     {
       header: 'Department',
       accessor: 'department',
-      render: (row) => <Badge variant="primary">{row.department}</Badge>
+      render: (row) => <Badge variant="primary" className="whitespace-nowrap">{row.department}</Badge>
     },
     {
       header: 'Year / Sec',
       accessor: 'year',
-      render: (row) => <span className="text-xs text-slate-600 font-semibold">{row.year} - Sec {row.section || 'A'}</span>
+      render: (row) => <span className="text-xs text-slate-600 font-semibold whitespace-nowrap">{row.year} - Sec {row.section || 'A'}</span>
     },
     {
       header: 'Academics & Status',
       accessor: 'cgpa',
       render: (row) => (
-        <div className="space-y-0.5 text-[11px]">
+        <div className="space-y-0.5 text-[11px] min-w-[170px] whitespace-nowrap">
           <div className="flex items-center gap-1.5 font-semibold text-slate-700">
             <span className="text-slate-400">10th:</span>
             <span className="font-bold text-slate-900">{row.tenthPercentage ? `${row.tenthPercentage}%` : '—'}</span>
@@ -152,7 +152,7 @@ export const StudentManagementPage = () => {
       header: 'Profile %',
       accessor: 'profileCompletionPercentage',
       render: (row) => (
-        <span className={`font-bold ${row.profileCompletionPercentage === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
+        <span className={`font-bold whitespace-nowrap ${row.profileCompletionPercentage === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
           {row.profileCompletionPercentage}%
         </span>
       )
@@ -161,7 +161,7 @@ export const StudentManagementPage = () => {
       header: 'Account Status',
       accessor: 'status',
       render: (row) => (
-        <Badge variant={row.user?.status === 'active' ? 'success' : 'danger'}>
+        <Badge variant={row.user?.status === 'active' ? 'success' : 'danger'} className="whitespace-nowrap">
           {row.user?.status?.toUpperCase() || 'ACTIVE'}
         </Badge>
       )
@@ -173,7 +173,7 @@ export const StudentManagementPage = () => {
         const status = row.passwordResetStatus || 'NO_REQUEST';
         if (status === 'PENDING') {
           return (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs whitespace-nowrap">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
               RESET REQUESTED
             </span>
@@ -181,7 +181,7 @@ export const StudentManagementPage = () => {
         }
         if (status === 'ENABLED') {
           return (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-300 shadow-xs">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-300 shadow-xs whitespace-nowrap">
               <span className="w-2 h-2 rounded-full bg-sky-500"></span>
               RESET ENABLED
             </span>
@@ -189,14 +189,14 @@ export const StudentManagementPage = () => {
         }
         if (status === 'COMPLETED') {
           return (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
               Completed
             </span>
           );
         }
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200 whitespace-nowrap">
             No Request
           </span>
         );
@@ -221,27 +221,29 @@ export const StudentManagementPage = () => {
         }
 
         return (
-          <button
-            type="button"
-            onClick={() => isPending && setConfirmStudent(row)}
-            disabled={!isPending || actionLoading === row.user?._id}
-            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition border ${
-              isPending
-                ? 'text-white bg-indigo-600 hover:bg-indigo-700 border-indigo-600 shadow-xs cursor-pointer active:scale-95'
-                : 'text-slate-400 bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed'
-            }`}
-            title={
-              isPending
-                ? 'Authorize password reset and dispatch a secure reset link to this student'
-                : isEnabled
-                ? 'Password reset is enabled and link has been sent to the student'
-                : isCompleted
-                ? 'Password reset already completed by the student'
-                : 'Enable Reset — Disabled (No request submitted)'
-            }
-          >
-            {buttonLabel}
-          </button>
+          <div className="whitespace-nowrap">
+            <button
+              type="button"
+              onClick={() => isPending && setConfirmStudent(row)}
+              disabled={!isPending || actionLoading === row.user?._id}
+              className={`px-3 py-1 text-[11px] font-bold rounded-lg transition border ${
+                isPending
+                  ? 'text-white bg-indigo-600 hover:bg-indigo-700 border-indigo-600 shadow-xs cursor-pointer active:scale-95'
+                  : 'text-slate-400 bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed'
+              }`}
+              title={
+                isPending
+                  ? 'Authorize password reset and dispatch a secure reset link to this student'
+                  : isEnabled
+                  ? 'Password reset is enabled and link has been sent to the student'
+                  : isCompleted
+                  ? 'Password reset already completed by the student'
+                  : 'Enable Reset — Disabled (No request submitted)'
+              }
+            >
+              {buttonLabel}
+            </button>
+          </div>
         );
       }
     }
@@ -329,6 +331,7 @@ export const StudentManagementPage = () => {
         <DataTable
           columns={columns}
           data={filteredStudents}
+          tableClassName="min-w-[1150px] w-full"
           emptyMessage="No student accounts match your filter criteria."
         />
       )}

@@ -277,21 +277,52 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
     >
       {/* Brand Header */}
       <div
-        className={`p-4 border-b flex items-center ${effectiveCollapsed ? 'justify-center' : 'justify-between'} gap-2 transition-all`}
+        className={`border-b transition-all duration-200 ${
+          effectiveCollapsed
+            ? 'p-3 flex flex-col items-center justify-center'
+            : 'p-4 flex items-center justify-between gap-3'
+        }`}
         style={{ borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))' }}
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <img
-            src="/college-logo.jpg"
-            alt="MITRA Logo"
-            className="h-9 w-9 rounded-lg object-contain bg-white p-1 border border-slate-700 shadow-sm shrink-0"
-          />
-          {!effectiveCollapsed && (
+        {effectiveCollapsed ? (
+          <button
+            type="button"
+            onClick={handleToggleCollapse}
+            className="w-11 h-11 rounded-xl bg-white p-1 border border-slate-700 shadow-md flex items-center justify-center hover:scale-105 hover:border-blue-500 transition-all cursor-pointer shrink-0 group"
+            title="Click to Expand Sidebar"
+          >
+            <img
+              src="/college-logo.jpg"
+              alt="MITRA College Logo"
+              className="w-full h-full object-contain rounded-lg"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = '/favicon.svg';
+              }}
+            />
+          </button>
+        ) : (
+          <div className="flex items-center gap-3 min-w-0">
+            <Link
+              to={isAdmin ? '/admin/dashboard' : '/student/dashboard'}
+              className="w-10 h-10 rounded-xl bg-white p-1 border border-slate-700 shadow-sm flex items-center justify-center shrink-0 hover:scale-105 transition"
+              title="Dashboard"
+            >
+              <img
+                src="/college-logo.jpg"
+                alt="MITRA College Logo"
+                className="w-full h-full object-contain rounded-lg"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = '/favicon.svg';
+                }}
+              />
+            </Link>
             <div className="min-w-0 animate-in fade-in duration-200">
               <div className="flex items-center gap-1.5">
                 <span className="font-black text-sm tracking-widest uppercase text-white">MITRA</span>
                 <span
-                  className="text-[9px] font-extrabold px-1.5 py-0.5 rounded border"
+                  className="text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase"
                   style={{
                     backgroundColor: 'var(--primary-light, rgba(37,99,235,0.2))',
                     color: 'var(--primary-color, #60A5FA)',
@@ -305,25 +336,28 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                 {isAdmin ? 'Management Console' : 'Employability Portal'}
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Desktop Collapse / Expand Icon Button */}
-        <button
-          type="button"
-          onClick={handleToggleCollapse}
-          className="hidden md:flex p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition"
-          title={effectiveCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-        >
-          {effectiveCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
+        {/* Desktop Collapse Button (Only displayed when sidebar is expanded) */}
+        {!effectiveCollapsed && (
+          <button
+            type="button"
+            onClick={handleToggleCollapse}
+            className="hidden md:flex p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition text-slate-300 hover:text-white"
+            title="Collapse Sidebar"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Close button for mobile drawer */}
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition"
+            className="md:hidden p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition text-slate-300 hover:text-white"
+            title="Close Menu"
           >
             <X className="w-5 h-5" />
           </button>

@@ -23,7 +23,7 @@ export const LoginPage = () => {
   const [forgotMsg, setForgotMsg] = useState('');
   const [forgotError, setForgotError] = useState('');
 
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -36,6 +36,7 @@ export const LoginPage = () => {
   const handleRoleChange = (newRole) => {
     setRole(newRole);
     setError('');
+    setPassword('');
     setSearchParams({ role: newRole });
   };
 
@@ -44,8 +45,16 @@ export const LoginPage = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await login(email, password);
+      const res = await login(email, password, role);
       if (res.success) {
+        // Enforce strict role matching
+        if (role && res.user.role !== role) {
+          await logout();
+          const targetRole = res.user.role === 'admin' ? 'Administrator' : 'Student';
+          setError(`This account belongs to an ${targetRole}. You cannot sign in under the ${role === 'admin' ? 'Administrator' : 'Student'} tab. Please switch to the ${targetRole} tab.`);
+          return;
+        }
+
         if (res.user.role === 'admin') {
           navigate('/admin/dashboard');
         } else {

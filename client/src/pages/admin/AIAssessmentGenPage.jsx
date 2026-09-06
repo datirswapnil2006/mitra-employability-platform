@@ -1304,9 +1304,14 @@ export const AIAssessmentGenPage = () => {
 
                       return (
                         <tr key={a._id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3.5 px-4">
-                            <div className="font-bold text-slate-900">{studentName}</div>
-                            <div className="text-[11px] text-slate-400">{email}</div>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                              <span className="font-bold text-slate-900 whitespace-nowrap">{studentName}</span>
+                              <span className="text-[10px] font-mono font-extrabold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 shrink-0 whitespace-nowrap">
+                                ERP: {a.erpNumber || a.user?.erpNumber || a.user?.rollNo || 'N/A'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 truncate max-w-[200px] mt-0.5 whitespace-nowrap">{email}</div>
                           </td>
                           <td className="py-3.5 px-4">
                             <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/60 text-[10px]">

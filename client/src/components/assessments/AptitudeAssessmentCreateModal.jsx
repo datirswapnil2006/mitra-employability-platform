@@ -148,40 +148,33 @@ export const AptitudeAssessmentCreateModal = ({
   }, [isOpen, initialCategory]);
 
   const effectiveTopic = topic === 'Custom Topic' ? customTopic.trim() : topic;
+  const [savingToBank, setSavingToBank] = useState(false);
+  const [bankSuccessMsg, setBankSuccessMsg] = useState('');
 
   // Handle PDF file selection
   const handlePdfUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
       setErrorMsg('Please select a valid PDF file (.pdf).');
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      setErrorMsg('PDF file exceeds 10MB limit.');
+    if (file.size > 20 * 1024 * 1024) {
+      setErrorMsg('PDF file exceeds 20MB limit.');
       return;
     }
 
     setPdfFile(file);
     setPdfFileName(file.name);
     setErrorMsg('');
-
-    // Read text from file
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      // Basic text extraction or fallback string
-      const rawText = event.target.result;
-      setPdfText(rawText || `Extracted content from ${file.name}`);
-    };
-    reader.readAsText(file);
   };
 
   // Step 1 -> Step 2: Trigger Generation / Extraction
   const handleGenerateOrExtract = async () => {
     if (!creationMethod) {
-      setErrorMsg('Please select a creation method (AI Generated or PDF Extraction).');
+      setErrorMsg('Please select a Question Source (AI Generated or PDF Extraction).');
       return;
     }
 
@@ -191,7 +184,7 @@ export const AptitudeAssessmentCreateModal = ({
     }
 
     if (creationMethod === 'PDF_EXTRACTION' && !pdfFile && !pdfText) {
-      setErrorMsg('Please upload a Question PDF file before proceeding.');
+      setErrorMsg('Please upload a Question PDF file before extracting.');
       return;
     }
 
@@ -217,7 +210,7 @@ export const AptitudeAssessmentCreateModal = ({
             correctAnswer: q.correctAnswer || q.options?.[0] || '',
             explanation: q.explanation || '',
             difficulty: q.difficulty || difficulty,
-            status: 'APPROVED' // Default approved upon generation for convenience, but Admin can edit/reject
+            status: 'APPROVED'
           }));
           setQuestions(formatted);
           setStep(2);
@@ -225,18 +218,30 @@ export const AptitudeAssessmentCreateModal = ({
           setErrorMsg(res.message || 'Failed to generate questions via AI. Please check LLM provider.');
         }
       } else {
-        // PDF Extraction
-        const res = await api.extractPdfQuestions({
-          pdfText: pdfText || `Questions for ${category} - ${effectiveTopic}`,
-          category,
-          topic: effectiveTopic,
-          difficulty,
-          questionCount: targetQuestionCount
-        });
+        // PDF Extraction - Send binary PDF to backend for local pdf-parse pattern recognition
+        let payload;
+        if (pdfFile) {
+          payload = new FormData();
+          payload.append('pdfFile', pdfFile);
+          payload.append('category', category);
+          payload.append('topic', effectiveTopic);
+          payload.append('difficulty', difficulty);
+          payload.append('questionCount', targetQuestionCount || 50);
+        } else {
+          payload = {
+            pdfText: pdfText || '',
+            category,
+            topic: effectiveTopic,
+            difficulty,
+            questionCount: targetQuestionCount || 50
+          };
+        }
+
+        const res = await api.extractPdfQuestions(payload);
 
         if (res.success && res.questions?.length > 0) {
           const formatted = res.questions.map((q, idx) => ({
-            id: `pdf-${Date.now()}-${idx}`,
+            id: q.id || `pdf-${Date.now()}-${idx}`,
             questionText: q.questionText || '',
             options: q.options || ['', '', '', ''],
             correctAnswer: q.correctAnswer || q.options?.[0] || '',
@@ -245,25 +250,36 @@ export const AptitudeAssessmentCreateModal = ({
             status: 'APPROVED'
           }));
           setQuestions(formatted);
+          setTargetQuestionCount(formatted.length);
           setStep(2);
         } else {
-          setErrorMsg(res.message || 'Failed to extract questions from PDF.');
+          setErrorMsg(res.message || 'No questions could be extracted from this PDF. Please verify that the PDF contains numbered MCQs.');
         }
       }
     } catch (err) {
       console.error('Generation/Extraction error:', err);
-      setErrorMsg(err.message || 'Server error while generating questions.');
+      setErrorMsg(err.message || 'Server error while processing questions.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Question Review Handlers
+  // Toggle approval / selection of a question
   const handleToggleApprove = (idx) => {
     setQuestions((prev) =>
       prev.map((q, i) =>
         i === idx ? { ...q, status: q.status === 'APPROVED' ? 'REJECTED' : 'APPROVED' } : q
       )
+    );
+  };
+
+  // Select All or Deselect All
+  const handleSelectAll = (select = true) => {
+    setQuestions((prev) =>
+      prev.map((q) => ({
+        ...q,
+        status: select ? 'APPROVED' : 'REJECTED'
+      }))
     );
   };
 
@@ -315,15 +331,50 @@ export const AptitudeAssessmentCreateModal = ({
   const approvedQuestions = questions.filter((q) => q.status === 'APPROVED');
   const approvedCount = approvedQuestions.length;
 
-  // Step 2 -> Step 3: Validate Question Count
-  const handleProceedToMode = () => {
-    if (approvedCount < targetQuestionCount) {
-      setErrorMsg(
-        `Only ${approvedCount} approved questions are available. Add or generate at least ${
-          targetQuestionCount - approvedCount
-        } more questions before publishing.`
-      );
+  // Save selected questions to Question Bank
+  const handleSaveToQuestionBank = async () => {
+    if (approvedQuestions.length === 0) {
+      setErrorMsg('No approved questions selected to save to Question Bank.');
       return;
+    }
+    setSavingToBank(true);
+    setErrorMsg('');
+    try {
+      let savedCount = 0;
+      for (const q of approvedQuestions) {
+        await api.createQuestion({
+          module: 'Aptitude',
+          category,
+          topic: effectiveTopic,
+          questionText: q.questionText,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation,
+          difficulty: q.difficulty || difficulty,
+          aiGenerated: creationMethod === 'AI_GENERATED',
+          aiProvider: creationMethod === 'AI_GENERATED' ? aiProvider : 'manual'
+        });
+        savedCount++;
+      }
+      setBankSuccessMsg(`Successfully saved ${savedCount} question(s) to Question Bank!`);
+      setTimeout(() => setBankSuccessMsg(''), 4000);
+    } catch (err) {
+      console.error('Save to question bank error:', err);
+      setErrorMsg('Error saving to Question Bank: ' + err.message);
+    } finally {
+      setSavingToBank(false);
+    }
+  };
+
+  // Step 2 -> Step 3: Validate Question Count & proceed
+  const handleProceedToMode = () => {
+    if (approvedCount === 0) {
+      setErrorMsg('Please approve or select at least 1 question for the assessment.');
+      return;
+    }
+    // Automatically synchronize target count to approved questions if fewer were approved
+    if (approvedCount < targetQuestionCount) {
+      setTargetQuestionCount(approvedCount);
     }
     setErrorMsg('');
     setStep(3);
@@ -475,7 +526,7 @@ export const AptitudeAssessmentCreateModal = ({
             {/* Choose Creation Method Card Options */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-700">
-                Choose Assessment Creation Method *
+                Select Question Source *
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
@@ -491,7 +542,7 @@ export const AptitudeAssessmentCreateModal = ({
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-sm font-extrabold text-slate-900">Option 1 — AI Generated</div>
+                    <div className="text-sm font-extrabold text-slate-900">AI Generated</div>
                     <p className="text-xs text-slate-500 font-normal mt-0.5">
                       Automatically generate high-standard questions, options, and explanations with AI.
                     </p>
@@ -511,9 +562,9 @@ export const AptitudeAssessmentCreateModal = ({
                     <FileUp className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-sm font-extrabold text-slate-900">Option 2 — PDF Extraction</div>
+                    <div className="text-sm font-extrabold text-slate-900">PDF Extraction</div>
                     <p className="text-xs text-slate-500 font-normal mt-0.5">
-                      Upload a question PDF and parse questions, options, answers, and explanations.
+                      Upload an aptitude/question PDF and extract questions offline without AI.
                     </p>
                   </div>
                 </button>
@@ -522,14 +573,14 @@ export const AptitudeAssessmentCreateModal = ({
 
             {/* PDF Upload Box (If PDF Extraction) */}
             {creationMethod === 'PDF_EXTRACTION' && (
-              <div className="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-2xl space-y-3">
+              <div className="p-4 bg-indigo-50/40 border border-dashed border-indigo-300 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText className="w-5 h-5 text-indigo-600" />
                     <span className="text-xs font-bold text-slate-900">Upload Question PDF *</span>
                   </div>
                   {pdfFileName && (
-                    <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                    <span className="text-xs text-emerald-600 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
                       <Check className="w-3.5 h-3.5" /> {pdfFileName}
                     </span>
                   )}
@@ -538,10 +589,10 @@ export const AptitudeAssessmentCreateModal = ({
                   type="file"
                   accept="application/pdf"
                   onChange={handlePdfUpload}
-                  className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+                  className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
                 />
                 <p className="text-[11px] text-slate-500">
-                  Supported formats: Standard PDF documents containing numbered MCQs with 4 options and answers.
+                  Supported format: Multi-page or single-page PDF containing numbered questions (1., Q1.) with options (A-D) and answers. Processed 100% locally.
                 </p>
               </div>
             )}
@@ -652,7 +703,7 @@ export const AptitudeAssessmentCreateModal = ({
               >
                 {creationMethod === 'AI_GENERATED'
                   ? 'Generate Questions for Review'
-                  : 'Extract Questions from PDF'}
+                  : 'Extract Questions'}
               </Button>
             </div>
           </div>
@@ -669,24 +720,34 @@ export const AptitudeAssessmentCreateModal = ({
                     {category}
                   </span>
                   <span className="text-xs font-extrabold text-slate-900">{effectiveTopic}</span>
+                  {creationMethod === 'PDF_EXTRACTION' && (
+                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+                      PDF Extraction Mode
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-slate-600 mt-1">
-                  Review generated questions below. Edit, approve, or reject questions before configuring proctoring.
+                <p className="text-xs text-slate-600 mt-1 font-semibold">
+                  {creationMethod === 'PDF_EXTRACTION'
+                    ? `Extracted Questions: ${questions.length} questions detected from uploaded PDF.`
+                    : 'Review generated questions below. Edit, select, or modify questions before finalizing.'}
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Approved Questions</span>
-                  <span
-                    className={`text-base font-black ${
-                      approvedCount >= targetQuestionCount ? 'text-emerald-600' : 'text-amber-600'
-                    }`}
-                  >
-                    {approvedCount} / {targetQuestionCount}
+              <div className="flex items-center gap-2">
+                <div className="text-right mr-1">
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Selected Questions</span>
+                  <span className="text-base font-black text-emerald-600">
+                    {approvedCount} / {questions.length}
                   </span>
                 </div>
-                <Button size="sm" variant="outline" icon={Plus} onClick={handleAddManualQuestion}>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => handleSelectAll(approvedCount !== questions.length)}
+                >
+                  {approvedCount === questions.length ? 'Deselect All' : 'Select All'}
+                </Button>
+                <Button size="xs" variant="outline" icon={Plus} onClick={handleAddManualQuestion}>
                   Add Question
                 </Button>
               </div>
@@ -853,24 +914,38 @@ export const AptitudeAssessmentCreateModal = ({
               })}
             </div>
 
-            {/* Validation Notice if approved < target */}
-            {approvedCount < targetQuestionCount && (
+            {/* Success message when saving to question bank */}
+            {bankSuccessMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 font-medium">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{bankSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Validation Notice if no questions selected */}
+            {approvedCount === 0 && (
               <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl flex items-center gap-2 font-medium">
                 <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-                <span>
-                  Only {approvedCount} approved questions are available. Add or generate at least{' '}
-                  {targetQuestionCount - approvedCount} more questions before proceeding.
-                </span>
+                <span>Please select or approve at least 1 question to continue.</span>
               </div>
             )}
 
             {/* Action Bar */}
-            <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100">
               <Button variant="outline" icon={ChevronLeft} onClick={() => setStep(1)}>
                 Back to Configuration
               </Button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <Button
+                  variant="outline"
+                  onClick={handleSaveToQuestionBank}
+                  loading={savingToBank}
+                  disabled={approvedCount === 0}
+                  className="text-xs"
+                >
+                  Save to Question Bank
+                </Button>
                 <Button variant="outline" icon={Save} onClick={() => handleFinalSave('draft')}>
                   Save Draft
                 </Button>
@@ -878,9 +953,9 @@ export const AptitudeAssessmentCreateModal = ({
                   variant="primary"
                   icon={ChevronRight}
                   onClick={handleProceedToMode}
-                  disabled={approvedCount < targetQuestionCount}
+                  disabled={approvedCount === 0}
                 >
-                  Configure Proctoring
+                  Add Selected Questions to Assessment ({approvedCount})
                 </Button>
               </div>
             </div>

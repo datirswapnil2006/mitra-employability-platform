@@ -136,8 +136,8 @@ export const AuthProvider = ({ children }) => {
     };
   }, [token, user, logout]);
 
-  const login = async (email, password) => {
-    const res = await api.login(email, password);
+  const login = async (email, password, role) => {
+    const res = await api.login(email, password, role);
     if (res.success) {
       localStorage.setItem('mitra_token', res.token);
       setToken(res.token);

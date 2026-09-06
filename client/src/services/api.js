@@ -98,11 +98,13 @@ const fetch = customFetch;
 
 export const api = {
   // Auth
-  login: async (email, password) => {
+  login: async (email, password, role) => {
+    const payload = { email, password };
+    if (role) payload.role = role;
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify(payload)
     });
     return res.json();
   },
@@ -490,10 +492,18 @@ export const api = {
     return res.json();
   },
   extractPdfQuestions: async (data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    const token = localStorage.getItem('mitra_token');
+    const headers = {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
     const res = await fetch(`${API_BASE}/assessments/admin/extract-pdf`, {
       method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data)
+      headers,
+      body: isFormData ? data : JSON.stringify(data)
     });
     return res.json();
   },

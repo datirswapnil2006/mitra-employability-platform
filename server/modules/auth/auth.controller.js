@@ -179,7 +179,7 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Please provide email and password' });
     }
@@ -187,6 +187,16 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !(await user.matchPassword(password))) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    // Role Verification: Prevent cross-role login
+    if (role && user.role !== role) {
+      const selectedLabel = role === 'admin' ? 'Administrator' : 'Student';
+      const actualLabel = user.role === 'admin' ? 'Administrator' : 'Student';
+      return res.status(403).json({
+        success: false,
+        message: `This account belongs to an ${actualLabel}. You cannot sign in under the ${selectedLabel} portal. Please switch to the ${actualLabel} tab.`
+      });
     }
 
     if (user.status !== 'active') {

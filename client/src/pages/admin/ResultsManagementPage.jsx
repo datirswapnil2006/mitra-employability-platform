@@ -281,15 +281,15 @@ export const ResultsManagementPage = () => {
 
                   return (
                     <tr key={att._id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900">{student.name || 'Candidate'}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <span className="font-bold text-slate-900 text-sm whitespace-nowrap">{student.name || 'Candidate'}</span>
+                          <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 shrink-0 whitespace-nowrap">
                             ERP: {student.erpNumber || 'N/A'}
                           </span>
-                          <span className="text-[11px] text-slate-400 truncate max-w-[120px]">
-                            {student.email}
-                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate max-w-[220px] mt-0.5 whitespace-nowrap">
+                          {student.email}
                         </div>
                       </td>
                       <td className="py-3.5 px-4">

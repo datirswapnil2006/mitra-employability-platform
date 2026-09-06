@@ -10,7 +10,9 @@ export const DataTable = ({
   emptyMessage = 'No data is available matching the current criteria.',
   pageSize = 10,
   enablePagination = true,
-  className = ''
+  className = '',
+  tableClassName = '',
+  containerClassName = ''
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -23,12 +25,12 @@ export const DataTable = ({
 
   return (
     <div className={`w-full space-y-3 ${className}`}>
-      <div className="w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs custom-scrollbar">
-        <table className="w-full text-left border-collapse text-xs sm:text-sm">
+      <div className={`w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs custom-scrollbar ${containerClassName}`}>
+        <table className={`w-full text-left border-collapse text-xs sm:text-sm ${tableClassName}`}>
           <thead>
             <tr className="bg-slate-50/90 text-slate-600 font-semibold border-b border-slate-200 select-none">
               {columns.map((col, idx) => (
-                <th key={idx} className="p-4 uppercase tracking-wider text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                <th key={idx} className={`p-4 uppercase tracking-wider text-[11px] font-bold text-slate-500 whitespace-nowrap ${col.thClassName || ''}`}>
                   {col.header}
                 </th>
               ))}
@@ -39,7 +41,7 @@ export const DataTable = ({
               paginatedData.map((row, rIdx) => (
                 <tr key={row[keyField] || rIdx} className="hover:bg-slate-50/80 transition-colors">
                   {columns.map((col, cIdx) => (
-                    <td key={cIdx} className="p-4 font-normal">
+                    <td key={cIdx} className={`p-4 font-normal ${col.tdClassName || ''}`}>
                       {col.render ? col.render(row) : row[col.accessor]}
                     </td>
                   ))}

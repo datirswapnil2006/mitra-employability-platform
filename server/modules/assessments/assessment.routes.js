@@ -20,6 +20,12 @@ const { protect } = require('../../middleware/authMiddleware');
 const { authorize } = require('../../middleware/roleMiddleware');
 const { requireCompleteProfile } = require('../../middleware/profileMiddleware');
 
+const multer = require('multer');
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 } // 20 MB limit
+});
+
 // Student endpoints
 router.get('/', protect, requireCompleteProfile, getAssessments);
 router.get('/take/:id', protect, requireCompleteProfile, getAssessmentById);
@@ -33,7 +39,7 @@ router.get('/admin/all', protect, authorize('admin'), getAllAssessmentsAdmin);
 router.get('/admin/results', protect, authorize('admin'), getAllAttemptsAdmin);
 router.post('/admin/generate-ai', protect, authorize('admin'), generateAIAssessment);
 router.post('/admin/generate-questions', protect, authorize('admin'), generateQuestionsForReview);
-router.post('/admin/extract-pdf', protect, authorize('admin'), extractPdfQuestions);
+router.post('/admin/extract-pdf', protect, authorize('admin'), upload.single('pdfFile'), extractPdfQuestions);
 router.post('/admin/create', protect, authorize('admin'), createAssessment);
 router.put('/admin/:id', protect, authorize('admin'), updateAssessment);
 router.delete('/admin/:id', protect, authorize('admin'), deleteAssessment);

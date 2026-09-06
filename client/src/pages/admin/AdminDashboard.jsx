@@ -4,7 +4,7 @@ import StatCard from '../../components/StatCard';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import LoadingState from '../../components/LoadingState';
-import { BookOpen, FileCheck, TrendingUp, Sparkles, FileText } from 'lucide-react';
+import { BookOpen, FileCheck, TrendingUp, Sparkles, FileText, LayoutDashboard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const AdminDashboard = () => {
@@ -22,9 +22,17 @@ export const AdminDashboard = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">HOD & Admin Control Panel</h1>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">T&P Administration</span>
+            <span className="text-slate-300">•</span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">Control Panel</span>
+          </div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+            <LayoutDashboard className="w-6 h-6 text-blue-600" />
+            Training and Placement Department
+          </h1>
           <p className="text-xs text-slate-600 mt-1">Manage curriculum, submodule assessments, analytics, and Excel reports.</p>
         </div>
 

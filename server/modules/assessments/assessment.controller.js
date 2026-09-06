@@ -4,6 +4,7 @@ const StudentProgress = require('../progress/progress.model');
 const { evaluateSqlQuery } = require('../../utils/sqlEvaluator');
 const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
 const { extractQuestionsFromPdfText } = require('../../utils/pdfQuestionExtractor');
+const { extractQuestionsWithPatterns } = require('../../utils/patternPdfParser');
 
 // Get assessments list with module/department filtering
 exports.getAssessments = async (req, res) => {
@@ -389,7 +390,7 @@ exports.generateQuestionsForReview = async (req, res) => {
   }
 };
 
-// Extract Questions from PDF Text
+// Extract Questions from PDF using offline pattern recognition (Zero LLM calls)
 exports.extractPdfQuestions = async (req, res) => {
   try {
     const {
@@ -397,16 +398,22 @@ exports.extractPdfQuestions = async (req, res) => {
       category = 'Quantitative Aptitude',
       topic = 'General',
       difficulty = 'Medium',
-      questionCount = 10
+      questionCount = 50
     } = req.body;
 
-    if (!pdfText || !pdfText.trim()) {
-      return res.status(400).json({ success: false, message: 'No text or content found in uploaded PDF.' });
+    const pdfBuffer = req.file ? req.file.buffer : null;
+
+    if (!pdfBuffer && (!pdfText || !pdfText.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'No PDF file or text provided. Please select a valid PDF document.'
+      });
     }
 
-    const count = Math.min(Math.max(parseInt(questionCount, 10) || 10, 1), 50);
+    const count = Math.min(Math.max(parseInt(questionCount, 10) || 50, 1), 100);
 
-    const questions = await extractQuestionsFromPdfText({
+    const extractionResult = await extractQuestionsWithPatterns({
+      pdfBuffer,
       pdfText,
       category,
       topic,
@@ -416,14 +423,19 @@ exports.extractPdfQuestions = async (req, res) => {
 
     res.json({
       success: true,
-      count: questions.length,
-      questions
+      count: extractionResult.questions.length,
+      totalDetected: extractionResult.totalDetected,
+      pageCount: extractionResult.pageCount,
+      questions: extractionResult.questions,
+      category: extractionResult.category,
+      topic: extractionResult.topic,
+      difficulty: extractionResult.difficulty
     });
   } catch (err) {
-    console.error('[PDF AI Controller Error]:', err);
-    res.status(500).json({
+    console.error('[PDF Pattern Extractor Error]:', err);
+    res.status(400).json({
       success: false,
-      message: 'PDF extraction is temporarily unavailable. Please try again later.'
+      message: err.message || 'Failed to extract questions from PDF. Please check that the PDF contains readable text and numbered questions.'
     });
   }
 };
