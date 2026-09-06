@@ -1,12 +1,42 @@
 const dns = require('dns');
 const nodemailer = require('nodemailer');
 
-// Force IPv4 resolution first to prevent ENETUNREACH IPv6 timeout errors on cloud environments (like Render)
+// 1. Force IPv4 first in Node.js DNS
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first');
 }
 
+// 2. Disable IPv6 in Nodemailer's internal network interface detector to prevent ENETUNREACH on Render
+try {
+  const nodemailerShared = require('nodemailer/lib/shared');
+  if (nodemailerShared && nodemailerShared.networkInterfaces) {
+    nodemailerShared.networkInterfaces = Object.keys(nodemailerShared.networkInterfaces).reduce((acc, k) => {
+      acc[k] = nodemailerShared.networkInterfaces[k].filter(i => i.family === 'IPv4' || i.family === 4);
+      return acc;
+    }, {});
+  }
+} catch {
+  // Safe ignore if shared module structure differs
+}
+
 let cachedTransporter = null;
+let cachedPort = null;
+
+/**
+ * Resolves a hostname strictly to its IPv4 address (e.g. smtp.hostinger.com -> 172.65.255.143)
+ * Completely eliminates ENETUNREACH IPv6 routing errors on cloud hosts like Render.
+ */
+const resolveIPv4 = async (hostname) => {
+  try {
+    const res = await dns.promises.lookup(hostname, { family: 4 });
+    if (res && res.address) {
+      return res.address;
+    }
+  } catch (err) {
+    console.warn(`[Email Service]: Direct IPv4 lookup for ${hostname} failed: ${err.message}. Using hostname.`);
+  }
+  return hostname;
+};
 
 /**
  * Returns clean, RFC 5322 formatted sender address from environment variables.
@@ -40,13 +70,11 @@ const getSender = () => {
 };
 
 /**
- * Creates or returns cached Nodemailer transporter with connection tuning.
- * Optimized for Hostinger SMTP (smtp.hostinger.com) and custom domain mail servers on Render.
+ * Creates a Nodemailer transporter locked strictly to IPv4.
+ * Supports port 465 (SSL) and port 587 (STARTTLS).
  */
-const getTransporter = () => {
+const createTransporterForPort = async (port) => {
   const host = (process.env.MAIL_HOST || 'smtp.hostinger.com').trim();
-  const rawPort = (process.env.MAIL_PORT || '465').trim();
-  const port = parseInt(rawPort, 10) || 465;
   const user = (process.env.MAIL_USER || '').trim();
   const pass = (process.env.MAIL_PASSWORD || '').trim();
 
@@ -58,40 +86,49 @@ const getTransporter = () => {
     throw new Error(`Missing required SMTP environment variables: ${missing.join(', ')}`);
   }
 
-  if (!cachedTransporter) {
-    const isHostinger = host.toLowerCase().includes('hostinger');
-    const isGmail = host.toLowerCase().includes('gmail');
-    const isSecure = port === 465;
+  const isSecure = port === 465;
+  const ipv4Address = await resolveIPv4(host);
 
-    const transportOptions = {
-      host: isGmail ? 'smtp.gmail.com' : (isHostinger ? 'smtp.hostinger.com' : host),
-      port,
-      secure: isSecure, // Port 465 = true (SSL), Port 587 = false (STARTTLS)
-      family: 4,        // Force IPv4 to prevent Render cloud IPv6 hangs
-      auth: {
-        user,
-        pass
-      },
-      // Require TLS when connecting via Port 587
-      requireTLS: port === 587,
-      tls: {
-        rejectUnauthorized: false,
-        minVersion: 'TLSv1.2'
-      },
-      // Cloud-optimized socket timeouts
-      connectionTimeout: 20000,
-      greetingTimeout: 20000,
-      socketTimeout: 30000
-    };
+  const transportOptions = {
+    host: ipv4Address, // Direct IPv4 connection (e.g. 172.65.255.143)
+    port,
+    secure: isSecure,  // true for 465 (SSL), false for 587 (STARTTLS)
+    family: 4,         // Force IPv4 socket
+    auth: {
+      user,
+      pass
+    },
+    requireTLS: port === 587,
+    tls: {
+      servername: host, // Crucial: sets TLS SNI to match the certificate for smtp.hostinger.com
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
+    },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000
+  };
 
-    cachedTransporter = nodemailer.createTransport(transportOptions);
+  return nodemailer.createTransport(transportOptions);
+};
+
+/**
+ * Returns or creates the cached transporter for a given port.
+ */
+const getTransporter = async (port = null) => {
+  const targetPort = port || parseInt((process.env.MAIL_PORT || '465').trim(), 10) || 465;
+
+  if (!cachedTransporter || cachedPort !== targetPort) {
+    resetTransporter();
+    cachedTransporter = await createTransporterForPort(targetPort);
+    cachedPort = targetPort;
   }
 
   return cachedTransporter;
 };
 
 /**
- * Resets the transporter cache (e.g. after connection drops or configuration changes)
+ * Resets the transporter cache
  */
 const resetTransporter = () => {
   if (cachedTransporter && typeof cachedTransporter.close === 'function') {
@@ -102,16 +139,21 @@ const resetTransporter = () => {
     }
   }
   cachedTransporter = null;
+  cachedPort = null;
 };
 
 /**
- * Unified dispatch helper: uses Nodemailer SMTP with automatic single retry on socket drops.
+ * Unified dispatch helper: uses IPv4-enforced SMTP with automatic fallback between Port 465 and Port 587.
+ * If Port 465 is blocked or drops, it immediately retries via Port 587 (STARTTLS).
  */
 const dispatchEmail = async ({ to, subject, html }) => {
   const from = getSender();
-  const transporter = getTransporter();
+  const configuredPort = parseInt((process.env.MAIL_PORT || '465').trim(), 10) || 465;
+  const fallbackPort = configuredPort === 465 ? 587 : 465;
 
+  // 1. Primary Attempt: using configured port (strictly over IPv4)
   try {
+    const transporter = await getTransporter(configuredPort);
     const info = await transporter.sendMail({
       from,
       to,
@@ -120,32 +162,38 @@ const dispatchEmail = async ({ to, subject, html }) => {
     });
 
     return {
-      method: 'smtp',
+      method: `smtp_port_${configuredPort}`,
       messageId: info.messageId,
       accepted: info.accepted,
       response: info.response
     };
-  } catch (err) {
-    // If connection was dropped by cloud firewall or idle timeout, reset and retry once
-    const isSocketDrop = err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.code === 'ESOCKET';
-    if (isSocketDrop) {
-      console.warn(`[Email Service]: Socket dropped (${err.code}). Resetting transporter and retrying once...`);
-      resetTransporter();
-      const retryTransporter = getTransporter();
-      const retryInfo = await retryTransporter.sendMail({
+  } catch (primaryErr) {
+    console.warn(`[Email Service]: Primary port ${configuredPort} failed (${primaryErr.code || primaryErr.message}). Switching to fallback port ${fallbackPort}...`);
+    resetTransporter();
+
+    // 2. Secondary Attempt: fallback to alternate port (465 <-> 587)
+    try {
+      const fallbackTransporter = await createTransporterForPort(fallbackPort);
+      const info = await fallbackTransporter.sendMail({
         from,
         to,
         subject,
         html
       });
+      console.log(`[Email Service]: Fallback to port ${fallbackPort} succeeded! MessageId: ${info.messageId}`);
+      cachedTransporter = fallbackTransporter;
+      cachedPort = fallbackPort;
+
       return {
-        method: 'smtp_retry',
-        messageId: retryInfo.messageId,
-        accepted: retryInfo.accepted,
-        response: retryInfo.response
+        method: `smtp_port_${fallbackPort}`,
+        messageId: info.messageId,
+        accepted: info.accepted,
+        response: info.response
       };
+    } catch (fallbackErr) {
+      console.error(`[Email Service]: Both port ${configuredPort} and port ${fallbackPort} failed: ${fallbackErr.message}`);
+      throw fallbackErr;
     }
-    throw err;
   }
 };
 
@@ -401,44 +449,62 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, resetToken, rese
  */
 exports.verifyConnection = async () => {
   const startTime = Date.now();
+  const host = (process.env.MAIL_HOST || 'smtp.hostinger.com').trim();
+  const configuredPort = parseInt((process.env.MAIL_PORT || '465').trim(), 10) || 465;
+  const user = (process.env.MAIL_USER || '').trim();
+  const from = getSender();
 
+  // Try configured port first
   try {
-    const transporter = getTransporter();
+    const transporter = await getTransporter(configuredPort);
     await transporter.verify();
-    const host = (process.env.MAIL_HOST || 'smtp.hostinger.com').trim();
-    const port = (process.env.MAIL_PORT || '465').trim();
-    const user = (process.env.MAIL_USER || '').trim();
-    const from = getSender();
 
     return {
       success: true,
       provider: host.includes('hostinger') ? 'Hostinger Secure SMTP' : 'Custom SMTP',
       host,
-      port: parseInt(port, 10),
+      port: configuredPort,
       user,
       from,
       latencyMs: Date.now() - startTime,
-      message: `Successfully authenticated and connected with ${host}:${port}`
+      message: `Successfully authenticated and connected with ${host}:${configuredPort} (IPv4)`
     };
-  } catch (err) {
-    resetTransporter();
-    let hint = 'Check your SMTP credentials and cloud network settings.';
-    if (err.code === 'EAUTH') {
-      hint = 'Authentication failed. Please verify MAIL_USER and MAIL_PASSWORD. For Hostinger, test logging into https://mail.hostinger.com to verify password.';
-    } else if (err.code === 'ETIMEDOUT') {
-      hint = 'Connection timed out. On Render, try switching MAIL_PORT between 465 (SSL) and 587 (TLS).';
-    } else if (err.code === 'ECONNREFUSED') {
-      hint = 'Connection refused. Double-check MAIL_HOST and MAIL_PORT settings.';
-    }
+  } catch (primaryErr) {
+    const fallbackPort = configuredPort === 465 ? 587 : 465;
+    try {
+      const fallbackTransporter = await createTransporterForPort(fallbackPort);
+      await fallbackTransporter.verify();
+      cachedTransporter = fallbackTransporter;
+      cachedPort = fallbackPort;
 
-    return {
-      success: false,
-      provider: 'SMTP',
-      code: err.code || 'UNKNOWN',
-      error: err.message,
-      hint,
-      latencyMs: Date.now() - startTime
-    };
+      return {
+        success: true,
+        provider: host.includes('hostinger') ? 'Hostinger Secure SMTP (Fallback)' : 'Custom SMTP',
+        host,
+        port: fallbackPort,
+        user,
+        from,
+        latencyMs: Date.now() - startTime,
+        message: `Successfully authenticated and connected with ${host}:${fallbackPort} (Fallback IPv4)`
+      };
+    } catch (fallbackErr) {
+      resetTransporter();
+      let hint = 'Check your SMTP credentials and cloud network settings.';
+      if (primaryErr.code === 'EAUTH') {
+        hint = 'Authentication failed. Please verify MAIL_USER and MAIL_PASSWORD in Render.';
+      } else if (primaryErr.code === 'ETIMEDOUT' || primaryErr.code === 'ENETUNREACH') {
+        hint = 'Connection timed out or network unreachable on Render. Verify outbound networking or test port 587.';
+      }
+
+      return {
+        success: false,
+        provider: 'SMTP',
+        code: primaryErr.code || 'UNKNOWN',
+        error: primaryErr.message,
+        hint,
+        latencyMs: Date.now() - startTime
+      };
+    }
   }
 };
 
