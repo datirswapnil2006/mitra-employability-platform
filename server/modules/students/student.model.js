@@ -117,11 +117,7 @@ studentProfileSchema.methods.calculateCompletion = function (userObj = null) {
 
   // --- Section 4: Career & Portfolio Profiles (15%) ---
   const resume = (this.resumeUrl || '').trim();
-  if (resume) score += 10;
-
-  const linkedin = (this.linkedinUrl || '').trim();
-  const github = (this.githubUrl || '').trim();
-  if (linkedin || github) score += 5;
+  if (resume) score += 15;
 
   this.profileCompletionPercentage = Math.min(100, Math.max(0, score));
   return this.profileCompletionPercentage;

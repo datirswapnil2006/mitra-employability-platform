@@ -4,14 +4,24 @@ const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
 const questionSchema = new mongoose.Schema({
   module: {
     type: String,
-    enum: ['Aptitude', 'Technical', 'Domain', 'General'],
+    enum: ['Aptitude', 'Technical', 'Domain', 'Domain Knowledge', 'General', 'Communication', 'Resume', 'Interview', 'Interview Preparation', 'SQL', 'Technical Coding'],
     required: true,
     default: 'Aptitude'
+  },
+  moduleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'TrainingModule',
+    default: null
   },
   category: {
     type: String,
     required: true,
     trim: true
+  },
+  categoryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null
   },
   department: {
     type: String,
@@ -22,6 +32,11 @@ const questionSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true
+  },
+  topicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Topic',
+    default: null
   },
   questionText: {
     type: String,

@@ -25,7 +25,9 @@ const requireCompleteProfile = async (req, res, next) => {
       });
     }
 
-    const completion = profile.profileCompletionPercentage || profile.calculateCompletion();
+    const completion = (profile.profileCompletionPercentage !== undefined && profile.profileCompletionPercentage !== null)
+      ? profile.profileCompletionPercentage
+      : profile.calculateCompletion(req.user);
     if (completion < 100) {
       return res.status(403).json({
         success: false,

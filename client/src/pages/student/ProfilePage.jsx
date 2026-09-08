@@ -9,8 +9,15 @@ import Badge from '../../components/Badge';
 import ProgressBar from '../../components/ProgressBar';
 import LoadingState from '../../components/LoadingState';
 import Toast from '../../components/Toast';
-import { calculateProfileCompletion } from '../../utils/profileCompletion';
-import { User, Phone, Hash, Globe, ShieldCheck, Check, Sparkles, Save, Link as LinkIcon, FileText, Mail, GraduationCap, Award, MapPin, CreditCard, Camera, Upload, Trash2 } from 'lucide-react';
+import {
+  calculateProfileCompletion,
+  getMissingProfileRequirements
+} from '../../utils/profileCompletion';
+import {
+  User, Phone, Hash, Globe, ShieldCheck, Check, Sparkles, Save,
+  Link as LinkIcon, FileText, Mail, GraduationCap, Award, MapPin,
+  CreditCard, Camera, Upload, Trash2, AlertCircle
+} from 'lucide-react';
 import {
   OFFICIAL_DEPARTMENTS,
   ACADEMIC_YEARS,
@@ -26,6 +33,7 @@ export const ProfilePage = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [imgError, setImgError] = useState(false);
+  const [showAllChecklist, setShowAllChecklist] = useState(false);
   const [profileData, setProfileData] = useState({
     erpNumber: '',
     rollNo: '',
@@ -212,7 +220,13 @@ export const ProfilePage = () => {
           profileCompletionPercentage: newCompletion
         }));
         setImgError(false);
-        setMessage('Profile updated successfully! Academic credentials attached and verified.');
+        if (newCompletion === 100) {
+          setMessage('Profile verified at 100%! All requirements completed successfully. All portal modules unlocked.');
+        } else {
+          const missing = getMissingProfileRequirements(updated, user);
+          const missingNames = missing.map(m => m.label).join(', ');
+          setMessage(`Profile saved (${newCompletion}%). Incomplete required fields: ${missingNames}`);
+        }
         await refreshUser();
       } else {
         setError(res.message || 'Error updating profile');
@@ -224,9 +238,10 @@ export const ProfilePage = () => {
     }
   };
 
-  if (loading) return <LoadingState message="Loading your student profile..." />;
-
+  const missingRequirements = getMissingProfileRequirements(profileData, user);
   const is100 = profileData.profileCompletionPercentage === 100;
+
+  if (loading) return <LoadingState message="Loading your student profile..." />;
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -308,9 +323,14 @@ export const ProfilePage = () => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:underline inline-flex items-center gap-1"
+                className={`text-[11px] font-bold inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
+                  profileData.profilePhoto
+                    ? 'text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100'
+                    : 'text-amber-800 bg-amber-100 border-amber-300 hover:bg-amber-200'
+                }`}
               >
-                <Upload className="w-3 h-3" /> {profileData.profilePhoto ? 'Change Photo (15%)' : 'Upload Photo (15%)'}
+                <Upload className="w-3.5 h-3.5" />
+                {profileData.profilePhoto ? 'Change Photo' : 'Upload Profile Photo'}
               </button>
               {profileData.profilePhoto && (
                 <>
@@ -337,15 +357,63 @@ export const ProfilePage = () => {
           </div>
           <ProgressBar progress={profileData.profileCompletionPercentage} color={is100 ? 'emerald' : 'amber'} showPercentage={false} />
           <p className="text-[10px] text-slate-500 mt-2 text-center">
-            {is100 ? '✓ Complete Profile (100%)' : 'Photo 15% • Identity 25% • Academics 25% • Contact 20% • Career 15%'}
+            {is100 ? '✓ Complete Profile (100%)' : 'Complete all required fields to reach 100%'}
           </p>
         </div>
       </div>
 
+      {/* Missing Requirements Clean Banner */}
+      {!is100 && missingRequirements.length > 0 && (
+        <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-amber-950">
+                  Required Profile Fields Remaining
+                </h3>
+                <p className="text-xs text-amber-800">
+                  Complete the following required fields to reach 100% and unlock all portal features:
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-bold px-3 py-1 bg-amber-200/70 text-amber-900 rounded-full border border-amber-300 w-fit shrink-0">
+              {missingRequirements.length} field{missingRequirements.length === 1 ? '' : 's'} remaining
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+            {missingRequirements.map(item => (
+              <div
+                key={item.id}
+                className="bg-white/95 rounded-2xl p-3 border border-amber-200 shadow-xs flex items-start gap-2.5 text-xs"
+              >
+                <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-slate-900 truncate">{item.label}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{item.tip}</p>
+                  {item.id === 'photo' && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 hover:underline"
+                    >
+                      <Upload className="w-3 h-3" /> Upload Photo
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Main Profile Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Section 1: Academic & Institutional Identity */}
-        <Card title="1. Academic & Institutional Identity (25%)" subtitle="Managed in synchronization with college records">
+        <Card title="1. Academic & Institutional Identity" subtitle="Managed in synchronization with college records">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <Input
               label="ERP Number *"
@@ -396,7 +464,7 @@ export const ProfilePage = () => {
         </Card>
 
         {/* Section 2: Academic Qualifications & Performance */}
-        <Card title="2. Academic Qualifications & Performance (25%)" subtitle="10th, 12th, Diploma, CGPA, Education Gap & Backlogs">
+        <Card title="2. Academic Qualifications & Performance" subtitle="10th, 12th, Diploma, CGPA, Education Gap & Backlogs">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <Input
               label="10th Standard Percentage (%) *"
@@ -413,7 +481,7 @@ export const ProfilePage = () => {
               required
             />
             <Input
-              label="12th Standard Percentage (%)"
+              label="12th Standard Percentage (%) * (or Diploma %)"
               name="twelfthPercentage"
               type="number"
               step="0.01"
@@ -423,20 +491,20 @@ export const ProfilePage = () => {
               placeholder="e.g. 82.40"
               value={profileData.twelfthPercentage}
               onChange={handleChange}
-              helperText="Higher Secondary Certificate (HSC) aggregate score"
+              helperText="Required. (Enter either 12th % or Diploma % below)"
             />
             <Input
-              label="Diploma Percentage (%) (Optional)"
+              label="Diploma Percentage (%) (Alternative to 12th)"
               name="diplomaPercentage"
               type="number"
               step="0.01"
               min="0"
               max="100"
               icon={Award}
-              placeholder="e.g. 85.00 (Optional for DSE / Polytechnic)"
+              placeholder="e.g. 85.00 (For Polytechnic / DSE students)"
               value={profileData.diplomaPercentage}
               onChange={handleChange}
-              helperText="Leave empty if not applicable"
+              helperText="Enter if you did Polytechnic/Diploma instead of 12th"
             />
             <Input
               label="Current Degree CGPA *"
@@ -472,7 +540,7 @@ export const ProfilePage = () => {
         </Card>
 
         {/* Section 3: Contact Details & Identity */}
-        <Card title="3. Contact Details & Identity (20%)" subtitle="Required for placement communications and verification">
+        <Card title="3. Contact Details & Identity" subtitle="Required for placement communications and verification">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <Input
               label="Institutional Email *"
@@ -518,7 +586,7 @@ export const ProfilePage = () => {
         </Card>
 
         {/* Section 4: Professional & Career Links */}
-        <Card title="4. Career & Portfolio Profiles (15%)" subtitle="Resume document and professional portfolio links">
+        <Card title="4. Career & Portfolio Profiles" subtitle="Resume document and professional portfolio links">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div className="md:col-span-2">
               <Input
@@ -539,6 +607,7 @@ export const ProfilePage = () => {
               placeholder="https://github.com/username"
               value={profileData.githubUrl}
               onChange={handleChange}
+              helperText="Optional link to your GitHub profile or projects"
             />
             <Input
               label="LinkedIn Profile URL (Optional)"
@@ -547,6 +616,7 @@ export const ProfilePage = () => {
               placeholder="https://linkedin.com/in/username"
               value={profileData.linkedinUrl}
               onChange={handleChange}
+              helperText="Optional link to your professional LinkedIn profile"
             />
           </div>
         </Card>

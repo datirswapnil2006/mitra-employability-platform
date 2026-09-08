@@ -95,6 +95,7 @@ const topicSchema = new mongoose.Schema({
   },
   description: { type: String, default: '' },
   order: { type: Number, default: 0 },
+  defaultAssessmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Assessment', default: null },
   status: { type: String, enum: ['published', 'draft'], default: 'published' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now },

@@ -36,6 +36,7 @@ const assessmentSchema = new mongoose.Schema({
     default: null
   },
   topic: { type: String, default: '' },
+  topicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic' },
   difficulty: {
     type: String,
     enum: ['Easy', 'Medium', 'Hard', 'Beginner', 'Intermediate', 'Advanced', 'Mixed', 'mixed'],
@@ -43,6 +44,8 @@ const assessmentSchema = new mongoose.Schema({
   },
   moduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingModule' },
   submoduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Submodule' },
+  isDefaultTopicAssessment: { type: Boolean, default: false },
+  isPracticeTest: { type: Boolean, default: false },
   questions: [questionSchema],
   passingScorePercentage: { type: Number, default: 70 },
   timeLimitMinutes: { type: Number, default: 20 },
@@ -78,11 +81,19 @@ const assessmentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// Enforce system-wide hard limit: maximum 30 questions per test
+assessmentSchema.pre('save', function () {
+  if (this.questions && this.questions.length > 30) {
+    this.questions = this.questions.slice(0, 30);
+  }
+});
+
 const assessmentAttemptSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assessmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Assessment', required: true },
   moduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'TrainingModule' },
   submoduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Submodule' },
+  topicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic' },
   score: { type: Number, required: true },
   totalMarks: { type: Number, required: true },
   percentage: { type: Number, required: true },
