@@ -44,49 +44,84 @@ const studentProfileSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Calculate profile completion percentage based on weighted core profile fields
-// Weights: name (10), erpNumber (15), department (10), gender (10), academicYear (10), section (10), graduationBatch (10), email (10), profilePhoto (15) = 100%
+// Calculate profile completion percentage based on weighted sections:
+// 1. Profile Photo: 15%
+// 2. Section 1 (Academic & Institutional Identity): 25% (Name 3, Email 3, ERP 7, Department 3, Gender 3, Year 2, Section 2, Batch 2)
+// 3. Section 2 (Academic Qualifications & Performance): 25% (10th 8, 12th/Diploma 8, CGPA 9)
+// 4. Section 3 (Contact Details & Identity): 20% (Phone 7, Aadhaar 7, Hometown 6)
+// 5. Section 4 (Career & Portfolio Profiles): 15% (Resume 10, LinkedIn/GitHub 5)
+// Total: 100%
 studentProfileSchema.methods.calculateCompletion = function (userObj = null) {
   let score = 0;
   
-  // 1. Name: 10%
-  const userName = (userObj?.name || (this.user && typeof this.user === 'object' ? this.user.name : '') || '').trim();
-  if (userName) score += 10;
-  
-  // 2. ERP / Roll Number: 15%
-  const erp = (this.erpNumber || this.rollNo || '').trim();
-  if (erp) score += 15;
-  
-  // 3. Department: 10%
-  const dept = (this.department || userObj?.department || '').trim();
-  if (dept) score += 10;
-  
-  // 4. Gender: 10%
-  const gender = (this.gender || '').trim();
-  if (gender) score += 10;
-  
-  // 5. Academic Year: 10%
-  const year = (this.year || '').trim();
-  if (year) score += 10;
-  
-  // 6. Section: 10%
-  const section = (this.section || '').trim();
-  if (section) score += 10;
-  
-  // 7. Graduation Batch: 10%
-  const batch = (this.batch || '').trim();
-  if (batch) score += 10;
-  
-  // 8. Email: 10%
-  const email = (userObj?.email || (this.user && typeof this.user === 'object' ? this.user.email : '') || '').trim();
-  if (email) score += 10;
-  
-  // 9. Profile Photo: 15% (must be a valid non-empty photo URL/path, excluding placeholders)
+  // --- Profile Photo (15%) ---
   const photo = (this.profilePhoto || userObj?.profilePhoto || '').trim();
   const isInvalidPhoto = !photo || photo === 'null' || photo === 'undefined' || photo.includes('placeholder') || photo.includes('default-avatar');
   if (photo && !isInvalidPhoto) {
     score += 15;
   }
+
+  // --- Section 1: Academic & Institutional Identity (25%) ---
+  const userName = (userObj?.name || (this.user && typeof this.user === 'object' ? this.user.name : '') || '').trim();
+  if (userName) score += 3;
+
+  const email = (userObj?.email || (this.user && typeof this.user === 'object' ? this.user.email : '') || '').trim();
+  if (email) score += 3;
+
+  const erp = (this.erpNumber || this.rollNo || '').trim();
+  if (erp) score += 7;
+
+  const dept = (this.department || userObj?.department || '').trim();
+  if (dept) score += 3;
+
+  const gender = (this.gender || '').trim();
+  if (gender) score += 3;
+
+  const year = (this.year || '').trim();
+  if (year) score += 2;
+
+  const section = (this.section || '').trim();
+  if (section) score += 2;
+
+  const batch = (this.batch || '').trim();
+  if (batch) score += 2;
+
+  // --- Section 2: Academic Qualifications & Performance (25%) ---
+  const tenth = this.tenthPercentage;
+  if (tenth !== null && tenth !== undefined && !isNaN(tenth) && Number(tenth) > 0) {
+    score += 8;
+  }
+
+  const twelfth = this.twelfthPercentage;
+  const diploma = this.diplomaPercentage;
+  const hasTwelfth = twelfth !== null && twelfth !== undefined && !isNaN(twelfth) && Number(twelfth) > 0;
+  const hasDiploma = diploma !== null && diploma !== undefined && !isNaN(diploma) && Number(diploma) > 0;
+  if (hasTwelfth || hasDiploma) {
+    score += 8;
+  }
+
+  const cgpa = this.cgpa;
+  if (cgpa !== null && cgpa !== undefined && !isNaN(cgpa) && Number(cgpa) > 0) {
+    score += 9;
+  }
+
+  // --- Section 3: Contact Details & Identity (20%) ---
+  const phone = (this.phone || '').trim();
+  if (phone) score += 7;
+
+  const aadhaar = (this.aadhaarNumber || '').trim();
+  if (aadhaar) score += 7;
+
+  const hometown = (this.hometown || '').trim();
+  if (hometown) score += 6;
+
+  // --- Section 4: Career & Portfolio Profiles (15%) ---
+  const resume = (this.resumeUrl || '').trim();
+  if (resume) score += 10;
+
+  const linkedin = (this.linkedinUrl || '').trim();
+  const github = (this.githubUrl || '').trim();
+  if (linkedin || github) score += 5;
 
   this.profileCompletionPercentage = Math.min(100, Math.max(0, score));
   return this.profileCompletionPercentage;

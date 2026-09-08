@@ -310,7 +310,7 @@ export const ProfilePage = () => {
                 onClick={() => fileInputRef.current?.click()}
                 className="text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:underline inline-flex items-center gap-1"
               >
-                <Upload className="w-3 h-3" /> {profileData.profilePhoto ? 'Change Photo' : 'Upload Photo'}
+                <Upload className="w-3 h-3" /> {profileData.profilePhoto ? 'Change Photo (15%)' : 'Upload Photo (15%)'}
               </button>
               {profileData.profilePhoto && (
                 <>
@@ -328,7 +328,7 @@ export const ProfilePage = () => {
           </div>
         </div>
 
-        <div className="w-full md:w-64 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+        <div className="w-full md:w-72 bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <div className="flex justify-between text-xs font-semibold mb-2">
             <span className="text-slate-600">Profile Completion</span>
             <span className={is100 ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
@@ -336,8 +336,8 @@ export const ProfilePage = () => {
             </span>
           </div>
           <ProgressBar progress={profileData.profileCompletionPercentage} color={is100 ? 'emerald' : 'amber'} showPercentage={false} />
-          <p className="text-[11px] text-slate-500 mt-2 text-center">
-            {is100 ? '✓ Complete Profile' : 'Complete your profile to reach 100%'}
+          <p className="text-[10px] text-slate-500 mt-2 text-center">
+            {is100 ? '✓ Complete Profile (100%)' : 'Photo 15% • Identity 25% • Academics 25% • Contact 20% • Career 15%'}
           </p>
         </div>
       </div>
@@ -345,7 +345,7 @@ export const ProfilePage = () => {
       {/* Main Profile Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Section 1: Academic & Institutional Identity */}
-        <Card title="1. Academic & Institutional Identity" subtitle="Managed in synchronization with college records">
+        <Card title="1. Academic & Institutional Identity (25%)" subtitle="Managed in synchronization with college records">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <Input
               label="ERP Number *"
@@ -396,7 +396,7 @@ export const ProfilePage = () => {
         </Card>
 
         {/* Section 2: Academic Qualifications & Performance */}
-        <Card title="2. Academic Qualifications & Performance" subtitle="10th, 12th, Diploma, CGPA, Education Gap & Backlogs">
+        <Card title="2. Academic Qualifications & Performance (25%)" subtitle="10th, 12th, Diploma, CGPA, Education Gap & Backlogs">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <Input
               label="10th Standard Percentage (%) *"
@@ -444,7 +444,7 @@ export const ProfilePage = () => {
               type="number"
               step="0.01"
               min="0"
-              max="10"
+              max="100"
               icon={Award}
               placeholder="e.g. 8.75 (out of 10)"
               value={profileData.cgpa}
@@ -472,7 +472,7 @@ export const ProfilePage = () => {
         </Card>
 
         {/* Section 3: Contact Details & Identity */}
-        <Card title="3. Contact Details & Identity" subtitle="Required for placement communications and verification">
+        <Card title="3. Contact Details & Identity (20%)" subtitle="Required for placement communications and verification">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <Input
               label="Institutional Email *"
@@ -518,7 +518,7 @@ export const ProfilePage = () => {
         </Card>
 
         {/* Section 4: Professional & Career Links */}
-        <Card title="4. Career & Portfolio Profiles" subtitle="Resume document and professional portfolio links">
+        <Card title="4. Career & Portfolio Profiles (15%)" subtitle="Resume document and professional portfolio links">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div className="md:col-span-2">
               <Input
