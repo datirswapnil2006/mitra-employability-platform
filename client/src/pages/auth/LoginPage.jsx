@@ -5,7 +5,7 @@ import { api } from '../../services/api';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
-import { Mail, Lock, ArrowRight, GraduationCap, Shield, CheckCircle2, AlertCircle, KeyRound } from 'lucide-react';
+import { Mail, Lock, ArrowRight, GraduationCap, Shield, CheckCircle2, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 export const LoginPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -13,6 +13,7 @@ export const LoginPage = () => {
   const [role, setRole] = useState(initialRole);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -180,22 +181,34 @@ export const LoginPage = () => {
               label={isStudent ? 'Student Email / Institutional ID *' : 'Administrator Email / Institutional ID *'}
               type="email"
               icon={Mail}
-              placeholder={isStudent ? 'student@mitra.edu' : 'admin@mitra.edu'}
+              placeholder={isStudent ? 'student@mitra.edu' : 'student@gmail.com'}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
 
             <div>
-              <Input
-                label="Password *"
-                type="password"
-                icon={Lock}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  label="Password *"
+                  type={showPassword ? 'text' : 'password'}
+                  icon={Lock}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-8 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"
+                  tabIndex="-1"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
               <div className="flex justify-end mt-1.5">
                 <button
                   type="button"
@@ -248,7 +261,9 @@ export const LoginPage = () => {
           <div className="flex items-center gap-3 p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs text-blue-950">
             <KeyRound className="w-5 h-5 text-blue-600 shrink-0" />
             <p className="text-[11px] leading-relaxed">
-              Enter your registered email address to submit a password reset request. Your request will be forwarded to the Training & Placement (T&P) department for authorization.
+              {isStudent
+                ? 'Enter your registered email address to submit a password reset request to the Training & Placement department.'
+                : 'Enter your registered administrator email address (tpomitech@mitra.ac.in) to receive a secure password reset link.'}
             </p>
           </div>
 
@@ -272,7 +287,7 @@ export const LoginPage = () => {
                 label="Registered Email Address *"
                 type="email"
                 icon={Mail}
-                placeholder="e.g. student@mitra.edu"
+                placeholder={isStudent ? 'student@mitra.edu' : 'tpomitech@mitra.ac.in'}
                 value={forgotEmail}
                 onChange={(e) => setForgotEmail(e.target.value)}
                 required

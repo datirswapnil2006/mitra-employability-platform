@@ -462,6 +462,46 @@ exports.forgotPassword = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No registered account found with this email address.' });
     }
 
+    // If Administrator requests password reset, generate direct token and dispatch email/link
+    if (user.role === 'admin') {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      user.resetPasswordToken = resetToken;
+      user.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      await user.save();
+
+      let originUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/+$/, '');
+      if (req.headers.origin) {
+        originUrl = req.headers.origin.trim().replace(/\/+$/, '');
+      } else if (req.headers.referer) {
+        try {
+          originUrl = new URL(req.headers.referer).origin.replace(/\/+$/, '');
+        } catch (_) {}
+      }
+      const resetLink = `${originUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+      const emailResult = await sendPasswordResetEmail({
+        toEmail: user.email,
+        studentName: user.name,
+        resetToken,
+        resetLink
+      });
+
+      if (emailResult?.success) {
+        return res.json({
+          success: true,
+          emailDispatched: true,
+          message: `Administrator password reset link has been dispatched to ${user.email}. Please check your inbox.`
+        });
+      } else {
+        return res.json({
+          success: true,
+          emailDispatched: false,
+          resetLink,
+          message: `Password reset link generated for ${user.email}. Please use the reset link sent to your email or access: ${resetLink}`
+        });
+      }
+    }
+
     // Find or create student profile if user is student
     if (user.role === 'student') {
       let profile = await StudentProfile.findOne({ user: user._id });
@@ -476,11 +516,16 @@ exports.forgotPassword = async (req, res) => {
       profile.passwordResetToken = null;
       profile.passwordResetExpires = null;
       await profile.save();
+
+      return res.json({
+        success: true,
+        message: 'Password reset request submitted successfully. Please contact the Training & Placement department to enable your password reset.'
+      });
     }
 
     res.json({
       success: true,
-      message: 'Password reset request submitted successfully. Please contact the Training & Placement department to enable your password reset.'
+      message: 'Password reset request registered successfully.'
     });
   } catch (err) {
     console.error('[Forgot Password Error]:', err?.message || err);
@@ -495,6 +540,24 @@ exports.verifyResetToken = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Password reset token is required.' });
     }
 
+    // 1. Check if token belongs to an administrator
+    const adminUser = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (adminUser) {
+      return res.json({
+        success: true,
+        message: 'Token is valid.',
+        student: {
+          name: adminUser.name,
+          email: adminUser.email
+        }
+      });
+    }
+
+    // 2. Otherwise check student profile
     const profile = await StudentProfile.findOne({
       passwordResetToken: token,
       passwordResetStatus: 'ENABLED',
@@ -541,7 +604,25 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
     }
 
-    // Find student profile with matching token, status ENABLED, and valid expiry
+    // 1. Check if token belongs to an administrator
+    const adminUser = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (adminUser) {
+      adminUser.password = newPassword;
+      adminUser.resetPasswordToken = null;
+      adminUser.resetPasswordExpires = null;
+      await adminUser.save();
+
+      return res.json({
+        success: true,
+        message: 'Administrator password reset successfully. You can now log in using your new password.'
+      });
+    }
+
+    // 2. Find student profile with matching token, status ENABLED, and valid expiry
     const profile = await StudentProfile.findOne({
       passwordResetToken: token,
       passwordResetStatus: 'ENABLED',

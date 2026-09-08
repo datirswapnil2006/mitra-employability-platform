@@ -15,13 +15,20 @@ const seedData = async () => {
       console.log('[System Init]: Bootstrapping initial system administrator...');
       const newAdmin = await User.create({
         name: 'Dr. N. N. Khalsa (Admin)',
-        email: 'admin@mitra.edu',
+        email: 'tpomitech@mitra.ac.in',
         password: 'adminpassword123',
         role: 'admin',
         department: 'CSE'
       });
       adminId = newAdmin._id;
-      console.log('[System Init]: Administrator account initialized (admin@mitra.edu).');
+      console.log('[System Init]: Administrator account initialized (tpomitech@mitra.ac.in).');
+    } else {
+      // Ensure admin email is updated to official tpomitech@mitra.ac.in in database
+      if (adminUser.email !== 'tpomitech@mitra.ac.in') {
+        adminUser.email = 'tpomitech@mitra.ac.in';
+        await adminUser.save();
+        console.log('[System Init]: Updated administrator email to tpomitech@mitra.ac.in in database.');
+      }
     }
 
     // Default test student with 100% verified profile

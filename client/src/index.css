@@ -91,8 +91,29 @@
   -webkit-text-fill-color: transparent;
 }
 
+.gradient-brand {
+  background: linear-gradient(135deg, #1D4ED8 0%, #2563EB 40%, #4F46E5 75%, #7C3AED 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-brand-emerald {
+  background: linear-gradient(135deg, #059669 0%, #10B981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.bg-grid-slate {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(203, 213, 225, 0.4) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(203, 213, 225, 0.4) 1px, transparent 1px);
+}
+
 .hero-glow {
-  background: radial-gradient(circle at 50% 15%, var(--primary-light, rgba(37, 99, 235, 0.05)) 0%, rgba(248, 250, 252, 0) 70%);
+  background: radial-gradient(circle at 50% 10%, rgba(37, 99, 235, 0.08) 0%, rgba(99, 102, 241, 0.04) 40%, rgba(248, 250, 252, 0) 70%);
 }
 
 .custom-scrollbar::-webkit-scrollbar {

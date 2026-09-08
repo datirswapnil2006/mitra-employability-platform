@@ -22,6 +22,8 @@ const userSchema = new mongoose.Schema({
     customPrimaryColor: { type: String, default: '' },
     customSidebarColor: { type: String, default: '' }
   },
+  resetPasswordToken: { type: String, default: null },
+  resetPasswordExpires: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 

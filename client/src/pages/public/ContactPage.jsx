@@ -42,8 +42,8 @@ export const ContactPage = () => {
             </div>
             <h4 className="font-bold text-slate-900 text-sm mb-1">Placement Cell Office</h4>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Main Academic Block, Level 3<br />
-              Training & Placement Directorate
+              Prof. Ram Meghe Institute of Technology & Research (PRMITR) Anjangaon Bari Road, Ram Meghe Square Badnera, Amravati, Maharashtra, IndiaPIN Code: 444701 <br />
+              <b>Training & Placement Cell</b>
             </p>
           </Card>
 
@@ -53,8 +53,8 @@ export const ContactPage = () => {
             </div>
             <h4 className="font-bold text-slate-900 text-sm mb-1">Official Email</h4>
             <p className="text-xs text-slate-600 leading-relaxed">
-              placements@mitra.edu<br />
-              support.mitra@edu.org
+              tpomitech@mitra.ac.in<br />
+              contact@mitraemployabilityportal.in
             </p>
           </Card>
 
@@ -65,7 +65,7 @@ export const ContactPage = () => {
             <h4 className="font-bold text-slate-900 text-sm mb-1">Office Hours</h4>
             <p className="text-xs text-slate-600 leading-relaxed">
               Monday – Friday<br />
-              09:00 AM – 05:00 PM IST
+              11:00 AM – 05:30 PM IST
             </p>
           </Card>
         </div>
@@ -97,7 +97,7 @@ export const ContactPage = () => {
                   <Input
                     label="Institutional Email *"
                     type="email"
-                    placeholder="student@mitra.edu"
+                    placeholder="student@gmail.com"
                     value={formData.email}
                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                     required
