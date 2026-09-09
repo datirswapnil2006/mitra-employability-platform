@@ -26,6 +26,7 @@ import SubmoduleViewPage from './pages/student/SubmoduleViewPage';
 import StudentAssessmentsPage from './pages/student/StudentAssessmentsPage';
 import TakeAssessmentPage from './pages/student/TakeAssessmentPage';
 import AssessmentResultPage from './pages/student/AssessmentResultPage';
+import TopicPracticeRunnerPage from './pages/student/TopicPracticeRunnerPage';
 import PsychometricPage from './pages/student/PsychometricPage';
 import StudentPerformancePage from './pages/student/StudentPerformancePage';
 import StudentNotificationsPage from './pages/student/StudentNotificationsPage';
@@ -38,6 +39,7 @@ import StudentManagementPage from './pages/admin/StudentManagementPage';
 import StudentExportPage from './pages/admin/StudentExportPage';
 import ContentManagementPage from './pages/admin/ContentManagementPage';
 import AssessmentManagementPage from './pages/admin/AssessmentManagementPage';
+import QuestionBankManagementPage from './pages/admin/QuestionBankManagementPage';
 import ResultsManagementPage from './pages/admin/ResultsManagementPage';
 import AIAssessmentGenPage from './pages/admin/AIAssessmentGenPage';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
@@ -82,6 +84,9 @@ export function App() {
                 <Route path="assessment" element={<Navigate to="/student/assessments" replace />} />
                 <Route path="take-assessment/:id" element={<TakeAssessmentPage />} />
                 <Route path="assessment-result/:id" element={<AssessmentResultPage />} />
+                <Route path="practice/:id" element={<TopicPracticeRunnerPage />} />
+                <Route path="practice-test/:id" element={<TopicPracticeRunnerPage />} />
+                <Route path="training/practice/:id" element={<TopicPracticeRunnerPage />} />
                 <Route path="psychometric" element={<PsychometricPage />} />
                 <Route path="performance" element={<StudentPerformancePage />} />
                 <Route path="support" element={<StudentSupportPage />} />
@@ -97,8 +102,8 @@ export function App() {
                 <Route path="students/export" element={<StudentExportPage />} />
                 <Route path="registration-requests" element={<StudentManagementPage />} />
                 <Route path="training" element={<ContentManagementPage />} />
-                <Route path="questions" element={<Navigate to="/admin/assessments" replace />} />
-                <Route path="question-bank" element={<Navigate to="/admin/assessments" replace />} />
+                <Route path="questions" element={<QuestionBankManagementPage />} />
+                <Route path="question-bank" element={<QuestionBankManagementPage />} />
                 <Route path="assessments" element={<AssessmentManagementPage />} />
                 <Route path="results" element={<ResultsManagementPage />} />
                 <Route path="ai-gen" element={<AIAssessmentGenPage />} />

@@ -1,10 +1,14 @@
 const { Assessment, AssessmentAttempt } = require('./assessment.models');
+const Question = require('./question.model');
+const { Topic } = require('../training/training.models');
 const { StudentProfile } = require('../students/student.model');
 const StudentProgress = require('../progress/progress.model');
+const { awardActivityXP } = require('../gamification/gamification.service');
 const { evaluateSqlQuery } = require('../../utils/sqlEvaluator');
 const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
 const { extractQuestionsFromPdfText } = require('../../utils/pdfQuestionExtractor');
 const { extractQuestionsWithPatterns } = require('../../utils/patternPdfParser');
+const { cleanMathExpression } = require('../../utils/mathCleaner');
 
 // Get assessments list with module/department filtering
 exports.getAssessments = async (req, res) => {
@@ -35,6 +39,7 @@ exports.getAssessments = async (req, res) => {
 
     if (req.user && req.user.role === 'student') {
       filter.status = 'published';
+      filter.isPracticeTest = { $ne: true };
     } else if (status && status !== 'All') {
       filter.status = status;
     }
@@ -95,8 +100,8 @@ exports.getAssessmentById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Assessment not found' });
     }
 
-    // Check 24-hour retake cooldown for students
-    if (user && user.role === 'student') {
+    // Check 24-hour retake cooldown for students (institutional assessments only, NOT self practice tests)
+    if (user && user.role === 'student' && !assessment.isPracticeTest) {
       const lastAttempt = await AssessmentAttempt.findOne({
         user: user._id || user.id,
         assessmentId: id,
@@ -180,6 +185,7 @@ exports.abandonAssessment = async (req, res) => {
       assessmentId,
       moduleId: assessment.moduleId,
       submoduleId: assessment.submoduleId,
+      topicId: assessment.topicId,
       score: 0,
       totalMarks: assessment.totalMarks || totalQuestions,
       percentage: 0,
@@ -297,6 +303,7 @@ exports.submitAssessment = async (req, res) => {
       assessmentId,
       moduleId: assessment.moduleId,
       submoduleId: assessment.submoduleId,
+      topicId: assessment.topicId,
       score: totalScore,
       totalMarks: maxScore,
       percentage,
@@ -310,9 +317,30 @@ exports.submitAssessment = async (req, res) => {
       proctoringLogs: Array.isArray(proctoringLogs) ? proctoringLogs : []
     });
 
+    // Trigger lightweight gamification XP and streak (fail-safe)
+    try {
+      if (assessment.isPracticeTest) {
+        await awardActivityXP(userId, 'PRACTICE_TEST_COMPLETE', attempt._id.toString(), assessment.title);
+      } else if (status === 'PASSED') {
+        await awardActivityXP(userId, 'DEFAULT_ASSESSMENT_PASS', assessment._id.toString(), assessment.title);
+      }
+      if (percentage >= 80) {
+        await awardActivityXP(userId, 'HIGH_SCORE_BONUS', attempt._id.toString(), `High Score on ${assessment.title}`);
+      }
+    } catch (xpErr) {
+      console.error('[Gamification Assessment Error]:', xpErr.message);
+    }
+
     res.json({
       success: true,
-      result: attempt
+      result: attempt,
+      attempt,
+      attemptId: attempt._id,
+      score: totalScore,
+      totalMarks: maxScore,
+      percentage,
+      status,
+      passed: status === 'PASSED'
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -368,7 +396,7 @@ exports.generateQuestionsForReview = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Topic name is required.' });
     }
 
-    const count = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 50);
+    const count = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 30);
 
     const questions = await generateQuestionsAI({
       provider,
@@ -398,7 +426,7 @@ exports.extractPdfQuestions = async (req, res) => {
       category = 'Quantitative Aptitude',
       topic = 'General',
       difficulty = 'Medium',
-      questionCount = 50
+      questionCount
     } = req.body;
 
     const pdfBuffer = req.file ? req.file.buffer : null;
@@ -410,7 +438,10 @@ exports.extractPdfQuestions = async (req, res) => {
       });
     }
 
-    const count = Math.min(Math.max(parseInt(questionCount, 10) || 50, 1), 100);
+    // Admin Question Bank extraction returns ALL questions from PDF (e.g. 26, 203, etc.)
+    // A specific limit is only applied if a positive count is explicitly provided
+    const rawCount = questionCount !== undefined && questionCount !== 'all' ? parseInt(questionCount, 10) : 0;
+    const count = Number.isInteger(rawCount) && rawCount > 0 ? rawCount : 0;
 
     const extractionResult = await extractQuestionsWithPatterns({
       pdfBuffer,
@@ -465,6 +496,8 @@ exports.generateAIAssessment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Topic name is required.' });
     }
 
+    const finalQuestionCount = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 30);
+
     const generatedQuestions = await generateQuestionsAI({
       provider,
       module: moduleName,
@@ -472,10 +505,11 @@ exports.generateAIAssessment = async (req, res) => {
       department: moduleName === 'Domain' ? (department || category) : null,
       topic: topic.trim(),
       difficulty,
-      count: Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 50)
+      count: finalQuestionCount
     });
 
-    const totalMarks = generatedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0);
+    const cappedQuestions = (generatedQuestions || []).slice(0, 30);
+    const totalMarks = cappedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0);
 
     const assessment = await Assessment.create({
       title: title || `${moduleName} Assessment — ${topic.trim()}`,
@@ -485,7 +519,7 @@ exports.generateAIAssessment = async (req, res) => {
       department: moduleName === 'Domain' ? (department || category) : null,
       topic: topic.trim(),
       difficulty,
-      questions: generatedQuestions,
+      questions: cappedQuestions,
       passingScorePercentage: parseInt(passingScorePercentage, 10) || 70,
       timeLimitMinutes: parseInt(timeLimitMinutes, 10) || 20,
       totalMarks,
@@ -534,6 +568,9 @@ exports.createAssessment = async (req, res) => {
     if (req.user) data.createdBy = req.user._id;
 
     if (data.questions && Array.isArray(data.questions)) {
+      if (data.questions.length > 30) {
+        data.questions = data.questions.slice(0, 30);
+      }
       data.totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 1), 0);
     }
 
@@ -548,6 +585,9 @@ exports.updateAssessment = async (req, res) => {
   try {
     const data = { ...req.body, updatedAt: Date.now() };
     if (data.questions && Array.isArray(data.questions)) {
+      if (data.questions.length > 30) {
+        data.questions = data.questions.slice(0, 30);
+      }
       data.totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 1), 0);
     }
 
@@ -658,6 +698,375 @@ exports.getAllAttemptsAdmin = async (req, res) => {
       page: parseInt(page, 10),
       totalPages: Math.ceil(total / limit),
       attempts: paginatedAttempts
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ==========================================
+// Student Self Practice Test (Zero AI, Question Bank, Max 30 Questions)
+// ==========================================
+exports.createPracticeTest = async (req, res) => {
+  try {
+    const { topicId, topic, questionCount = 10, difficulty = 'All' } = req.body;
+    const userId = req.user._id || req.user.id;
+
+    // Hard cap at 30 questions system-wide
+    const finalCount = Math.min(Math.max(parseInt(questionCount, 10) || 10, 1), 30);
+
+    let topicDoc = null;
+    if (topicId && topicId !== 'undefined') {
+      topicDoc = await Topic.findById(topicId);
+    }
+    if (!topicDoc && topic) {
+      topicDoc = await Topic.findOne({ title: topic.trim() });
+    }
+
+    const topicTitle = topicDoc ? topicDoc.title : (topic || 'General');
+    const topicModule = topicDoc ? topicDoc.module : 'Aptitude';
+    const topicCategory = topicDoc ? topicDoc.category : 'Quantitative';
+    const topicDept = topicDoc ? topicDoc.department : null;
+
+    // Build question query
+    const qFilter = {};
+    if (topicDoc) {
+      qFilter.$or = [
+        { topicId: topicDoc._id },
+        { topic: topicDoc.title }
+      ];
+    } else {
+      qFilter.topic = topicTitle;
+    }
+
+    if (difficulty && difficulty !== 'All') {
+      qFilter.difficulty = difficulty;
+    }
+
+    let candidateQuestions = await Question.find({ ...qFilter, status: 'active' });
+
+    // If candidate questions are empty with a strict difficulty filter, fallback to all difficulties for this topic
+    if (candidateQuestions.length === 0 && difficulty && difficulty !== 'All') {
+      const relaxedFilter = topicDoc
+        ? { $or: [{ topicId: topicDoc._id }, { topic: topicDoc.title }], status: 'active' }
+        : { topic: topicTitle, status: 'active' };
+      candidateQuestions = await Question.find(relaxedFilter);
+    }
+
+    // Fallback if no questions in Question collection yet:
+    // Extract questions from any published assessments for this topic
+    if (candidateQuestions.length === 0) {
+      const existingAssessments = await Assessment.find({
+        $or: [{ topicId: topicDoc?._id }, { topic: topicTitle }]
+      });
+      const extracted = [];
+      existingAssessments.forEach(a => {
+        if (a.questions && Array.isArray(a.questions)) {
+          a.questions.forEach(q => {
+            extracted.push({
+              questionText: q.questionText,
+              codeSnippet: q.codeSnippet || '',
+              type: q.type || 'mcq',
+              options: q.options || [],
+              correctAnswer: q.correctAnswer,
+              explanation: q.explanation || '',
+              difficulty: q.difficulty || 'Medium',
+              marks: q.marks || 1
+            });
+          });
+        }
+      });
+      candidateQuestions = extracted;
+    }
+
+    if (candidateQuestions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: `No questions available in the question bank for "${topicTitle}". Please contact instructor or check back later.`
+      });
+    }
+
+    // Deduplicate candidate pool by normalized question text so candidates are strictly unique
+    const normalizeQ = (text) => (text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const seenCandidateTexts = new Set();
+    const uniqueCandidates = [];
+    for (const q of candidateQuestions) {
+      const key = normalizeQ(q.questionText);
+      if (key && !seenCandidateTexts.has(key)) {
+        seenCandidateTexts.add(key);
+        uniqueCandidates.push(q);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Comprehensive student attempt & serve history tracking
+    // Repetition is allowed ONLY when unattempted questions are exhausted!
+    // -------------------------------------------------------------
+    const topicAssessmentIds = await Assessment.find({
+      $or: [
+        { topicId: topicDoc?._id },
+        { topic: topicTitle },
+        { createdBy: userId, isPracticeTest: true }
+      ]
+    }).distinct('_id');
+
+    // 1. Gather all student attempts across this topic (no limit, full history!)
+    const userAttempts = await AssessmentAttempt.find({
+      user: userId,
+      $or: [
+        { topicId: topicDoc?._id },
+        { assessmentId: { $in: topicAssessmentIds } }
+      ]
+    }).sort({ attemptedAt: -1 });
+
+    const questionHistory = new Map();
+
+    userAttempts.forEach(att => {
+      if (att.answers && Array.isArray(att.answers)) {
+        att.answers.forEach(ans => {
+          if (ans.questionText) {
+            const key = normalizeQ(ans.questionText);
+            const prev = questionHistory.get(key) || { count: 0, lastDate: att.attemptedAt || new Date(0) };
+            questionHistory.set(key, {
+              count: prev.count + 1,
+              lastDate: att.attemptedAt && att.attemptedAt > prev.lastDate ? att.attemptedAt : prev.lastDate
+            });
+          }
+        });
+      }
+    });
+
+    // 2. Also track questions from recent practice tests created by this student (past 48 hours)
+    const recentPracticeTests = await Assessment.find({
+      createdBy: userId,
+      isPracticeTest: true,
+      $or: [
+        { topicId: topicDoc?._id },
+        { topic: topicTitle }
+      ],
+      createdAt: { $gte: new Date(Date.now() - 48 * 60 * 60 * 1000) }
+    });
+
+    recentPracticeTests.forEach(test => {
+      if (test.questions && Array.isArray(test.questions)) {
+        test.questions.forEach(q => {
+          if (q.questionText) {
+            const key = normalizeQ(q.questionText);
+            if (!questionHistory.has(key)) {
+              questionHistory.set(key, { count: 1, lastDate: test.createdAt });
+            }
+          }
+        });
+      }
+    });
+
+    // 3. Partition candidate questions into unseen vs seen
+    const unseenQuestions = [];
+    const seenQuestions = [];
+
+    uniqueCandidates.forEach(q => {
+      const key = normalizeQ(q.questionText);
+      const hist = questionHistory.get(key);
+      if (!hist || hist.count === 0) {
+        unseenQuestions.push(q);
+      } else {
+        seenQuestions.push({
+          question: q,
+          count: hist.count,
+          lastDate: hist.lastDate ? new Date(hist.lastDate).getTime() : 0
+        });
+      }
+    });
+
+    // Sort seen questions: lowest attempt count first, then oldest attempt date first, with random tie-breaker
+    seenQuestions.sort((a, b) => {
+      if (a.count !== b.count) return a.count - b.count;
+      if (a.lastDate !== b.lastDate) return a.lastDate - b.lastDate;
+      return 0.5 - Math.random();
+    });
+
+    const shuffle = arr => [...arr].sort(() => 0.5 - Math.random());
+    const targetCount = Math.min(finalCount, uniqueCandidates.length);
+
+    let selectedQuestions = [];
+
+    if (unseenQuestions.length >= targetCount) {
+      // Plenty of unattempted questions in the question bank -> Zero repetition!
+      selectedQuestions = shuffle(unseenQuestions).slice(0, targetCount);
+    } else if (unseenQuestions.length > 0) {
+      // Partial unattempted questions remaining -> Exhaust ALL unseen questions first, fill remainder with least-seen questions
+      const needed = targetCount - unseenQuestions.length;
+      const repeats = seenQuestions.slice(0, needed).map(x => x.question);
+      selectedQuestions = shuffle([...unseenQuestions, ...repeats]);
+    } else {
+      // All questions in the question bank have been attempted -> Repetition is allowed, cycling through least-frequently seen
+      selectedQuestions = shuffle(seenQuestions.slice(0, targetCount).map(x => x.question));
+    }
+
+    // Hard limit safety check
+    selectedQuestions = selectedQuestions.slice(0, 30);
+
+    const timeLimit = Math.max(1, selectedQuestions.length);
+    const totalMarks = selectedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0);
+
+    // Reuse existing Assessment module for test taking
+    const assessment = await Assessment.create({
+      title: `${topicTitle} — Self Practice Test (${selectedQuestions.length} Questions)`,
+      description: `Student self-practice evaluation covering ${topicTitle}. Questions selected from database Question Bank.`,
+      module: topicModule,
+      category: topicCategory,
+      department: topicDept,
+      topic: topicTitle,
+      topicId: topicDoc?._id || null,
+      difficulty: difficulty === 'All' ? 'Mixed' : difficulty,
+      isPracticeTest: true,
+      isDefaultTopicAssessment: false,
+      isAIGenerated: false,
+      aiProvider: 'manual',
+      creationMethod: 'MANUAL',
+      assessmentMode: 'NORMAL',
+      questions: selectedQuestions.map(q => ({
+        questionText: cleanMathExpression(q.questionText),
+        codeSnippet: q.codeSnippet || '',
+        type: q.type || 'mcq',
+        options: q.options || [],
+        correctAnswer: q.correctAnswer,
+        explanation: cleanMathExpression(q.explanation || ''),
+        marks: q.marks || 1,
+        difficulty: q.difficulty || 'Medium'
+      })),
+      totalMarks,
+      passingScorePercentage: 70,
+      timeLimitMinutes: timeLimit,
+      proctoringSettings: {
+        camera: false,
+        screenShare: false,
+        fullScreen: false,
+        tabSwitch: false,
+        copyPaste: false,
+        secondPerson: false,
+        mobileDetection: false
+      },
+      status: 'published',
+      createdBy: userId
+    });
+
+    res.status(201).json({
+      success: true,
+      assessmentId: assessment._id,
+      assessment
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ==========================================
+// Default Topic Assessment (Auto-Provisioned, Zero AI at runtime, <= 30 Questions)
+// ==========================================
+exports.getDefaultTopicAssessment = async (req, res) => {
+  try {
+    const { topicId } = req.params;
+    const userId = req.user?._id || req.user?.id;
+
+    let topicDoc = null;
+    if (topicId && topicId !== 'undefined' && topicId !== 'null') {
+      topicDoc = await Topic.findById(topicId);
+    }
+    if (!topicDoc) {
+      return res.status(404).json({ success: false, message: 'Topic not found.' });
+    }
+
+    // 1. Check if an assessment is already linked as default or has topicId & isDefaultTopicAssessment
+    let assessment = await Assessment.findOne({
+      $or: [
+        { _id: topicDoc.defaultAssessmentId },
+        { topicId: topicDoc._id, isDefaultTopicAssessment: true },
+        { topic: topicDoc.title, isDefaultTopicAssessment: true },
+        { topic: topicDoc.title, isPracticeTest: false, status: 'published' }
+      ]
+    }).sort({ isDefaultTopicAssessment: -1, createdAt: 1 });
+
+    // 2. If no assessment exists yet, check if Question Bank has questions to auto-provision one
+    if (!assessment) {
+      const qPool = await Question.find({
+        $or: [{ topicId: topicDoc._id }, { topic: topicDoc.title }],
+        status: 'active'
+      });
+
+      if (qPool.length >= 5) {
+        // Auto-provision default assessment with up to 15 questions (hard capped at 30)
+        const qCount = Math.min(qPool.length, 15);
+        const shuffled = [...qPool].sort(() => 0.5 - Math.random()).slice(0, qCount);
+        const totalMarks = shuffled.reduce((acc, q) => acc + (q.marks || 1), 0);
+
+        assessment = await Assessment.create({
+          title: `${topicDoc.title} — Official Assessment`,
+          description: `Comprehensive default topic assessment testing core proficiency in ${topicDoc.title}.`,
+          module: topicDoc.module || 'Aptitude',
+          category: topicDoc.category || 'Quantitative',
+          department: topicDoc.department || null,
+          topic: topicDoc.title,
+          topicId: topicDoc._id,
+          difficulty: 'Medium',
+          isDefaultTopicAssessment: true,
+          isPracticeTest: false,
+          isAIGenerated: false,
+          aiProvider: 'manual',
+          creationMethod: 'MANUAL',
+          assessmentMode: 'NORMAL',
+          questions: shuffled.map(q => ({
+            questionText: q.questionText,
+            codeSnippet: q.codeSnippet || '',
+            type: q.type || 'mcq',
+            options: q.options || [],
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation || '',
+            marks: q.marks || 1,
+            difficulty: q.difficulty || 'Medium'
+          })),
+          totalMarks,
+          passingScorePercentage: 70,
+          timeLimitMinutes: Math.max(15, Math.round(qCount * 1.5)),
+          status: 'published'
+        });
+
+        // Link on topic
+        topicDoc.defaultAssessmentId = assessment._id;
+        await topicDoc.save();
+      }
+    }
+
+    if (!assessment) {
+      return res.json({
+        success: true,
+        assessment: null,
+        message: 'No default assessment created yet for this topic.'
+      });
+    }
+
+    // Check user's latest attempt for this assessment if student
+    let userAttempt = null;
+    if (userId) {
+      userAttempt = await AssessmentAttempt.findOne({
+        user: userId,
+        assessmentId: assessment._id
+      }).sort({ attemptedAt: -1 });
+    }
+
+    // Prepare response (hide answers if student)
+    const aObj = assessment.toObject();
+    if (req.user && req.user.role === 'student') {
+      aObj.questions = (aObj.questions || []).map(q => {
+        const { correctAnswer, explanation, ...rest } = q;
+        return rest;
+      });
+    }
+
+    res.json({
+      success: true,
+      assessment: aObj,
+      userAttempt
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

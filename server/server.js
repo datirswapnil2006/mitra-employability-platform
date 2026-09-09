@@ -2,6 +2,12 @@ const dns = require('dns');
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first');
 }
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection at Promise]:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception]:', err);
+});
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
@@ -22,6 +28,7 @@ const communicationRoutes = require('./modules/communication/communication.route
 const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const reportRoutes = require('./modules/reports/report.routes');
 const supportRoutes = require('./modules/support/support.routes');
+const gamificationRoutes = require('./modules/gamification/gamification.routes');
 
 const app = express();
 
@@ -56,7 +63,8 @@ const routes = [
   ['/psychometric', aiRoutes],
   ['/analytics', analyticsRoutes],
   ['/reports', reportRoutes],
-  ['/support', supportRoutes]
+  ['/support', supportRoutes],
+  ['/gamification', gamificationRoutes]
 ];
 
 routes.forEach(([path, routeHandler]) => {

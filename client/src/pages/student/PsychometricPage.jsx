@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import LoadingState from '../../components/LoadingState';
-import AssessmentHeader from '../../components/psychometric/AssessmentHeader';
+import PageHeader from '../../components/PageHeader';
 import AssessmentInfoCard from '../../components/psychometric/AssessmentInfoCard';
 import QuestionCard from '../../components/psychometric/QuestionCard';
 import QuestionNavigator from '../../components/psychometric/QuestionNavigator';
@@ -198,6 +198,35 @@ export const PsychometricPage = () => {
     return () => clearInterval(timer);
   }, [takingTest, timeLeft, submitting]);
 
+  // 3b. Intercept Browser Back Navigation (Tab Arrow) and Tab Unload during active test
+  useEffect(() => {
+    if (!takingTest || submitting) return;
+
+    // Push dummy state to browser history so pressing the back arrow fires popstate rather than exiting immediately
+    window.history.pushState({ inPsychometricTest: true }, '');
+
+    const handlePopState = (e) => {
+      e.preventDefault();
+      // Keep user in page history
+      window.history.pushState({ inPsychometricTest: true }, '');
+      setIsExitModalOpen(true);
+    };
+
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = 'Please complete your psychometric assessment before leaving. If you exit or navigate away, your assessment will be locked for 24 hours.';
+      return e.returnValue;
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [takingTest, submitting]);
+
   const questions = activeTest?.questions || [];
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentIdx] || null;
@@ -276,12 +305,38 @@ export const PsychometricPage = () => {
     }
   };
 
-  // Exit Assessment Handler
-  const handleConfirmExit = () => {
+  // Exit / Abandon Assessment Handler (Enforces 24-hour lockout)
+  const handleConfirmExit = async () => {
     setIsExitModalOpen(false);
-    setTakingTest(false);
-    if (activeTest) {
-      localStorage.removeItem(getStorageKey(activeTest._id));
+    setSubmitting(true);
+    try {
+      if (activeTest?._id) {
+        localStorage.removeItem(getStorageKey(activeTest._id));
+        const res = await api.abandonPsychometricAttempt(activeTest._id, {
+          timeSpentSeconds: timeSpent,
+          responses
+        });
+        if (res.success && res.cooldown) {
+          setCooldown(res.cooldown);
+          setProfile(res.attempt || {
+            testTitle: activeTest.title,
+            isAbandoned: true,
+            submittedAt: new Date()
+          });
+        }
+      }
+      setTakingTest(false);
+
+      // Refresh test list status to display 24h Cooldown badge
+      const testsRes = await api.getPsychometricTests();
+      if (testsRes.success && Array.isArray(testsRes.tests)) {
+        setTests(testsRes.tests);
+      }
+    } catch (err) {
+      console.error('Error abandoning psychometric assessment:', err);
+      setTakingTest(false);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -361,13 +416,22 @@ export const PsychometricPage = () => {
   const unattemptedTests = tests.filter(t => !t.hasAttempted && t._id !== selectedTestId);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* 1. Assessment Header */}
-      <AssessmentHeader />
+    <div className="w-full space-y-6 pb-12">
+      {/* Page Header (When NOT actively answering questions) */}
+      {!takingTest && (
+        <PageHeader
+          title="Psychometric & Behavioral Evaluation"
+          subtitle="AI-driven situational judgment tests and behavioral profiling to map your workplace competencies."
+          breadcrumbs={[
+            { label: 'Student Ecosystem', link: '/student/dashboard' },
+            { label: 'Psychometric' }
+          ]}
+        />
+      )}
 
       {/* 2. Published Assessments Selector / Catalog (When NOT actively answering questions) */}
       {!takingTest && tests.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="w-full">
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
@@ -389,7 +453,7 @@ export const PsychometricPage = () => {
             </div>
 
             {/* Test Cards List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
               {tests.map((test) => {
                 const isSelected = test._id === selectedTestId;
                 const hasAttempted = Boolean(test.hasAttempted);
@@ -483,16 +547,17 @@ export const PsychometricPage = () => {
 
       {/* 4. VIEW: LIVE ASSESSMENT RUNNER */}
       {takingTest && currentQuestion && (
-        <div className="max-w-7xl mx-auto space-y-5 px-2 sm:px-4">
+        <div className="w-full space-y-5">
           {/* Top Assessment Info Card */}
           <AssessmentInfoCard
+            testTitle={activeTest?.title}
             questionCount={totalQuestions}
             durationMinutes={activeTest?.durationMinutes || 15}
             onEndAssessment={() => setIsExitModalOpen(true)}
           />
 
           {/* Three-Part Main Assessment Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-6 items-start">
             {/* Center: Main Question Interaction Area (8 cols on large screens) */}
             <div className="lg:col-span-8 space-y-4">
               <QuestionCard
@@ -516,8 +581,8 @@ export const PsychometricPage = () => {
               />
             </div>
 
-            {/* Right: Question Navigator, Timer, and Progress (4 cols on large screens) */}
-            <div className="lg:col-span-4 space-y-4">
+            {/* Right: Question Navigator, Timer, and Progress (4 cols on large screens, sticky for easy access) */}
+            <div className="lg:col-span-4 space-y-4 sticky top-6">
               {/* Timer HUD */}
               <AssessmentTimer
                 timeLeftSeconds={timeLeft}
@@ -574,6 +639,7 @@ export const PsychometricPage = () => {
         isOpen={isExitModalOpen}
         onClose={() => setIsExitModalOpen(false)}
         onConfirmExit={handleConfirmExit}
+        submitting={submitting}
       />
     </div>
   );

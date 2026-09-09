@@ -62,8 +62,8 @@ const psychometricTestSchema = new mongoose.Schema({
     default: 'Behavioral Assessment'
   },
   durationMinutes: { type: Number, default: 20 },
-  questionCount: { type: Number, min: 1, max: 50, default: 50 },
-  questionsCount: { type: Number, min: 1, max: 50, default: 50 },
+  questionCount: { type: Number, min: 1, max: 30, default: 30 },
+  questionsCount: { type: Number, min: 1, max: 30, default: 30 },
   competencies: [{
     type: String,
     default: [

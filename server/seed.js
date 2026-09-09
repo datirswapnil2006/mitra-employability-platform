@@ -31,9 +31,10 @@ const seedData = async () => {
       }
     }
 
-    // Default test student with 100% verified profile
+    // Default test student - only seed on initial fresh installation if 0 students exist
+    const totalStudents = await User.countDocuments({ role: 'student' });
     let studentUser = await User.findOne({ email: 'student@mitra.edu' });
-    if (!studentUser) {
+    if (!studentUser && totalStudents === 0) {
       const { StudentProfile } = require('./modules/students/student.model');
       studentUser = await User.create({
         name: 'Aarav Patel (Student)',

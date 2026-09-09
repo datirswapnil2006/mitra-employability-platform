@@ -156,8 +156,10 @@ exports.register = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        department: user.department
+        department: user.department,
+        profileCompletion: user.role === 'student' ? profileCompletion : 100
       },
+      studentProfile: user.role === 'student' ? (typeof profile !== 'undefined' ? profile : null) : null,
       emailDispatched: true,
       status: 'Email Sent',
       message: 'Student account registered successfully. Your official sign-in credentials have been dispatched to your email.'

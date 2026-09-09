@@ -88,7 +88,7 @@ export const StudentLayout = () => {
           </div>
         )}
 
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-[1700px] 2xl:max-w-[1850px] w-full mx-auto overflow-y-auto transition-all duration-300">
           {/* Profile Gating Interceptor: Mandatory 100% Profile Completion Rule */}
           {isGated ? (
             <div className="bg-white rounded-3xl p-8 sm:p-12 text-center max-w-2xl mx-auto my-8 border border-amber-200 shadow-xl space-y-6 animate-in fade-in zoom-in duration-300">

@@ -10,7 +10,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('mitra_token') || null);
   const [loading, setLoading] = useState(true);
-  const [profileCompletion, setProfileCompletion] = useState(100);
+  const [profileCompletion, setProfileCompletion] = useState(0);
   const [inactivityNotice, setInactivityNotice] = useState(false);
 
   const lastActivityRef = useRef(Date.now());
@@ -29,6 +29,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('mitra_token');
       setToken(null);
       setUser(null);
+      setProfileCompletion(0);
     }
   }, []);
 
@@ -53,6 +54,10 @@ export const AuthProvider = ({ children }) => {
                 ? res.studentProfile.profileCompletionPercentage
                 : calculateProfileCompletion(res.studentProfile, res.user);
               setProfileCompletion(comp);
+            } else if (res.user?.profileCompletion !== undefined) {
+              setProfileCompletion(res.user.profileCompletion);
+            } else {
+              setProfileCompletion(res.user?.role === 'admin' ? 100 : 0);
             }
             setLoading(false);
             return;
@@ -71,11 +76,16 @@ export const AuthProvider = ({ children }) => {
           setUser(refreshRes.user);
           if (refreshRes.user?.profileCompletion !== undefined) {
             setProfileCompletion(refreshRes.user.profileCompletion);
+          } else if (refreshRes.studentProfile?.profileCompletionPercentage !== undefined) {
+            setProfileCompletion(refreshRes.studentProfile.profileCompletionPercentage);
+          } else {
+            setProfileCompletion(refreshRes.user?.role === 'admin' ? 100 : 0);
           }
         } else if (isMounted) {
           localStorage.removeItem('mitra_token');
           setToken(null);
           setUser(null);
+          setProfileCompletion(0);
         }
       } catch (e) {
         if (isMounted) {
@@ -144,8 +154,12 @@ export const AuthProvider = ({ children }) => {
       setUser(res.user);
       setInactivityNotice(false);
       lastActivityRef.current = Date.now();
-      if (res.user.profileCompletion !== undefined) {
+      if (res.user?.profileCompletion !== undefined) {
         setProfileCompletion(res.user.profileCompletion);
+      } else if (res.studentProfile?.profileCompletionPercentage !== undefined) {
+        setProfileCompletion(res.studentProfile.profileCompletionPercentage);
+      } else {
+        setProfileCompletion(res.user?.role === 'admin' ? 100 : 0);
       }
     }
     return res;
@@ -159,6 +173,13 @@ export const AuthProvider = ({ children }) => {
       setUser(res.user);
       setInactivityNotice(false);
       lastActivityRef.current = Date.now();
+      if (res.user?.profileCompletion !== undefined) {
+        setProfileCompletion(res.user.profileCompletion);
+      } else if (res.studentProfile?.profileCompletionPercentage !== undefined) {
+        setProfileCompletion(res.studentProfile.profileCompletionPercentage);
+      } else {
+        setProfileCompletion(res.user?.role === 'admin' ? 100 : 25);
+      }
     }
     return res;
   };
@@ -172,6 +193,10 @@ export const AuthProvider = ({ children }) => {
           ? res.studentProfile.profileCompletionPercentage
           : calculateProfileCompletion(res.studentProfile, res.user);
         setProfileCompletion(comp);
+      } else if (res.user?.profileCompletion !== undefined) {
+        setProfileCompletion(res.user.profileCompletion);
+      } else {
+        setProfileCompletion(res.user?.role === 'admin' ? 100 : 0);
       }
     }
   };

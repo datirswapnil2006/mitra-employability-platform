@@ -15,6 +15,7 @@ const {
 
   // Student Attempt & Scoring
   submitPsychometricAttempt,
+  abandonPsychometricAttempt,
   getStudentPsychometricProfile,
   getStudentAttempts,
   getPsychometricAttemptById,
@@ -58,6 +59,7 @@ router.delete(['/admin/question/:id', '/psychometric/admin/question/:id'], prote
 
 // Student Assessment & Attempt Execution (must precede /:id)
 router.post(['/attempt', '/:id/attempt', '/psychometric/attempt', '/psychometric/:id/attempt'], protect, requireCompleteProfile, submitPsychometricAttempt);
+router.post(['/abandon', '/:id/abandon', '/psychometric/abandon', '/psychometric/:id/abandon'], protect, requireCompleteProfile, abandonPsychometricAttempt);
 router.get(['/profile', '/psychometric/profile'], protect, requireCompleteProfile, getStudentPsychometricProfile);
 router.get(['/attempts/my', '/psychometric/attempts/my'], protect, requireCompleteProfile, getStudentAttempts);
 router.get(['/attempts/:id', '/psychometric/attempts/:id'], protect, getPsychometricAttemptById);

@@ -201,6 +201,19 @@ export const ThemeProvider = ({ children }) => {
 
     root.style.setProperty('--sidebar-bg', sidebarBg);
     root.style.setProperty('--sidebar-text', sidebarText);
+
+    const sbRgb = hexToRgb(sidebarBg);
+    const sbLuminance = (0.299 * sbRgb.r + 0.587 * sbRgb.g + 0.114 * sbRgb.b) / 255;
+    const isSidebarLight = preferences.sidebarColor === 'light' || sbLuminance > 0.5;
+    const sidebarHeading = isSidebarLight ? '#0F172A' : '#FFFFFF';
+    const sidebarMuted = isSidebarLight ? '#64748B' : '#94A3B8';
+    const sidebarHoverBg = isSidebarLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)';
+    const sidebarFooterBg = isSidebarLight ? 'rgba(0, 0, 0, 0.03)' : 'rgba(0, 0, 0, 0.2)';
+
+    root.style.setProperty('--sidebar-heading', sidebarHeading);
+    root.style.setProperty('--sidebar-muted', sidebarMuted);
+    root.style.setProperty('--sidebar-hover-bg', sidebarHoverBg);
+    root.style.setProperty('--sidebar-footer-bg', sidebarFooterBg);
     root.style.setProperty('--sidebar-border', sidebarBorder);
     root.style.setProperty('--sidebar-active-bg', sidebarActiveBg);
     root.style.setProperty('--sidebar-active-text', sidebarActiveText);

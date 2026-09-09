@@ -22,7 +22,7 @@ export const PsychometricInstructions = ({
   onStartAssessment
 }) => {
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       {/* Hero Welcome Banner */}
       <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-10 border border-slate-800 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8">
         <div className="space-y-4 z-10 text-center md:text-left flex-1">

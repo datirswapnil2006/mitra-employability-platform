@@ -103,8 +103,8 @@ export const AIAssessmentGenPage = () => {
     title: 'Senior Campus Placement Behavioral Battery',
     description: 'Comprehensive situational judgment and behavioral profiling evaluation designed for campus recruitment readiness.',
     category: 'Behavioral Assessment',
-    questionCount: 50,
-    durationMinutes: 25,
+    questionCount: 30,
+    durationMinutes: 20,
     targetRole: 'Software Engineer & Technical Consultant',
     competencies: [...ALL_COMPETENCIES]
   });
@@ -314,9 +314,9 @@ export const AIAssessmentGenPage = () => {
       return;
     }
 
-    if (parsed > 50) {
-      setQuestionCountError('Maximum allowed questions = 50.');
-      setBuilderForm(prev => ({ ...prev, questionCount: 50, durationMinutes: getSuggestedDuration(50) }));
+    if (parsed > 30) {
+      setQuestionCountError('Maximum allowed questions = 30.');
+      setBuilderForm(prev => ({ ...prev, questionCount: 30, durationMinutes: getSuggestedDuration(30) }));
       return;
     }
 
@@ -804,7 +804,7 @@ export const AIAssessmentGenPage = () => {
                       Quick Presets:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
-                      {[5, 10, 15, 20, 25, 30, 40, 50].map((preset) => (
+                      {[5, 10, 15, 20, 25, 30].map((preset) => (
                         <button
                           key={preset}
                           type="button"
@@ -943,7 +943,7 @@ export const AIAssessmentGenPage = () => {
           {wizardStep === 3 && (() => {
             const clientTypes = computeClientTypeDistribution(builderForm.questionCount);
             const clientComps = computeClientCompetencyDistribution(builderForm.questionCount, builderForm.competencies);
-            const count = parseInt(builderForm.questionCount, 10) || 50;
+            const count = parseInt(builderForm.questionCount, 10) || 30;
 
             return (
               <div className="max-w-3xl mx-auto space-y-6">
@@ -1040,7 +1040,7 @@ export const AIAssessmentGenPage = () => {
 
           {/* STEP 5: REVIEW & EDIT QUESTIONS WITH VALIDATION BEFORE PUBLISH */}
           {wizardStep === 5 && (() => {
-            const targetCount = parseInt(builderForm.questionCount, 10) || 50;
+            const targetCount = parseInt(builderForm.questionCount, 10) || 30;
             const currentCount = generatedQuestions.length;
             const isComplete = currentCount === targetCount;
             const missingCount = Math.max(0, targetCount - currentCount);

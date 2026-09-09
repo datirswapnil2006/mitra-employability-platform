@@ -115,7 +115,9 @@ const psychometricAttemptSchema = new mongoose.Schema({
   timeSpentSeconds: { type: Number, default: 0 },
   startedAt: { type: Date, default: Date.now },
   submittedAt: { type: Date, default: Date.now },
-  completed: { type: Boolean, default: true }
+  completed: { type: Boolean, default: true },
+  isAbandoned: { type: Boolean, default: false },
+  abandonReason: { type: String, default: '' }
 }, {
   timestamps: true
 });

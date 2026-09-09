@@ -355,9 +355,11 @@ exports.getTopics = async (req, res) => {
     const { module: moduleName, category, categoryId, company, companyId, department, status, search } = req.query;
     const filter = {};
 
-    if (moduleName) {
+    if (moduleName && moduleName !== 'All') {
       if (moduleName === 'Domain' || moduleName === 'Domain Knowledge') {
         filter.module = { $in: ['Domain', 'Domain Knowledge'] };
+      } else if (moduleName === 'Interview' || moduleName === 'Interview Preparation') {
+        filter.module = { $in: ['Interview', 'Interview Preparation'] };
       } else {
         filter.module = moduleName;
       }
@@ -369,26 +371,39 @@ exports.getTopics = async (req, res) => {
       filter.company = company;
     }
 
-    if (categoryId) {
-      filter.categoryId = categoryId;
+    if (categoryId && categoryId !== 'All') {
+      if (/^[0-9a-fA-F]{24}$/.test(categoryId)) {
+        filter.categoryId = categoryId;
+      }
     } else if (category && category !== 'All') {
-      filter.category = category;
+      if (/^[0-9a-fA-F]{24}$/.test(category)) {
+        filter.categoryId = category;
+      } else {
+        const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+        const escapedCat = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.category = { $regex: new RegExp(`^${escapedCat}`, 'i') };
+      }
+    }
+
+    const isDomainFilter = !moduleName || moduleName === 'All' || moduleName === 'Domain' || moduleName === 'Domain Knowledge';
+
+    if (department && department !== 'All' && isDomainFilter) {
+      const aliases = getDepartmentAliases(department);
+      if (!moduleName || moduleName === 'All') {
+        filter.$or = [
+          { department: { $in: aliases } },
+          { department: null },
+          { department: { $exists: false } }
+        ];
+      } else {
+        filter.department = { $in: aliases };
+      }
     }
 
     if (req.user && req.user.role === 'student') {
       filter.status = 'published';
-      if (department && department !== 'All') {
-        const aliases = getDepartmentAliases(department);
-        filter.department = { $in: aliases };
-      }
-    } else {
-      if (department && department !== 'All') {
-        const aliases = getDepartmentAliases(department);
-        filter.department = { $in: aliases };
-      }
-      if (status && status !== 'All') {
-        filter.status = status;
-      }
+    } else if (status && status !== 'All') {
+      filter.status = status;
     }
 
     if (search) {

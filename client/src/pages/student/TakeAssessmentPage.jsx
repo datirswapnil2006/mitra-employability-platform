@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import Button from '../../components/Button';
 import LoadingState from '../../components/LoadingState';
 import Modal from '../../components/Modal';
+import { cleanMathExpression } from '../../utils/formatQuestion';
 import {
   Clock,
   Send,
@@ -1226,7 +1227,7 @@ export const TakeAssessmentPage = () => {
 
                 {/* Question Text */}
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">
-                  {currentQ.questionText}
+                  {cleanMathExpression(currentQ.questionText)}
                 </h3>
 
                 {/* Code snippet if present */}

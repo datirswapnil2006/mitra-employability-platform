@@ -419,6 +419,26 @@ export const api = {
     const res = await fetch(`${API_BASE}/assessments/take/${id}`, { headers: getHeaders() });
     return res.json();
   },
+  getAssessmentToTake: async (id) => {
+    const res = await fetch(`${API_BASE}/assessments/take/${id}`, { headers: getHeaders() });
+    return res.json();
+  },
+  getDefaultTopicAssessment: async (topicId) => {
+    const res = await fetch(`${API_BASE}/assessments/topic-default/${topicId}`, { headers: getHeaders() });
+    return res.json();
+  },
+  createPracticeTest: async (data) => {
+    const res = await fetch(`${API_BASE}/assessments/practice-test`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  getGamificationStats: async () => {
+    const res = await fetch(`${API_BASE}/gamification/stats`, { headers: getHeaders() });
+    return res.json();
+  },
   submitAssessment: async (data) => {
     const res = await fetch(`${API_BASE}/assessments/submit`, {
       method: 'POST',
@@ -500,18 +520,51 @@ export const api = {
     if (!isFormData) {
       headers['Content-Type'] = 'application/json';
     }
-    const res = await fetch(`${API_BASE}/assessments/admin/extract-pdf`, {
-      method: 'POST',
-      headers,
-      body: isFormData ? data : JSON.stringify(data)
-    });
-    return res.json();
+
+    const tryEndpoint = async (url) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: isFormData ? data : JSON.stringify(data)
+      });
+
+      const rawText = await res.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch (_) {
+        if (!res.ok) {
+          throw new Error(`Server returned error ${res.status} (${res.statusText || 'Bad Gateway'}). The server may be restarting. Please try again.`);
+        }
+        throw new Error('Server returned an unexpected non-JSON response.');
+      }
+      return parsed;
+    };
+
+    try {
+      return await tryEndpoint(`${API_BASE}/assessments/admin/extract-pdf`);
+    } catch (primaryErr) {
+      try {
+        return await tryEndpoint(`${API_BASE}/questions/extract-pdf`);
+      } catch (_) {
+        return {
+          success: false,
+          message: primaryErr.message || 'Failed to extract questions from PDF. Please ensure the backend server is running and try again.'
+        };
+      }
+    }
   },
 
   // Question Bank & Multi-LLM AI Generation
   getQuestions: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE}/questions?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
+  getTopicQuestionStats: async (topicId, topic = '') => {
+    const res = await fetch(`${API_BASE}/questions/stats/${topicId}?topic=${encodeURIComponent(topic)}`, {
+      headers: getHeaders()
+    });
     return res.json();
   },
   createQuestion: async (data) => {
@@ -622,7 +675,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/psychometric/admin/generate`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ ...data, questionCount: data.questionCount || 50 })
+      body: JSON.stringify({ ...data, questionCount: Math.min(Number(data.questionCount) || 30, 30) })
     });
     return res.json();
   },
@@ -632,6 +685,15 @@ export const api = {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  abandonPsychometricAttempt: async (testId, data) => {
+    const targetUrl = testId ? `${API_BASE}/psychometric/${testId}/abandon` : `${API_BASE}/psychometric/abandon`;
+    const res = await fetch(targetUrl, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data || {})
     });
     return res.json();
   },
@@ -748,11 +810,19 @@ export const api = {
     a.href = url;
     const sanitizedDept = (params.department || 'All').replace(/\s+/g, '_');
     const sanitizedBatch = params.batch || 'All';
-    a.download = `MITRA_Students_${sanitizedDept}_${sanitizedBatch}_${Date.now()}.${format}`;
+    const typeLabel = params.type === 'practice' ? 'Practice_Drills' : params.type === 'assessments' ? 'Assessment_Audit' : 'Students';
+    a.download = `MITRA_${typeLabel}_${sanitizedDept}_${sanitizedBatch}_${Date.now()}.${format}`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  },
+  getPracticeReportAnalytics: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/reports/practice-analytics${query ? `?${query}` : ''}`, {
+      headers: getHeaders()
+    });
+    return res.json();
   },
 
   // AI Communication Assessment

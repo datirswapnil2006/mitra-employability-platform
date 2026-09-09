@@ -5,6 +5,7 @@ import Select from '../../components/Select';
 import Button from '../../components/Button';
 import { api } from '../../services/api';
 import { OFFICIAL_DEPARTMENTS } from '../../constants/departments';
+import PracticeAnalyticsCharts from '../../components/reports/PracticeAnalyticsCharts';
 import {
   FileSpreadsheet,
   Download,
@@ -13,7 +14,10 @@ import {
   Users,
   CheckCircle2,
   Table,
-  Layers
+  Layers,
+  Target,
+  BrainCircuit,
+  Sparkles
 } from 'lucide-react';
 
 export const ReportsPage = () => {
@@ -23,6 +27,8 @@ export const ReportsPage = () => {
   const [format, setFormat] = useState('xlsx');
   const [downloading, setDownloading] = useState(false);
   const [batches, setBatches] = useState(['All', '2024', '2025', '2026', '2027', '2028', '2029', '2030']);
+  const [practiceAnalytics, setPracticeAnalytics] = useState(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
   useEffect(() => {
     const fetchBatches = async () => {
@@ -37,6 +43,27 @@ export const ReportsPage = () => {
     };
     fetchBatches();
   }, []);
+
+  // Fetch practice test analytics when practice report is selected
+  useEffect(() => {
+    if (reportType === 'practice') {
+      fetchPracticeAnalytics();
+    }
+  }, [reportType, department, batch]);
+
+  const fetchPracticeAnalytics = async () => {
+    setLoadingAnalytics(true);
+    try {
+      const res = await api.getPracticeReportAnalytics({ department, batch });
+      if (res.success) {
+        setPracticeAnalytics(res);
+      }
+    } catch (err) {
+      console.error('Failed to fetch practice analytics:', err);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
 
   const departments = ['All', ...OFFICIAL_DEPARTMENTS];
 
@@ -58,6 +85,12 @@ export const ReportsPage = () => {
       title: 'Departmental Comparative Talent Summary',
       description: 'Executive overview aggregating metrics across the 9 official departments.',
       icon: Building2
+    },
+    {
+      id: 'practice',
+      title: 'Department-Wise Practice Test Analytics',
+      description: 'Institutional practice drills, department participation, attempt counts, topic coverage, and scoring trends.',
+      icon: Target
     }
   ];
 
@@ -73,7 +106,7 @@ export const ReportsPage = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
+    <div className="w-full space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-6">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
@@ -116,7 +149,7 @@ export const ReportsPage = () => {
         <label className="block text-xs font-black text-slate-800 uppercase tracking-wider">
           1. Select Report Type *
         </label>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {reportTypes.map((t) => {
             const Icon = t.icon;
             const isSelected = reportType === t.id;
@@ -124,7 +157,7 @@ export const ReportsPage = () => {
               <div
                 key={t.id}
                 onClick={() => setReportType(t.id)}
-                className={`p-6 rounded-3xl border cursor-pointer transition-all flex flex-col justify-between select-none ${
+                className={`p-5 rounded-3xl border cursor-pointer transition-all flex flex-col justify-between select-none ${
                   isSelected
                     ? 'bg-gradient-to-b from-indigo-50/90 to-blue-50/50 border-indigo-600 ring-2 ring-indigo-500/25 shadow-sm scale-[1.01]'
                     : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/70 hover:shadow-2xs'
@@ -132,23 +165,23 @@ export const ReportsPage = () => {
               >
                 <div className="space-y-3">
                   <div
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition ${
+                    className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold transition ${
                       isSelected
                         ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                         : 'bg-slate-100 text-slate-600'
                     }`}
                   >
-                    <Icon className="w-6 h-6" />
+                    <Icon className="w-5 h-5" />
                   </div>
                   <div>
                     <h4 className="font-black text-sm text-slate-900 leading-snug">{t.title}</h4>
-                    <p className="text-xs text-slate-500 leading-relaxed mt-1.5">{t.description}</p>
+                    <p className="text-xs text-slate-500 leading-relaxed mt-1">{t.description}</p>
                   </div>
                 </div>
 
-                <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
                   <span className={isSelected ? 'text-indigo-700' : 'text-slate-400'}>
-                    {isSelected ? 'Active Selection' : 'Click to select'}
+                    {isSelected ? 'Active' : 'Select'}
                   </span>
                   <CheckCircle2
                     className={`w-4 h-4 transition ${isSelected ? 'text-indigo-600' : 'text-slate-300'}`}
@@ -159,6 +192,14 @@ export const ReportsPage = () => {
           })}
         </div>
       </div>
+
+      {/* 1.5. Visual Charts & Analytics Panel (Shown for Practice Tests Report) */}
+      {reportType === 'practice' && (
+        <PracticeAnalyticsCharts
+          analytics={practiceAnalytics}
+          loading={loadingAnalytics}
+        />
+      )}
 
       {/* 2. Export Configuration Card */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-8 space-y-6">
@@ -203,32 +244,62 @@ export const ReportsPage = () => {
             <Layers className="w-4 h-4 text-indigo-600" />
             Included Report Data Attributes:
           </p>
-          <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 text-slate-600">
-            <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
-              <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-indigo-700">
-                Student & Academics
-              </span>
-              <p className="text-[11px] leading-relaxed text-slate-600">
-                Name, Institutional ERP, Email, Gender, Dept, 10th %, 12th %, Diploma %, Degree CGPA.
-              </p>
-            </li>
-            <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
-              <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-blue-700">
-                Assessment Analytics
-              </span>
-              <p className="text-[11px] leading-relaxed text-slate-600">
-                Tests completed, pass/fail status, average score %, category performance logs.
-              </p>
-            </li>
-            <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
-              <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-emerald-700">
-                Employability Readiness
-              </span>
-              <p className="text-[11px] leading-relaxed text-slate-600">
-                Big Five psychometric score, core strengths, proctoring violations summary.
-              </p>
-            </li>
-          </ul>
+
+          {reportType === 'practice' ? (
+            <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 text-slate-600">
+              <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-blue-700">
+                  Department Metrics Sheet
+                </span>
+                <p className="text-[11px] leading-relaxed text-slate-600">
+                  Department, registered students, drills taken, active participants, student participation %, total questions solved, average score %, pass rate %, and high score achievers.
+                </p>
+              </li>
+              <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-indigo-700">
+                  Student Drill Attempts Log
+                </span>
+                <p className="text-[11px] leading-relaxed text-slate-600">
+                  Attempt ID, institutional ERP, student name, email, department, year, batch, practice topic, question count, score, total marks, percentage, status, and attempt timestamp.
+                </p>
+              </li>
+              <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-emerald-700">
+                  Format & Compatibility
+                </span>
+                <p className="text-[11px] leading-relaxed text-slate-600">
+                  Multi-sheet styled Microsoft Excel workbook (.xlsx) with auto-formatted column widths, header themes, or clean raw CSV stream.
+                </p>
+              </li>
+            </ul>
+          ) : (
+            <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 text-slate-600">
+              <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-indigo-700">
+                  Student & Academics
+                </span>
+                <p className="text-[11px] leading-relaxed text-slate-600">
+                  Name, Institutional ERP, Email, Gender, Dept, 10th %, 12th %, Diploma %, Degree CGPA.
+                </p>
+              </li>
+              <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-blue-700">
+                  Assessment Analytics
+                </span>
+                <p className="text-[11px] leading-relaxed text-slate-600">
+                  Tests completed, pass/fail status, average score %, category performance logs.
+                </p>
+              </li>
+              <li className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider text-emerald-700">
+                  Employability Readiness
+                </span>
+                <p className="text-[11px] leading-relaxed text-slate-600">
+                  Big Five psychometric score, core strengths, proctoring violations summary.
+                </p>
+              </li>
+            </ul>
+          )}
         </div>
 
         <div className="pt-2">
@@ -243,8 +314,14 @@ export const ReportsPage = () => {
             {downloading
               ? 'Generating Report...'
               : `Download ${department === 'All' ? 'All Departments' : department} ${
-                  format === 'csv' ? 'CSV Report' : 'Excel Report (.xlsx)'
-                }`}
+                  reportType === 'practice'
+                    ? 'Practice Test'
+                    : reportType === 'assessments'
+                    ? 'Assessment Audit'
+                    : reportType === 'summary'
+                    ? 'Department Summary'
+                    : 'Master'
+                } ${format === 'csv' ? 'CSV Report' : 'Excel Report (.xlsx)'}`}
           </Button>
         </div>
       </div>

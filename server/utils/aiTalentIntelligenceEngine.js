@@ -996,13 +996,13 @@ async function generateDynamicAIQuestions({
   title = 'AI Talent & Psychometric Assessment',
   category = 'Behavioral Assessment',
   targetRole = 'Software Engineer',
-  questionCount = 50,
+  questionCount = 30,
   competencies = COMPETENCIES,
   startIndex = 0
 }) {
-  // Validate and clamp count strictly between 1 and 50
+  // Validate and clamp count strictly between 1 and 30
   const parsedCount = parseInt(questionCount, 10);
-  const count = (!isNaN(parsedCount) && parsedCount >= 1 && parsedCount <= 50) ? parsedCount : 50;
+  const count = (!isNaN(parsedCount) && parsedCount >= 1 && parsedCount <= 30) ? parsedCount : 30;
 
   const activeCompetencies = Array.isArray(competencies) && competencies.length > 0
     ? competencies.filter(c => COMPETENCIES.includes(c))
@@ -1178,7 +1178,7 @@ Return ONLY a valid JSON array of ${count} objects with structure:
 async function generate50QuestionsAI(params = {}) {
   return generateDynamicAIQuestions({
     ...params,
-    questionCount: 50
+    questionCount: 30
   });
 }
 

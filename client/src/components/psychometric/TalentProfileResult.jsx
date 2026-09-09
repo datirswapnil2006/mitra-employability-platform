@@ -99,7 +99,26 @@ export const TalentProfileResult = ({
   );
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
+      {/* Abandoned Notice Banner if applicable */}
+      {profile.isAbandoned && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 text-rose-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-rose-600 text-white shrink-0 mt-0.5">
+              <Lock className="w-5 h-5 text-white" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-black text-rose-900">
+                Assessment Session Abandoned — 24-Hour Cooldown Enforced
+              </p>
+              <p className="text-xs text-rose-800 leading-relaxed font-medium">
+                This evaluation was exited prior to completion. In accordance with behavioral test integrity standards, retakes are restricted for 24 hours. You can retake this assessment on <strong>{nextAvailableDate}</strong> (in {remainingHours}h {remainingMinutes}m).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Unattempted Test Notification Alert */}
       {unattemptedTests.length > 0 && onSelectTest && (
         <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 border border-emerald-500/40 rounded-2xl p-4 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-emerald-950/20">

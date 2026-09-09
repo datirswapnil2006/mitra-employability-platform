@@ -24,7 +24,8 @@ import {
   PanelLeftOpen,
   X,
   Palette,
-  LifeBuoy
+  LifeBuoy,
+  Database
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -129,6 +130,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
         { to: '/admin/assessments?type=Interview', label: 'Interview' },
         { to: '/admin/assessments?type=Full', label: 'Full Assessment' }
       ]
+    },
+    {
+      type: 'link',
+      to: '/admin/question-bank',
+      label: 'Question Bank',
+      icon: Database
     },
     {
       type: 'link',
@@ -280,7 +287,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
         className={`border-b transition-all duration-200 ${
           effectiveCollapsed
             ? 'p-3 flex flex-col items-center justify-center'
-            : 'p-4 flex items-center justify-between gap-3'
+            : 'p-4 flex items-center justify-between gap-2.5'
         }`}
         style={{ borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))' }}
       >
@@ -288,7 +295,8 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
           <button
             type="button"
             onClick={handleToggleCollapse}
-            className="w-11 h-11 rounded-xl bg-white p-1 border border-slate-700 shadow-md flex items-center justify-center hover:scale-105 hover:border-blue-500 transition-all cursor-pointer shrink-0 group"
+            className="w-11 h-11 rounded-xl bg-white p-1 border shadow-xs flex items-center justify-center hover:scale-105 transition-all cursor-pointer shrink-0 group"
+            style={{ borderColor: 'var(--sidebar-border, #E2E8F0)' }}
             title="Click to Expand Sidebar"
           >
             <img
@@ -302,11 +310,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
             />
           </button>
         ) : (
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Link
               to={isAdmin ? '/admin/dashboard' : '/student/dashboard'}
-              className="w-10 h-10 rounded-xl bg-white p-1 border border-slate-700 shadow-sm flex items-center justify-center shrink-0 hover:scale-105 transition"
-              title="Dashboard"
+              className="w-10 h-10 rounded-xl bg-white p-1 border shadow-xs flex items-center justify-center shrink-0 hover:scale-105 transition"
+              style={{ borderColor: 'var(--sidebar-border, #E2E8F0)' }}
+              title={isAdmin ? 'Admin Dashboard' : 'Student Dashboard'}
             >
               <img
                 src="/college-logo.jpg"
@@ -318,21 +327,29 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                 }}
               />
             </Link>
-            <div className="min-w-0 animate-in fade-in duration-200">
-              <div className="flex items-center gap-1.5">
-                <span className="font-black text-sm tracking-widest uppercase text-white">MITRA</span>
+            <div className="min-w-0 flex-1 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                 <span
-                  className="text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase"
+                  className="font-black text-sm tracking-wider uppercase leading-none"
+                  style={{ color: 'var(--sidebar-heading, currentColor)' }}
+                >
+                  MITRA
+                </span>
+                <span
+                  className="text-[9px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 leading-none inline-flex items-center"
                   style={{
-                    backgroundColor: 'var(--primary-light, rgba(37,99,235,0.2))',
-                    color: 'var(--primary-color, #60A5FA)',
+                    backgroundColor: 'var(--primary-light, rgba(37,99,235,0.12))',
+                    color: 'var(--primary-color, #2563EB)',
                     borderColor: 'var(--primary-color, #3B82F6)'
                   }}
                 >
                   {isAdmin ? 'ADMIN' : 'STUDENT'}
                 </span>
               </div>
-              <p className="text-[10px] font-semibold opacity-75 truncate">
+              <p
+                className="text-[10px] font-semibold truncate mt-1 leading-tight"
+                style={{ color: 'var(--sidebar-text, #64748B)', opacity: 0.85 }}
+              >
                 {isAdmin ? 'Management Console' : 'Employability Portal'}
               </p>
             </div>
@@ -344,7 +361,20 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
           <button
             type="button"
             onClick={handleToggleCollapse}
-            className="hidden md:flex p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition text-slate-300 hover:text-white"
+            className="hidden md:flex p-1.5 rounded-lg transition shrink-0 cursor-pointer border"
+            style={{
+              color: 'var(--sidebar-text, #64748B)',
+              borderColor: 'var(--sidebar-border, #E2E8F0)',
+              backgroundColor: 'transparent'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--sidebar-hover-bg, rgba(0,0,0,0.05))';
+              e.currentTarget.style.color = 'var(--sidebar-heading, currentColor)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--sidebar-text, #64748B)';
+            }}
             title="Collapse Sidebar"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -356,7 +386,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
           <button
             type="button"
             onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition text-slate-300 hover:text-white"
+            className="md:hidden p-1.5 rounded-lg transition shrink-0 cursor-pointer border"
+            style={{
+              color: 'var(--sidebar-text, #64748B)',
+              borderColor: 'var(--sidebar-border, #E2E8F0)',
+              backgroundColor: 'transparent'
+            }}
             title="Close Menu"
           >
             <X className="w-5 h-5" />
@@ -367,7 +402,10 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
       {/* Navigation List */}
       <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto custom-scrollbar">
         {!effectiveCollapsed ? (
-          <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider opacity-60">
+          <div
+            className="px-3 py-1 text-[10px] font-black uppercase tracking-wider"
+            style={{ color: 'var(--sidebar-muted, var(--sidebar-text, #64748B))', opacity: 0.85 }}
+          >
             {isAdmin ? 'Institutional Rights' : 'Student Ecosystem'}
           </div>
         ) : (
@@ -395,7 +433,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                 className={`flex items-center ${effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'} py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group relative ${
                   active
                     ? 'shadow-md font-bold'
-                    : 'opacity-80 hover:opacity-100 hover:bg-white/10'
+                    : 'opacity-80 hover:opacity-100 hover:bg-[var(--sidebar-hover-bg)]'
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -425,8 +463,8 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                   title={effectiveCollapsed ? `${item.label} (Click to toggle)` : undefined}
                   className={`w-full flex items-center ${effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'} py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group cursor-pointer ${
                     hasActiveChild
-                      ? 'bg-white/15 font-bold opacity-100'
-                      : 'opacity-80 hover:opacity-100 hover:bg-white/10'
+                      ? 'bg-[var(--sidebar-hover-bg)] font-bold opacity-100'
+                      : 'opacity-80 hover:opacity-100 hover:bg-[var(--sidebar-hover-bg)]'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -469,7 +507,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                           className={`block px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
                             active
                               ? 'font-bold shadow-xs'
-                              : 'opacity-75 hover:opacity-100 hover:bg-white/10'
+                              : 'opacity-75 hover:opacity-100 hover:bg-[var(--sidebar-hover-bg)]'
                           }`}
                         >
                           {child.label}
@@ -491,7 +529,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
         className={`p-3.5 border-t text-[10px] flex items-center ${effectiveCollapsed ? 'justify-center flex-col gap-2' : 'justify-between'}`}
         style={{
           borderColor: 'var(--sidebar-border, rgba(51, 65, 85, 0.8))',
-          backgroundColor: 'rgba(0, 0, 0, 0.15)'
+          backgroundColor: 'var(--sidebar-footer-bg, rgba(0, 0, 0, 0.04))'
         }}
       >
         {!effectiveCollapsed ? (
@@ -504,7 +542,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
               <button
                 type="button"
                 onClick={openCustomizer}
-                className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/15 transition flex items-center gap-1"
+                className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-[var(--sidebar-hover-bg)] transition flex items-center gap-1"
                 title="Theme Customization"
               >
                 <Palette className="w-3.5 h-3.5" />
@@ -521,7 +559,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
             <button
               type="button"
               onClick={openCustomizer}
-              className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/15 transition"
+              className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-[var(--sidebar-hover-bg)] transition"
               title="Theme Customization"
             >
               <Palette className="w-4 h-4" />
@@ -529,7 +567,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
             <button
               type="button"
               onClick={handleToggleCollapse}
-              className="p-1 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/15 transition"
+              className="p-1 rounded-lg opacity-70 hover:opacity-100 hover:bg-[var(--sidebar-hover-bg)] transition"
               title="Expand Sidebar"
             >
               <ChevronRight className="w-4 h-4" />

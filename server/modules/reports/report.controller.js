@@ -376,7 +376,205 @@ exports.exportDepartmentReport = async (req, res) => {
       return res.end();
     }
 
-    // 3. DEPARTMENT SUMMARY REPORT
+    // 3. PRACTICE TEST REPORT (DEPARTMENT-WISE)
+    if (type === 'practice' || type === 'practice_tests') {
+      const departmentsList = OFFICIAL_DEPARTMENTS || [
+        'EXTC', 'CSE', 'IT', 'AIDS', 'CSE (IOT)', 'Civil', 'Mechanical', 'MCA', 'MBA'
+      ];
+
+      // Find all practice assessments
+      const practiceAssessments = await Assessment.find({
+        $or: [{ isPracticeTest: true }, { title: { $regex: 'Self Practice Test', $options: 'i' } }]
+      }).select('_id title topic questions');
+
+      const practiceAssessmentMap = new Map(practiceAssessments.map(a => [a._id.toString(), a]));
+      const practiceIds = practiceAssessments.map(a => a._id);
+
+      // Find all attempts for practice assessments
+      const attempts = await AssessmentAttempt.find({ assessmentId: { $in: practiceIds } })
+        .populate('user', 'name email department year phone')
+        .sort({ attemptedAt: -1 });
+
+      const userIds = attempts.map((a) => a.user?._id).filter(Boolean);
+      const studentProfiles = await StudentProfile.find({ user: { $in: userIds } });
+      const profileMap = new Map(studentProfiles.map((p) => [p.user.toString(), p]));
+
+      // Filter attempts by department, batch, status
+      const filteredAttempts = attempts.filter((a) => {
+        if (!a.user) return false;
+        const prof = profileMap.get(a.user._id.toString());
+        if (department !== 'All' && a.user.department !== department) return false;
+        if (batch !== 'All' && prof?.batch !== batch) return false;
+        if (status !== 'All' && a.status !== status) return false;
+        return true;
+      });
+
+      // A. Department Summary Rows
+      const summaryHeaders = [
+        'Department',
+        'Registered Students',
+        'Practice Drills Attempted',
+        'Active Students Practicing',
+        'Student Participation Rate %',
+        'Total Questions Solved',
+        'Average Score %',
+        'Pass Rate %',
+        'High Score Achievers (>=80%)'
+      ];
+
+      const targetDepts = department === 'All' ? departmentsList : [department];
+      const summaryRows = await Promise.all(
+        targetDepts.map(async (dept) => {
+          const studentCount = await User.countDocuments({ role: 'student', department: dept });
+          const deptAttempts = filteredAttempts.filter((a) => a.user && a.user.department === dept);
+          const count = deptAttempts.length;
+          const activeStudents = new Set(deptAttempts.map((a) => a.user._id.toString())).size;
+          const passed = deptAttempts.filter((a) => a.status === 'PASSED').length;
+          const highScores = deptAttempts.filter((a) => (a.percentage || 0) >= 80).length;
+          const avgScore = count > 0
+            ? Math.round(deptAttempts.reduce((acc, a) => acc + (a.percentage || 0), 0) / count)
+            : 0;
+          const passRate = count > 0 ? Math.round((passed / count) * 100) : 0;
+          const participationRate = studentCount > 0 ? Math.round((activeStudents / studentCount) * 100) : 0;
+          const questionsSolved = deptAttempts.reduce((acc, a) => acc + (a.answers?.length || a.totalMarks || 10), 0);
+
+          return [
+            dept,
+            studentCount,
+            count,
+            activeStudents,
+            `${participationRate}%`,
+            questionsSolved,
+            `${avgScore}%`,
+            `${passRate}%`,
+            highScores
+          ];
+        })
+      );
+
+      // B. Detailed Student Attempt Rows
+      const detailHeaders = [
+        'Attempt ID',
+        'ERP Number',
+        'Student Name',
+        'Email',
+        'Department',
+        'Year',
+        'Batch',
+        'Practice Topic',
+        'Questions Count',
+        'Score',
+        'Total Marks',
+        'Percentage (%)',
+        'Result Status',
+        'Time Spent (Sec)',
+        'Submission Reason',
+        'Attempt Date & Time'
+      ];
+
+      const detailRows = filteredAttempts.map((a) => {
+        const prof = profileMap.get(a.user._id.toString());
+        const aDoc = practiceAssessmentMap.get(a.assessmentId?.toString());
+        const topic = aDoc?.topic || aDoc?.title || 'Topic Practice';
+        const qCount = a.answers?.length || a.totalMarks || 10;
+
+        return [
+          a._id.toString(),
+          prof?.erpNumber || prof?.rollNo || 'N/A',
+          a.user?.name || 'N/A',
+          a.user?.email || 'N/A',
+          a.user?.department || 'N/A',
+          prof?.year || a.user?.year || 'FE',
+          prof?.batch || 'N/A',
+          topic,
+          qCount,
+          a.score,
+          a.totalMarks,
+          `${a.percentage}%`,
+          a.status,
+          a.timeSpentSeconds || 0,
+          a.submissionReason || 'Completed Drill',
+          a.attemptedAt ? new Date(a.attemptedAt).toLocaleString('en-IN') : 'N/A'
+        ];
+      });
+
+      const sanitizedFilename = `MITRA_Practice_Test_Report_${department}_Batch_${batch}_${Date.now()}`;
+
+      if (format === 'csv') {
+        // Stream detailed rows with summary header block
+        return streamCsv(res, `${sanitizedFilename}.csv`, detailHeaders, detailRows);
+      }
+
+      // 1. Department Summary Sheet
+      const summarySheet = workbook.addWorksheet('Dept_Practice_Summary');
+      summarySheet.mergeCells('A1:I2');
+      const titleCell = summarySheet.getCell('A1');
+      titleCell.value = `MITRA EMPLOYABILITY PORTAL — DEPARTMENT-WISE PRACTICE TEST ANALYTICS (${department} | Batch: ${batch})`;
+      titleCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FFFFFF' } };
+      titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F172A' } };
+
+      summarySheet.getRow(4).values = summaryHeaders;
+      const sumHeaderRow = summarySheet.getRow(4);
+      sumHeaderRow.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+      sumHeaderRow.height = 25;
+      sumHeaderRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '2563EB' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+
+      summaryRows.forEach((r, idx) => {
+        const row = summarySheet.getRow(5 + idx);
+        row.values = r;
+        row.height = 20;
+        row.eachCell((cell, colNum) => {
+          cell.alignment = { vertical: 'middle', horizontal: colNum === 1 ? 'left' : 'center' };
+        });
+      });
+      summarySheet.columns.forEach((col) => { col.width = 20; });
+
+      // 2. Student Drill Attempts Sheet
+      const detailSheet = workbook.addWorksheet('Student_Drill_Attempts');
+      detailSheet.mergeCells('A1:P2');
+      const dTitleCell = detailSheet.getCell('A1');
+      dTitleCell.value = `MITRA EMPLOYABILITY PORTAL — STUDENT PRACTICE DRILL ATTEMPTS LOG (${department} | Batch: ${batch})`;
+      dTitleCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FFFFFF' } };
+      dTitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      dTitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F172A' } };
+
+      detailSheet.getRow(4).values = detailHeaders;
+      const dHeaderRow = detailSheet.getRow(4);
+      dHeaderRow.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+      dHeaderRow.height = 25;
+      dHeaderRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4F46E5' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+
+      detailRows.forEach((r, idx) => {
+        const row = detailSheet.getRow(5 + idx);
+        row.values = r;
+        row.height = 20;
+        row.eachCell((cell, colNum) => {
+          cell.alignment = {
+            vertical: 'middle',
+            horizontal: colNum === 2 || colNum === 3 || colNum === 4 || colNum === 8 ? 'left' : 'center'
+          };
+        });
+      });
+
+      detailSheet.columns.forEach((col) => { col.width = 18; });
+      detailSheet.getColumn(2).width = 16;
+      detailSheet.getColumn(8).width = 28;
+      detailSheet.getColumn(15).width = 26;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}.xlsx"`);
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+
+    // 4. DEPARTMENT SUMMARY REPORT
     const headers = [
       'Department',
       'Total Registered Candidates',
@@ -456,6 +654,132 @@ exports.exportDepartmentReport = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     await workbook.xlsx.write(res);
     return res.end();
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Real-time Practice Test Analytics for Admin Charts & KPIs
+ */
+exports.getPracticeAnalytics = async (req, res) => {
+  try {
+    const { department = 'All', batch = 'All' } = req.query;
+
+    const departmentsList = OFFICIAL_DEPARTMENTS || [
+      'EXTC', 'CSE', 'IT', 'AIDS', 'CSE (IOT)', 'Civil', 'Mechanical', 'MCA', 'MBA'
+    ];
+
+    // Find all practice assessments
+    const practiceAssessments = await Assessment.find({
+      $or: [{ isPracticeTest: true }, { title: { $regex: 'Self Practice Test', $options: 'i' } }]
+    }).select('_id title topic questions');
+
+    const practiceAssessmentMap = new Map(practiceAssessments.map((a) => [a._id.toString(), a]));
+    const practiceIds = practiceAssessments.map((a) => a._id);
+
+    // Find all attempts for practice assessments
+    const attempts = await AssessmentAttempt.find({ assessmentId: { $in: practiceIds } })
+      .populate('user', 'name email department year')
+      .sort({ attemptedAt: -1 });
+
+    const userIds = attempts.map((a) => a.user?._id).filter(Boolean);
+    const studentProfiles = await StudentProfile.find({ user: { $in: userIds } });
+    const profileMap = new Map(studentProfiles.map((p) => [p.user.toString(), p]));
+
+    // Filter attempts
+    const filteredAttempts = attempts.filter((a) => {
+      if (!a.user) return false;
+      const prof = profileMap.get(a.user._id.toString());
+      if (department !== 'All' && a.user.department !== department) return false;
+      if (batch !== 'All' && prof?.batch !== batch) return false;
+      return true;
+    });
+
+    // KPI overview
+    const totalPracticeAttempts = filteredAttempts.length;
+    const uniqueStudents = new Set(filteredAttempts.map((a) => a.user._id.toString())).size;
+    const overallAvgScore = totalPracticeAttempts > 0
+      ? Math.round(filteredAttempts.reduce((acc, a) => acc + (a.percentage || 0), 0) / totalPracticeAttempts)
+      : 0;
+    const passedCount = filteredAttempts.filter((a) => a.status === 'PASSED').length;
+    const overallPassRate = totalPracticeAttempts > 0
+      ? Math.round((passedCount / totalPracticeAttempts) * 100)
+      : 0;
+    const totalQuestionsSolved = filteredAttempts.reduce((acc, a) => {
+      const qCount = a.answers?.length || a.totalMarks || 10;
+      return acc + qCount;
+    }, 0);
+
+    // Department breakdown
+    const departmentData = await Promise.all(
+      departmentsList.map(async (dept) => {
+        const studentCount = await User.countDocuments({ role: 'student', department: dept });
+        const deptAttempts = filteredAttempts.filter((a) => a.user && a.user.department === dept);
+        const count = deptAttempts.length;
+        const activeStudents = new Set(deptAttempts.map((a) => a.user._id.toString())).size;
+        const passed = deptAttempts.filter((a) => a.status === 'PASSED').length;
+        const avgScore = count > 0
+          ? Math.round(deptAttempts.reduce((acc, a) => acc + (a.percentage || 0), 0) / count)
+          : 0;
+        const passRate = count > 0 ? Math.round((passed / count) * 100) : 0;
+        const questionsSolved = deptAttempts.reduce((acc, a) => acc + (a.answers?.length || a.totalMarks || 10), 0);
+
+        return {
+          department: dept,
+          totalStudents: studentCount,
+          practiceAttempts: count,
+          activeStudents,
+          participationRate: studentCount > 0 ? Math.round((activeStudents / studentCount) * 100) : 0,
+          avgScore,
+          passRate,
+          totalQuestions: questionsSolved
+        };
+      })
+    );
+
+    // Topic distribution (for Circle / Donut chart)
+    const topicCounts = {};
+    filteredAttempts.forEach((a) => {
+      const aDoc = practiceAssessmentMap.get(a.assessmentId?.toString());
+      const topic = aDoc?.topic || 'General Practice';
+      topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+    });
+
+    const topicDistribution = Object.entries(topicCounts).map(([topic, count]) => ({
+      topic,
+      count,
+      percentage: totalPracticeAttempts > 0 ? Math.round((count / totalPracticeAttempts) * 100) : 0
+    })).sort((a, b) => b.count - a.count);
+
+    // Score tier distribution (<40, 40-59, 60-79, 80-100)
+    const scoreTiers = {
+      'Below 40%': 0,
+      '40% - 59%': 0,
+      '60% - 79%': 0,
+      '80% - 100%': 0
+    };
+    filteredAttempts.forEach((a) => {
+      const pct = a.percentage || 0;
+      if (pct < 40) scoreTiers['Below 40%']++;
+      else if (pct < 60) scoreTiers['40% - 59%']++;
+      else if (pct < 80) scoreTiers['60% - 79%']++;
+      else scoreTiers['80% - 100%']++;
+    });
+
+    res.json({
+      success: true,
+      overview: {
+        totalPracticeAttempts,
+        uniqueStudents,
+        overallAvgScore,
+        overallPassRate,
+        totalQuestionsSolved
+      },
+      departmentData,
+      topicDistribution,
+      scoreTiers
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

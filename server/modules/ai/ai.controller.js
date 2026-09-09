@@ -210,10 +210,10 @@ exports.createPsychometricTest = async (req, res) => {
     }
 
     const parsedCount = parseInt(rawCount, 10);
-    if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 50 || String(rawCount).includes('.')) {
+    if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 30 || String(rawCount).includes('.')) {
       return res.status(400).json({
         success: false,
-        message: 'Number of questions must be an integer between 1 and 50.'
+        message: 'Number of questions must be an integer between 1 and 30.'
       });
     }
 
@@ -372,9 +372,9 @@ exports.deletePsychometricTest = async (req, res) => {
 // 1g. Dynamic AI Blueprint Preview Calculator
 exports.getBlueprintPreview = async (req, res) => {
   try {
-    const { questionCount = 50, competencies = COMPETENCIES } = req.body;
+    const { questionCount = 30, competencies = COMPETENCIES } = req.body;
     const parsed = parseInt(questionCount, 10);
-    const count = (!isNaN(parsed) && parsed >= 1 && parsed <= 50) ? parsed : 50;
+    const count = (!isNaN(parsed) && parsed >= 1 && parsed <= 30) ? parsed : 30;
 
     const typeDistribution = computeQuestionTypeDistribution(count);
     const compDistribution = computeCompetencyDistribution(count, competencies);
@@ -410,10 +410,10 @@ exports.generateDynamicAIQuestions = async (req, res) => {
     }
 
     const parsedCount = parseInt(rawCount, 10);
-    if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 50 || String(rawCount).includes('.')) {
+    if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 30 || String(rawCount).includes('.')) {
       return res.status(400).json({
         success: false,
-        message: 'Number of questions must be an integer between 1 and 50.'
+        message: 'Number of questions must be an integer between 1 and 30.'
       });
     }
 
@@ -666,6 +666,80 @@ exports.submitPsychometricAttempt = async (req, res) => {
     });
   } catch (err) {
     console.error('Psychometric submission error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 2ab. Record Abandoned / Terminated Psychometric Attempt (Enforces 24-hour retake cooldown)
+exports.abandonPsychometricAttempt = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const testId = req.params.id || req.body.testId;
+    const { timeSpentSeconds = 0, responses = {} } = req.body;
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+    let test = null;
+    if (testId && testId !== 'active') {
+      test = await PsychometricTest.findById(testId);
+    }
+    if (!test) {
+      test = await PsychometricTest.findOne({ status: 'published', isActive: true }).sort({ createdAt: -1 });
+    }
+
+    if (!test) {
+      return res.status(404).json({ success: false, message: 'Psychometric test not found.' });
+    }
+
+    const studentUser = await User.findById(userId);
+    const studentName = studentUser?.name || 'Student Candidate';
+    const department = studentUser?.department || 'Engineering';
+    const batch = studentUser?.batch || '2026';
+    const erpNumber = studentUser?.erpNumber || studentUser?.rollNo || 'N/A';
+
+    const formattedResponses = Object.keys(responses || {}).map((qId) => ({
+      questionId: qId,
+      answer: responses[qId],
+      score: 0,
+      questionType: 'LIKERT'
+    }));
+
+    const now = new Date();
+    const timeSpent = parseInt(timeSpentSeconds, 10) || 0;
+
+    const attempt = await PsychometricAttempt.create({
+      user: userId,
+      studentName,
+      department,
+      batch,
+      erpNumber,
+      psychometricTest: test._id,
+      testTitle: test.title,
+      assessmentVersion: test.version || 1,
+      responses: formattedResponses,
+      timeSpentSeconds: timeSpent,
+      startedAt: new Date(Date.now() - (timeSpent * 1000 || 10000)),
+      submittedAt: now,
+      completed: false,
+      isAbandoned: true,
+      abandonReason: 'Assessment session abandoned by candidate prior to submission. 24-hour retake cooldown enforced.'
+    });
+
+    const cooldown = {
+      canRetake: false,
+      lastAttemptAt: now,
+      nextRetakeAvailableAt: new Date(now.getTime() + TWENTY_FOUR_HOURS_MS),
+      remainingHours: 24,
+      remainingMinutes: 0
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Assessment session abandoned. You are restricted from retaking this assessment for 24 hours.',
+      attempt,
+      cooldown
+    });
+  } catch (err) {
+    console.error('Error abandoning psychometric attempt:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

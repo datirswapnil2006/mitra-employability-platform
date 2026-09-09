@@ -11,6 +11,8 @@ import EmptyState from '../../components/EmptyState';
 import Modal from '../../components/Modal';
 import NoteReaderModal from '../../components/NoteReaderModal';
 import Badge from '../../components/Badge';
+import ProgressBar from '../../components/ProgressBar';
+import TopicAssessmentSection from '../../components/training/TopicAssessmentSection';
 import {
   TRAINING_MODULES,
   MODULE_CATEGORIES,
@@ -34,7 +36,8 @@ import {
   UserCheck,
   Code2,
   MessageSquare,
-  Users
+  Users,
+  Award
 } from 'lucide-react';
 
 export const TrainingPage = () => {
@@ -296,12 +299,24 @@ export const TrainingPage = () => {
   const fetchTopicContents = async (topicId, moduleOverride) => {
     setLoading(true);
     try {
-      const res = await api.getContentList({
-        module: moduleOverride || (isDomainModule ? 'Domain' : (isCommunicationModule ? 'Communication' : (isResumeModule ? 'Resume' : (isInterviewModule ? 'Interview Preparation' : 'Aptitude')))),
-        topicId
-      });
+      const [res, progressRes] = await Promise.all([
+        api.getContentList({
+          module: moduleOverride || (isDomainModule ? 'Domain' : (isCommunicationModule ? 'Communication' : (isResumeModule ? 'Resume' : (isInterviewModule ? 'Interview Preparation' : 'Aptitude')))),
+          topicId
+        }),
+        api.getSubmoduleProgress(topicId)
+      ]);
+
       if (res.success) {
         setContents((res.contents || []).filter(c => c.status === 'published' || !c.status));
+      }
+
+      if (progressRes?.success && progressRes.progress?.completedContents) {
+        const cMap = {};
+        progressRes.progress.completedContents.forEach((id) => {
+          cMap[id] = true;
+        });
+        setCompletedMap(cMap);
       }
     } catch (err) {
       console.error('Error fetching topic contents:', err);
@@ -1299,6 +1314,18 @@ export const TrainingPage = () => {
                     <FileText className="w-4 h-4" />
                     <span>PDF Notes ({noteContents.length})</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTopicTab('assessment')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+                      activeTopicTab === 'assessment'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-500/20'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <Award className="w-4 h-4" />
+                    <span>Assessments & Practice</span>
+                  </button>
                 </div>
               </div>
 
@@ -1462,6 +1489,14 @@ export const TrainingPage = () => {
                   )}
                 </div>
               )}
+
+              {activeTopicTab === 'assessment' && (
+                <TopicAssessmentSection
+                  topic={selectedTopic}
+                  moduleName="Domain Knowledge"
+                  categoryName={selectedDomainCategory?.title || ''}
+                />
+              )}
             </div>
           )}
         </div>
@@ -1552,13 +1587,37 @@ export const TrainingPage = () => {
               </div>
               <h2 className="text-2xl font-black text-slate-900">{selectedTopic.title}</h2>
               <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                {selectedTopic.description || 'Watch topic lectures and review notes.'}
+                {selectedTopic.description || 'Watch topic lectures, study revision notes, and take assessments.'}
               </p>
+            </div>
+
+            {/* Lecture/Topic Completion Progress */}
+            <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl min-w-[240px]">
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="font-bold text-slate-700">Topic Completion</span>
+                <span className="font-black text-emerald-600">
+                  {contents.length > 0
+                    ? Math.round((Object.values(completedMap).filter(Boolean).length / contents.length) * 100)
+                    : 0}%
+                </span>
+              </div>
+              <ProgressBar
+                progress={
+                  contents.length > 0
+                    ? Math.round((Object.values(completedMap).filter(Boolean).length / contents.length) * 100)
+                    : 0
+                }
+                color="emerald"
+              />
+              <div className="text-[10px] text-slate-500 font-semibold mt-1.5 flex items-center justify-between">
+                <span>{Object.values(completedMap).filter(Boolean).length} of {contents.length} resources completed</span>
+                <span className="text-amber-600 font-bold">+50 XP on 100%</span>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
               <button
                 type="button"
                 onClick={() => setActiveTopicTab('videos')}
@@ -1583,7 +1642,29 @@ export const TrainingPage = () => {
                 <FileText className="w-4 h-4" />
                 <span>PDF Notes ({noteContents.length})</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTopicTab('assessment')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+                  activeTopicTab === 'assessment'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-500/20'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <Award className="w-4 h-4" />
+                <span>Assessments & Practice</span>
+              </button>
             </div>
+            {activeTopicTab !== 'assessment' && (
+              <div className="w-full sm:w-64">
+                <Input
+                  placeholder={`Search ${activeTopicTab}...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+            )}
           </div>
 
           {activeTopicTab === 'videos' && (
@@ -1743,6 +1824,14 @@ export const TrainingPage = () => {
                 />
               )}
             </div>
+          )}
+
+          {activeTopicTab === 'assessment' && (
+            <TopicAssessmentSection
+              topic={selectedTopic}
+              moduleName="Aptitude"
+              categoryName={selectedTopic?.category || activeSubfilter || 'Quantitative'}
+            />
           )}
         </div>
       )}
@@ -2730,6 +2819,18 @@ export const TrainingPage = () => {
                     <FileText className="w-4 h-4" />
                     <span>PDF Notes ({noteContents.length})</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTopicTab('assessment')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+                      activeTopicTab === 'assessment'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Award className="w-4 h-4" />
+                    <span>Assessments & Practice</span>
+                  </button>
                 </div>
                 <div className="w-full sm:w-64">
                   <Input
@@ -2832,6 +2933,14 @@ export const TrainingPage = () => {
                     <EmptyState title="No PDF Notes in this Topic" description="Study notes for this topic are being prepared." />
                   )}
                 </div>
+              )}
+
+              {activeTopicTab === 'assessment' && (
+                <TopicAssessmentSection
+                  topic={selectedTopic}
+                  moduleName="Interview Preparation"
+                  categoryName={selectedInterviewCategory?.title || ''}
+                />
               )}
             </div>
           )}

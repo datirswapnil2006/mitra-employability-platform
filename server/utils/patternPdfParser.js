@@ -1,4 +1,4 @@
-const pdfParse = require('pdf-parse');
+const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 
 /**
  * Pattern-Based PDF Question Extractor
@@ -59,6 +59,9 @@ function extractGlobalAnswerKey(text) {
     const itemRegex = /(?:Q(?:uestion)?\.?\s*)?(\d+)[\.\)\-\:\s]+([A-Da-d1-4])\b/g;
     let itemMatch;
     while ((itemMatch = itemRegex.exec(keySection)) !== null) {
+      if (itemMatch.index === itemRegex.lastIndex) {
+        itemRegex.lastIndex++;
+      }
       const qNum = parseInt(itemMatch[1], 10);
       const ansLetter = itemMatch[2].toUpperCase();
       answerKeyMap.set(qNum, ansLetter);
@@ -76,11 +79,13 @@ function splitIntoQuestionBlocks(text) {
   // Matches: "1.", "1)", "1-", "(1)", "Q1.", "Q1:", "Q.1", "Question 1:", "Que 1.", "Ques 1:"
   const questionStartRegex = /(?:^|\n)\s*(?:(?:Q(?:uestion|ue|ues)?\.?\s*(\d+)[\.\)\-\:\s]*)|(?:\((\d+)\))|(?:(\d+)[\.\)\-\:\s]))\s+/gi;
 
-
   const indices = [];
   let match;
 
   while ((match = questionStartRegex.exec(text)) !== null) {
+    if (match.index === questionStartRegex.lastIndex) {
+      questionStartRegex.lastIndex++;
+    }
     const qNumStr = match[1] || match[2] || match[3];
     const qNum = parseInt(qNumStr, 10);
     indices.push({
@@ -140,16 +145,17 @@ function parseQuestionBlock(rawBlock, qNumber, globalAnswerKey = new Map(), defa
   }
 
   // 2. Extract Answer if present
-  // Matches: "Answer: A", "Ans: (B)", "Correct Option: C", "Correct Answer: Option D", "Key: A"
-  const answerRegex = /(?:Correct\s*Answer|Correct\s*Option|Answer|Ans|Key)[\s\:\-]+(?:\(?([A-Da-d1-4])\)?|\bOption\s*([A-Da-d1-4])\b|([^\n\r]+))/i;
+  // Matches standalone letter: "Answer: A", "Ans: (B)", "Correct Option: C", "Correct Answer: Option D", "Key: A"
+  // Or standalone text/ratio: "Ans: 1:2", "Answer: 16:46"
+  // Note: We use (?!\S) so 'Ans: 1:2' doesn't extract '1' as letter A
+  const answerRegex = /(?:Correct\s*Answer|Correct\s*Option|Answer|Ans|Key)[\s\:\-]+(?:\(?([A-Da-d])\)?(?!\S)|\bOption\s*([A-Da-d])\b|([^\n\r]+))/i;
   const ansMatch = text.match(answerRegex);
   if (ansMatch) {
     answerLetter = (ansMatch[1] || ansMatch[2] || '').toUpperCase();
     if (!answerLetter && ansMatch[3]) {
       const rawAns = ansMatch[3].trim();
-      const firstChar = rawAns.charAt(0).toUpperCase();
-      if (['A', 'B', 'C', 'D'].includes(firstChar)) {
-        answerLetter = firstChar;
+      if (['A', 'B', 'C', 'D'].includes(rawAns.toUpperCase())) {
+        answerLetter = rawAns.toUpperCase();
       } else {
         correctAnswer = rawAns;
       }
@@ -166,62 +172,70 @@ function parseQuestionBlock(rawBlock, qNumber, globalAnswerKey = new Map(), defa
   let options = [];
   let questionText = text;
 
-  // Case A: Look for inline options on same line: (A) ... (B) ... (C) ... (D) ...
-  const inlineRegex = /(?:^|\s)(?:\(?([A-D])[\)\.\:\-]\s*|\b([A-D])\s*[\)\.\-]\s*)([\s\S]*?)(?=(?:\s*\(?[A-D][\)\.\:\-]\s*)|\s*$)/gi;
+  // Unified robust option marker matching:
+  // Handles:
+  // - "Option A:", "Option B:"
+  // - "1. A.", "1 A.", "2 B.", "3 C.", "4 D."
+  // - "(A)", "[A]", "A.", "A)", "A:"
+  // - "(1)", "[1]", "1.", "1)"
+  const markerRegex = /(?:^|\s+)(?:Option\s+([A-Da-d])[\:\.\-\s]*|(?:\(?\d+[\.\)\:\-]?\s*)?[\(\[]?([A-Da-d])[\)\]\.\:\-]\s*|(?:\b|\()([A-Da-d])[\)\.\:\-]\s*|(?:\(?([1-4])[\)\]\.\:\-]\s+))(?!\d)/g;
 
-  // First check if options are formatted line by line
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const optionLineRegex = /^(?:[\(\[]?([A-Da-d1-4])[\)\]\.\:\-]\s*|\b([A-Da-d])\s*[\)\.\-]\s*)(.*)/;
+  const matches = [];
+  let m;
+  while ((m = markerRegex.exec(text)) !== null) {
+    const letter = (m[1] || m[2] || m[3] || '').toUpperCase();
+    const num = m[4];
+    const marker = letter || (num === '1' ? 'A' : num === '2' ? 'B' : num === '3' ? 'C' : num === '4' ? 'D' : '');
+    matches.push({
+      marker,
+      index: m.index + (m[0].length - m[0].trimStart().length),
+      length: m[0].trim().length,
+      fullIndex: m.index,
+      fullLength: m[0].length
+    });
+  }
 
-  const detectedOptionLines = [];
-  const questionLines = [];
-  let reachedOptions = false;
-
-  for (const line of lines) {
-    // Check if entire line has inline options like "(A) Apple (B) Banana"
-    const multipleOptionsOnLine = (line.match(/(?:\([A-Da-d]\)|[A-Da-d]\.|\b[A-Da-d]\))/g) || []).length;
-    if (multipleOptionsOnLine >= 2) {
-      reachedOptions = true;
-      // Split inline options on this line
-      const optMatches = [...line.matchAll(/(?:[\(\[]?([A-Da-d])[\)\]\.\:\-]\s*|\b([A-Da-d])\s*[\)\.\-]\s*)([^\(\)]*)/g)];
-      for (const m of optMatches) {
-        const val = m[3] ? m[3].trim() : '';
-        if (val) detectedOptionLines.push(val);
+  if (matches.length >= 2) {
+    questionText = text.substring(0, matches[0].index).trim();
+    for (let i = 0; i < matches.length; i++) {
+      const start = matches[i].fullIndex + matches[i].fullLength;
+      const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+      let optText = text.substring(start, end).trim();
+      // Clean leading option markers if duplicated
+      optText = optText.replace(/^(?:(?:\(?\d+[\.\)\:\-]?\s*)?[\(\[]?[A-Da-d][\)\]\.\:\-]?\s*)/, '').trim();
+      // Clean trailing stray numbering/bullets before next option
+      optText = optText.replace(/\s+[1-4•\-\|]$/, '').trim();
+      if (optText) {
+        options.push(optText);
       }
-      continue;
-    }
-
-    const optMatch = line.match(optionLineRegex);
-    if (optMatch && (reachedOptions || ['A', 'a', '1'].includes(optMatch[1] || optMatch[2]))) {
-      reachedOptions = true;
-      const optVal = (optMatch[3] || '').trim();
-      if (optVal) {
-        detectedOptionLines.push(optVal);
-      }
-    } else if (reachedOptions && detectedOptionLines.length > 0 && detectedOptionLines.length < 4) {
-      // Continuation of previous option
-      detectedOptionLines[detectedOptionLines.length - 1] += ' ' + line;
-    } else if (!reachedOptions) {
-      questionLines.push(line);
     }
   }
 
-  if (detectedOptionLines.length >= 2) {
-    options = detectedOptionLines;
-    questionText = questionLines.join(' ').trim();
-  } else {
-    // Fallback: search anywhere in text for (A), (B), (C), (D)
-    const optSplitRegex = /(?:\n|\s|^)(?:[\(\[]([A-Da-d1-4])[\)\]]|([A-Da-d])[\)\.\-]\s+)/;
-    const splitIndex = text.search(optSplitRegex);
-    if (splitIndex !== -1) {
-      questionText = text.substring(0, splitIndex).trim();
-      const optionsPart = text.substring(splitIndex);
+  // Fallback to line-by-line if markerRegex didn't detect enough options
+  if (options.length < 2) {
+    options = [];
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    const optionLineRegex = /^(?:[\(\[]?([A-Da-d1-4])[\)\]\.\:\-]\s*|\b([A-Da-d])\s*[\)\.\-]\s*)(.*)/;
+    const detectedOptionLines = [];
+    const questionLines = [];
+    let reachedOptions = false;
 
-      const allMatches = [...optionsPart.matchAll(/(?:[\(\[]?([A-Da-d1-4])[\)\]\.\:\-]\s*)([\s\S]*?)(?=(?:[\(\[]?[A-Da-d1-4][\)\]\.\:\-]\s*)|$)/g)];
-      for (const m of allMatches) {
-        const val = (m[2] || '').trim();
-        if (val) options.push(val);
+    for (const line of lines) {
+      const optMatch = line.match(optionLineRegex);
+      if (optMatch && (reachedOptions || ['A', 'a', '1'].includes(optMatch[1] || optMatch[2]))) {
+        reachedOptions = true;
+        const optVal = (optMatch[3] || '').trim();
+        if (optVal) detectedOptionLines.push(optVal);
+      } else if (reachedOptions && detectedOptionLines.length > 0 && detectedOptionLines.length < 4) {
+        detectedOptionLines[detectedOptionLines.length - 1] += ' ' + line;
+      } else if (!reachedOptions) {
+        questionLines.push(line);
       }
+    }
+
+    if (detectedOptionLines.length >= 2) {
+      options = detectedOptionLines;
+      questionText = questionLines.join(' ').trim();
     }
   }
 
@@ -260,12 +274,19 @@ function parseQuestionBlock(rawBlock, qNumber, globalAnswerKey = new Map(), defa
     }
   } else if (correctAnswer) {
     const cleanExpected = correctAnswer.toLowerCase().trim();
-    const found = finalOptions.find(
-      (opt) => opt.toLowerCase().trim() === cleanExpected || opt.toLowerCase().includes(cleanExpected)
-    );
-    if (found) {
-      finalCorrectAnswer = found;
+    // 1. Exact match
+    const exact = finalOptions.find(opt => opt.toLowerCase().trim() === cleanExpected);
+    if (exact) {
+      finalCorrectAnswer = exact;
       answerDetected = true;
+    } else {
+      // 2. Whitespace-insensitive match
+      const cleanNoSpace = cleanExpected.replace(/\s+/g, '');
+      const noSpace = finalOptions.find(opt => opt.replace(/\s+/g, '').toLowerCase() === cleanNoSpace);
+      if (noSpace) {
+        finalCorrectAnswer = noSpace;
+        answerDetected = true;
+      }
     }
   }
 
@@ -301,7 +322,7 @@ async function extractQuestionsWithPatterns({
   category = 'Quantitative Aptitude',
   topic = 'General',
   difficulty = 'Medium',
-  count = 50
+  count = null
 }) {
   let extractedText = '';
   let pageCount = 1;
@@ -312,12 +333,19 @@ async function extractQuestionsWithPatterns({
       throw new Error('Uploaded PDF file is empty (0 bytes).');
     }
 
+    let timeoutId;
     try {
-      const pdfData = await pdfParse(pdfBuffer);
-      extractedText = pdfData.text || '';
-      pageCount = pdfData.numpages || 1;
+      const parsePromise = pdfParse(pdfBuffer);
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('PDF parsing timed out after 25 seconds. The PDF may be too large, scanned, or complex.')), 25000);
+      });
+      const pdfData = await Promise.race([parsePromise, timeoutPromise]);
+      clearTimeout(timeoutId);
+      extractedText = pdfData?.text || '';
+      pageCount = pdfData?.numpages || 1;
     } catch (parseErr) {
-      throw new Error(`Failed to parse PDF: ${parseErr.message || 'Invalid or corrupted PDF format'}`);
+      clearTimeout(timeoutId);
+      throw new Error(`Failed to parse PDF: ${parseErr?.message || 'Invalid or corrupted PDF format'}`);
     }
   } else if (pdfText && typeof pdfText === 'string') {
     extractedText = pdfText;
@@ -355,24 +383,33 @@ async function extractQuestionsWithPatterns({
     throw new Error('No valid multiple-choice questions could be extracted from the document. Please check the PDF layout.');
   }
 
-  // Deduplicate questions by questionText similarity
-  const seenTexts = new Set();
+  // Deduplicate questions by full questionText and options (without truncating to 60 chars)
+  const seenKeys = new Set();
   const uniqueQuestions = [];
 
   for (const q of parsedQuestions) {
-    const simplified = q.questionText
+    const textKey = (q.questionText || '')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '')
-      .substring(0, 60);
+      .trim();
 
-    if (!seenTexts.has(simplified)) {
-      seenTexts.add(simplified);
+    if (!textKey) continue;
+
+    const optKey = Array.isArray(q.options)
+      ? q.options.map((o) => String(o).toLowerCase().replace(/[^a-z0-9]/g, '')).sort().join('|')
+      : '';
+
+    const uniqueKey = `${textKey}:::${optKey}`;
+
+    if (!seenKeys.has(uniqueKey)) {
+      seenKeys.add(uniqueKey);
       uniqueQuestions.push(q);
     }
   }
 
-  const targetCount = Math.min(Math.max(parseInt(count, 10) || 50, 1), 100);
-  const finalQuestions = uniqueQuestions.slice(0, targetCount);
+  // If a specific target count is explicitly requested and > 0, slice to it; otherwise return ALL detected questions
+  const parsedCount = parseInt(count, 10);
+  const finalQuestions = parsedCount > 0 ? uniqueQuestions.slice(0, parsedCount) : uniqueQuestions;
 
   return {
     success: true,
