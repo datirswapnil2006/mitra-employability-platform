@@ -221,6 +221,37 @@ exports.deleteQuestion = async (req, res) => {
   }
 };
 
+// Bulk Delete Questions (by ID array or by topic filter)
+exports.bulkDeleteQuestions = async (req, res) => {
+  try {
+    const { ids, topic, topicId, module: moduleName, category } = req.body;
+
+    let query = {};
+    if (Array.isArray(ids) && ids.length > 0) {
+      query._id = { $in: ids };
+    } else if (topic || topicId) {
+      if (topicId && topicId !== 'All') query.topicId = topicId;
+      if (topic && topic !== 'All') query.topic = topic;
+      if (moduleName && moduleName !== 'All') query.module = moduleName;
+      if (category && category !== 'All') query.category = category;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Must provide either an array of question IDs or a topic to delete.'
+      });
+    }
+
+    const result = await Question.deleteMany(query);
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} question(s).`,
+      deletedCount: result.deletedCount
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // Generate AI Questions (Gemini, Groq, Hugging Face)
 exports.generateAI = async (req, res) => {
   try {

@@ -75,9 +75,12 @@ export const QuestionBankManagementPage = () => {
   const [pdfTargetDept, setPdfTargetDept] = useState('All');
   const [pdfTargetCategory, setPdfTargetCategory] = useState('Quantitative Aptitude');
   const [pdfTargetTopicId, setPdfTargetTopicId] = useState('All');
-  const [pdfTargetTopicTitle, setPdfTargetTopicTitle] = useState('Ratio & Proportion');
+  const [pdfTargetTopicTitle, setPdfTargetTopicTitle] = useState('Percentage');
   const [pdfAvailableTopics, setPdfAvailableTopics] = useState([]);
   const [extractedQuestions, setExtractedQuestions] = useState([]);
+
+  // Batch Selection State
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
 
   // 1. Load Categories when Module or Dept changes
   // Handlers for Cascade Reset
@@ -86,6 +89,7 @@ export const QuestionBankManagementPage = () => {
     setSelectedDept('All');
     setSelectedCategoryId('All');
     setSelectedTopicId('All');
+    setSelectedQuestionIds([]);
     setPage(1);
   };
 
@@ -93,17 +97,20 @@ export const QuestionBankManagementPage = () => {
     setSelectedDept(newDept);
     setSelectedCategoryId('All');
     setSelectedTopicId('All');
+    setSelectedQuestionIds([]);
     setPage(1);
   };
 
   const handleCategoryChange = (newCat) => {
     setSelectedCategoryId(newCat);
     setSelectedTopicId('All');
+    setSelectedQuestionIds([]);
     setPage(1);
   };
 
   const handleTopicChange = (newTop) => {
     setSelectedTopicId(newTop);
+    setSelectedQuestionIds([]);
     setPage(1);
   };
 
@@ -429,16 +436,94 @@ export const QuestionBankManagementPage = () => {
   };
 
   const handleDeleteQuestion = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this question?')) return;
+    if (!window.confirm('Are you sure you want to permanently delete this question?')) return;
     try {
       const res = await api.deleteQuestion(id);
       if (res?.success) {
+        setFeedback({
+          type: 'success',
+          message: 'Question deleted successfully.'
+        });
+        setSelectedQuestionIds(prev => prev.filter(qId => qId !== id));
         loadQuestions();
       } else {
         alert(res?.message || 'Failed to delete question');
       }
     } catch (err) {
       alert(err.message || 'Error deleting question');
+    }
+  };
+
+  const toggleSelectQuestion = (id) => {
+    setSelectedQuestionIds(prev =>
+      prev.includes(id) ? prev.filter(qId => qId !== id) : [...prev, id]
+    );
+  };
+
+  const allCurrentPageSelected = questions.length > 0 && questions.every(q => selectedQuestionIds.includes(q._id));
+
+  const toggleSelectAllCurrentPage = () => {
+    if (allCurrentPageSelected) {
+      const pageIds = new Set(questions.map(q => q._id));
+      setSelectedQuestionIds(prev => prev.filter(id => !pageIds.has(id)));
+    } else {
+      const combined = new Set([...selectedQuestionIds, ...questions.map(q => q._id)]);
+      setSelectedQuestionIds(Array.from(combined));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedQuestionIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to permanently delete ${selectedQuestionIds.length} selected question(s)? This action cannot be undone.`)) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.bulkDeleteQuestions({ ids: selectedQuestionIds });
+      if (res?.success) {
+        setFeedback({
+          type: 'success',
+          message: res.message || `Deleted ${selectedQuestionIds.length} question(s) successfully.`
+        });
+        setSelectedQuestionIds([]);
+        loadQuestions();
+      } else {
+        alert(res?.message || 'Failed to delete selected questions.');
+      }
+    } catch (err) {
+      alert(err.message || 'Error deleting selected questions.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClearTopicQuestions = async () => {
+    const topicName = activeTopic?.title || activeTopic?.name || (topics.find(t => t._id === selectedTopicId)?.title) || 'this topic';
+    if (!window.confirm(`⚠️ CAUTION: Are you sure you want to delete ALL questions for topic "${topicName}" (${totalCount} total questions)?\n\nThis will permanently delete all questions in this topic from the database Question Bank.`)) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.bulkDeleteQuestions({
+        topic: activeTopic?.title || activeTopic?.name,
+        topicId: selectedTopicId,
+        module: selectedModule,
+        category: selectedCategoryId
+      });
+      if (res?.success) {
+        setFeedback({
+          type: 'success',
+          message: res.message || `All questions for topic "${topicName}" were deleted successfully.`
+        });
+        setSelectedQuestionIds([]);
+        loadQuestions();
+      } else {
+        alert(res?.message || 'Failed to clear topic questions.');
+      }
+    } catch (err) {
+      alert(err.message || 'Error clearing topic questions.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -492,7 +577,7 @@ export const QuestionBankManagementPage = () => {
     setPdfTargetDept(dept);
     setPdfTargetCategory(cat);
     setPdfTargetTopicId(selectedTopicId !== 'All' ? selectedTopicId : (activeTopic?._id || ''));
-    setPdfTargetTopicTitle(activeTopic?.title || (topics.length > 0 ? topics[0].title : 'Ratio & Proportion'));
+    setPdfTargetTopicTitle(activeTopic?.title || (topics.length > 0 ? topics[0].title : 'Percentage'));
     setPdfFile(null);
     setExtractedQuestions([]);
     setIsPdfModalOpen(true);
@@ -706,12 +791,24 @@ export const QuestionBankManagementPage = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-white/10 backdrop-blur-xs px-5 py-3 rounded-xl border border-white/10 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 bg-white/10 backdrop-blur-xs px-5 py-3 rounded-xl border border-white/10 shrink-0">
           <div className="text-center pr-3 border-r border-white/20">
             <div className="text-2xl font-black text-white">{totalCount}</div>
             <div className="text-[10px] font-bold text-blue-200 uppercase tracking-wider">Total Questions</div>
           </div>
           <div className="flex items-center gap-2">
+            {selectedTopicId !== 'All' && totalCount > 0 && (
+              <button
+                type="button"
+                onClick={handleClearTopicQuestions}
+                disabled={submitting}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-black bg-rose-600/90 hover:bg-rose-600 text-white shadow-md flex items-center gap-1.5 transition cursor-pointer border border-rose-400/40 disabled:opacity-50"
+                title={`Delete all ${totalCount} questions for this topic`}
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear Topic Questions
+              </button>
+            )}
             <button
               type="button"
               onClick={openPdfModal}
@@ -765,6 +862,42 @@ export const QuestionBankManagementPage = () => {
         </div>
       </div>
 
+      {/* Batch Selection Bar */}
+      {questions.length > 0 && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allCurrentPageSelected}
+                onChange={toggleSelectAllCurrentPage}
+                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+              />
+              <span>Select All on Page ({questions.length})</span>
+            </label>
+            {selectedQuestionIds.length > 0 && (
+              <span className="font-extrabold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full text-[11px]">
+                {selectedQuestionIds.length} selected
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {selectedQuestionIds.length > 0 && (
+              <button
+                type="button"
+                onClick={handleDeleteSelected}
+                disabled={submitting}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Selected ({selectedQuestionIds.length})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Question List */}
       {loadingQuestions ? (
         <LoadingState message="Loading question pool..." />
@@ -816,13 +949,24 @@ export const QuestionBankManagementPage = () => {
               }
             }
 
+            const isSelected = selectedQuestionIds.includes(q._id);
+
             return (
               <div
                 key={q._id || idx}
-                className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 hover:border-slate-300 transition"
+                className={`bg-white rounded-2xl border transition p-5 ${
+                  isSelected ? 'border-blue-400 bg-blue-50/20 shadow-xs ring-1 ring-blue-400' : 'border-slate-200 shadow-xs hover:border-slate-300'
+                }`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectQuestion(q._id)}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer mt-1.5 shrink-0"
+                      title="Select question"
+                    />
                     <span className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 border border-slate-200">
                       {questionNumber}
                     </span>
@@ -955,7 +1099,7 @@ export const QuestionBankManagementPage = () => {
       >
         <div className="space-y-5">
           <p className="text-xs text-slate-600 leading-relaxed">
-            Upload any PDF containing multiple-choice questions (e.g. Ratio & Proportion, Percentage, DBMS). The offline pattern parser automatically extracts question statements, options (A, B, C, D), and correct answers, and saves them directly into your selected topic's Question Bank.
+            Upload any PDF containing multiple-choice questions (e.g. Percentage, Time & Work, DBMS). The offline pattern parser automatically extracts question statements, options (A, B, C, D), and correct answers, and saves them directly into your selected topic's Question Bank.
           </p>
 
           {selectedTopicId !== 'All' && activeTopic && (
@@ -1058,7 +1202,7 @@ export const QuestionBankManagementPage = () => {
                     type="text"
                     value={pdfTargetTopicTitle}
                     onChange={(e) => setPdfTargetTopicTitle(e.target.value)}
-                    placeholder="e.g. Ratio & Proportion"
+                    placeholder="e.g. Percentage"
                     className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white"
                   />
                 )}

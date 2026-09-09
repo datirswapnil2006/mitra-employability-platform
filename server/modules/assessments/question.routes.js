@@ -38,6 +38,7 @@ router.get('/:id', protect, questionController.getQuestionById);
 router.post('/extract-pdf', protect, authorize('admin'), handlePdfUpload, extractPdfQuestions);
 router.post('/generate-ai', protect, authorize('admin'), questionController.generateAI);
 router.post('/bulk-save', protect, authorize('admin'), questionController.bulkSaveQuestions);
+router.post('/bulk-delete', protect, authorize('admin'), questionController.bulkDeleteQuestions);
 router.post('/', protect, authorize('admin'), questionController.createQuestion);
 router.put('/:id', protect, authorize('admin'), questionController.updateQuestion);
 router.delete('/:id', protect, authorize('admin'), questionController.deleteQuestion);

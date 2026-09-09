@@ -590,6 +590,14 @@ export const api = {
     });
     return res.json();
   },
+  bulkDeleteQuestions: async (data) => {
+    const res = await fetch(`${API_BASE}/questions/bulk-delete`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
   generateAIQuestions: async (data) => {
     const res = await fetch(`${API_BASE}/questions/generate-ai`, {
       method: 'POST',
