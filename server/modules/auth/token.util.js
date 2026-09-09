@@ -2,10 +2,10 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mitra_super_secret_jwt_key_2026_employability';
-const ACCESS_TOKEN_EXPIRY = '15m'; // Short-lived access token: 15 minutes
-const REFRESH_TOKEN_EXPIRY_DAYS = 7; // Refresh token lifetime: 7 days
+const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '24h'; // Access token lifetime: 24 hours
+const REFRESH_TOKEN_EXPIRY_DAYS = process.env.REFRESH_TOKEN_EXPIRY_DAYS ? parseInt(process.env.REFRESH_TOKEN_EXPIRY_DAYS, 10) : 7; // Refresh token lifetime: 7 days
 const REFRESH_TOKEN_EXPIRY_MS = REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes inactivity timeout
+const INACTIVITY_TIMEOUT_MS = process.env.INACTIVITY_TIMEOUT_MS ? parseInt(process.env.INACTIVITY_TIMEOUT_MS, 10) : 24 * 60 * 60 * 1000; // 24 hours inactivity timeout
 
 const generateAccessToken = (user) => {
   const payload = {

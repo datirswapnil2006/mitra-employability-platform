@@ -270,7 +270,7 @@ exports.refreshToken = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Session expired. Please log in again.' });
     }
 
-    // Check inactivity timeout (30 min)
+    // Check inactivity timeout (24 hours)
     const inactiveDuration = Date.now() - new Date(session.lastActive).getTime();
     if (inactiveDuration > INACTIVITY_TIMEOUT_MS) {
       session.isRevoked = true;
@@ -278,7 +278,7 @@ exports.refreshToken = async (req, res) => {
       clearRefreshTokenCookie(res);
       return res.status(401).json({
         success: false,
-        message: 'Session expired due to inactivity. Please log in again.',
+        message: 'Session expired due to 24 hours of inactivity. Please log in again.',
         code: 'INACTIVITY_TIMEOUT'
       });
     }

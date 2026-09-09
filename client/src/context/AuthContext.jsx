@@ -4,7 +4,7 @@ import { calculateProfileCompletion } from '../utils/profileCompletion';
 
 const AuthContext = createContext();
 
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes of inactivity on client
+const INACTIVITY_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours of inactivity on client
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -13,7 +13,9 @@ export const AuthProvider = ({ children }) => {
   const [profileCompletion, setProfileCompletion] = useState(0);
   const [inactivityNotice, setInactivityNotice] = useState(false);
 
-  const lastActivityRef = useRef(Date.now());
+  const lastActivityRef = useRef(
+    parseInt(localStorage.getItem('mitra_last_activity') || String(Date.now()), 10)
+  );
 
   // Logout handler
   const logout = useCallback(async (allDevices = false) => {
@@ -27,6 +29,7 @@ export const AuthProvider = ({ children }) => {
       console.warn('[Logout]: Network revocation failed, clearing local session.', e);
     } finally {
       localStorage.removeItem('mitra_token');
+      localStorage.removeItem('mitra_last_activity');
       setToken(null);
       setUser(null);
       setProfileCompletion(0);
@@ -42,6 +45,15 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
 
     const initializeAuth = async () => {
+      const storedLastActivity = parseInt(localStorage.getItem('mitra_last_activity') || '0', 10);
+      if (storedLastActivity && Date.now() - storedLastActivity > INACTIVITY_TIMEOUT_MS) {
+        localStorage.removeItem('mitra_token');
+        localStorage.removeItem('mitra_last_activity');
+        setInactivityNotice(true);
+        if (isMounted) setLoading(false);
+        return;
+      }
+
       const storedToken = localStorage.getItem('mitra_token');
 
       if (storedToken) {
@@ -49,6 +61,10 @@ export const AuthProvider = ({ children }) => {
           const res = await api.getMe();
           if (res.success && isMounted) {
             setUser(res.user);
+            const now = Date.now();
+            lastActivityRef.current = now;
+            localStorage.setItem('mitra_last_activity', String(now));
+
             if (res.studentProfile) {
               const comp = res.studentProfile.profileCompletionPercentage !== undefined
                 ? res.studentProfile.profileCompletionPercentage
@@ -72,6 +88,10 @@ export const AuthProvider = ({ children }) => {
         const refreshRes = await api.refreshToken();
         if (refreshRes.success && refreshRes.token && isMounted) {
           localStorage.setItem('mitra_token', refreshRes.token);
+          const now = Date.now();
+          lastActivityRef.current = now;
+          localStorage.setItem('mitra_last_activity', String(now));
+
           setToken(refreshRes.token);
           setUser(refreshRes.user);
           if (refreshRes.user?.profileCompletion !== undefined) {
@@ -83,6 +103,7 @@ export const AuthProvider = ({ children }) => {
           }
         } else if (isMounted) {
           localStorage.removeItem('mitra_token');
+          localStorage.removeItem('mitra_last_activity');
           setToken(null);
           setUser(null);
           setProfileCompletion(0);
@@ -90,6 +111,7 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {
         if (isMounted) {
           localStorage.removeItem('mitra_token');
+          localStorage.removeItem('mitra_last_activity');
           setToken(null);
           setUser(null);
         }
@@ -110,6 +132,7 @@ export const AuthProvider = ({ children }) => {
     const handleAuthExpired = (e) => {
       setToken(null);
       setUser(null);
+      localStorage.removeItem('mitra_last_activity');
       if (e.detail?.reason?.includes('inactivity')) {
         setInactivityNotice(true);
       }
@@ -121,12 +144,17 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // Inactivity Timeout Detection
+  // Inactivity Timeout Detection (24 Hours)
   useEffect(() => {
     if (!token || !user) return;
 
     const updateActivity = () => {
-      lastActivityRef.current = Date.now();
+      const now = Date.now();
+      lastActivityRef.current = now;
+      const lastSaved = parseInt(localStorage.getItem('mitra_last_activity') || '0', 10);
+      if (now - lastSaved > 60 * 1000) {
+        localStorage.setItem('mitra_last_activity', String(now));
+      }
     };
 
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
@@ -138,7 +166,7 @@ export const AuthProvider = ({ children }) => {
         setInactivityNotice(true);
         logout(false);
       }
-    }, 30 * 1000); // Check every 30 seconds
+    }, 60 * 1000); // Check every 60 seconds
 
     return () => {
       clearInterval(interval);
@@ -149,11 +177,13 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password, role) => {
     const res = await api.login(email, password, role);
     if (res.success) {
+      const now = Date.now();
       localStorage.setItem('mitra_token', res.token);
+      localStorage.setItem('mitra_last_activity', String(now));
+      lastActivityRef.current = now;
       setToken(res.token);
       setUser(res.user);
       setInactivityNotice(false);
-      lastActivityRef.current = Date.now();
       if (res.user?.profileCompletion !== undefined) {
         setProfileCompletion(res.user.profileCompletion);
       } else if (res.studentProfile?.profileCompletionPercentage !== undefined) {
@@ -168,11 +198,13 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     const res = await api.register(userData);
     if (res.success && res.token) {
+      const now = Date.now();
       localStorage.setItem('mitra_token', res.token);
+      localStorage.setItem('mitra_last_activity', String(now));
+      lastActivityRef.current = now;
       setToken(res.token);
       setUser(res.user);
       setInactivityNotice(false);
-      lastActivityRef.current = Date.now();
       if (res.user?.profileCompletion !== undefined) {
         setProfileCompletion(res.user.profileCompletion);
       } else if (res.studentProfile?.profileCompletionPercentage !== undefined) {

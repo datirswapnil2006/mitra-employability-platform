@@ -5,7 +5,7 @@ import { api } from '../../services/api';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
-import { Mail, Lock, ArrowRight, GraduationCap, Shield, CheckCircle2, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, ArrowRight, GraduationCap, Shield, CheckCircle2, AlertCircle, KeyRound, Eye, EyeOff, Clock, X } from 'lucide-react';
 
 export const LoginPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -24,7 +24,7 @@ export const LoginPage = () => {
   const [forgotMsg, setForgotMsg] = useState('');
   const [forgotError, setForgotError] = useState('');
 
-  const { login, logout } = useAuth();
+  const { login, logout, inactivityNotice, dismissInactivityNotice } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -169,6 +169,23 @@ export const LoginPage = () => {
               <span>Admin</span>
             </button>
           </div>
+
+          {inactivityNotice && (
+            <div className="mb-6 p-3.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl flex items-center justify-between font-medium shadow-xs animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Your session expired after 24 hours of inactivity. Please sign in again.</span>
+              </div>
+              <button
+                type="button"
+                onClick={dismissInactivityNotice}
+                className="text-amber-600 hover:text-amber-900 ml-2 p-0.5 rounded-md hover:bg-amber-100 transition shrink-0"
+                aria-label="Dismiss notice"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {error && (
             <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl text-center font-medium">
