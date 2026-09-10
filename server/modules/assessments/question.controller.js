@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Question = require('./question.model');
 const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
 
@@ -28,9 +29,18 @@ exports.getQuestions = async (req, res) => {
       }
     }
     if (category && category !== 'All') {
-      const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
-      const escapedCat = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      filter.category = { $regex: new RegExp(`^${escapedCat}`, 'i') };
+      let catPattern;
+      if (/Reasoning/i.test(category)) {
+        catPattern = '(?:Logical\\s+)?Reasoning';
+      } else if (/Quantitative|Quant/i.test(category)) {
+        catPattern = 'Quantitative(?:\\s+Aptitude)?';
+      } else if (/Verbal/i.test(category)) {
+        catPattern = 'Verbal(?:\\s+Ability)?';
+      } else {
+        const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+        catPattern = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      filter.category = { $regex: new RegExp(catPattern, 'i') };
     }
     if (categoryId && categoryId !== 'All') filter.categoryId = categoryId;
 
@@ -230,10 +240,44 @@ exports.bulkDeleteQuestions = async (req, res) => {
     if (Array.isArray(ids) && ids.length > 0) {
       query._id = { $in: ids };
     } else if (topic || topicId) {
-      if (topicId && topicId !== 'All') query.topicId = topicId;
-      if (topic && topic !== 'All') query.topic = topic;
-      if (moduleName && moduleName !== 'All') query.module = moduleName;
-      if (category && category !== 'All') query.category = category;
+      const topicConditions = [];
+      if (topicId && topicId !== 'All') {
+        topicConditions.push({ topicId: topicId });
+        if (mongoose.Types.ObjectId.isValid(topicId)) {
+          topicConditions.push({ topicId: new mongoose.Types.ObjectId(topicId) });
+        }
+      }
+      if (topic && topic !== 'All') {
+        const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        topicConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
+      }
+
+      if (topicConditions.length > 0) {
+        query.$or = topicConditions;
+      }
+
+      if (moduleName && moduleName !== 'All') {
+        if (moduleName === 'Domain' || moduleName === 'Domain Knowledge') {
+          query.module = { $in: ['Domain', 'Domain Knowledge'] };
+        } else {
+          query.module = moduleName;
+        }
+      }
+
+      if (category && category !== 'All') {
+        let catPattern;
+        if (/Reasoning/i.test(category)) {
+          catPattern = '(?:Logical\\s+)?Reasoning';
+        } else if (/Quantitative|Quant/i.test(category)) {
+          catPattern = 'Quantitative(?:\\s+Aptitude)?';
+        } else if (/Verbal/i.test(category)) {
+          catPattern = 'Verbal(?:\\s+Ability)?';
+        } else {
+          const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+          catPattern = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        query.category = { $regex: new RegExp(catPattern, 'i') };
+      }
     } else {
       return res.status(400).json({
         success: false,

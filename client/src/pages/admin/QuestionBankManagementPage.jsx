@@ -379,6 +379,8 @@ export const QuestionBankManagementPage = () => {
       );
       const finalTopicId = targetTopicDoc ? targetTopicDoc._id : (pdfTargetTopicId !== 'All' ? pdfTargetTopicId : null);
       const finalTopicTitle = targetTopicDoc ? targetTopicDoc.title : pdfTargetTopicTitle;
+      const finalCategory = targetTopicDoc?.category || pdfTargetCategory;
+      const finalModule = targetTopicDoc?.module || pdfTargetModule;
 
       const formatted = selected.map((q) => {
         const rawOptions = Array.isArray(q.options) ? q.options : [];
@@ -399,8 +401,8 @@ export const QuestionBankManagementPage = () => {
           correctAnswer: String(q.correctAnswer || normalizedOptions[0] || 'A').trim(),
           explanation: q.explanation || '',
           difficulty: diff,
-          module: pdfTargetModule,
-          category: pdfTargetCategory,
+          module: finalModule,
+          category: finalCategory,
           topic: finalTopicTitle,
           topicId: finalTopicId,
           department: pdfTargetDept !== 'All' ? pdfTargetDept : null
@@ -409,8 +411,8 @@ export const QuestionBankManagementPage = () => {
 
       const res = await api.bulkSaveQuestions({
         questions: formatted,
-        module: pdfTargetModule,
-        category: pdfTargetCategory,
+        module: finalModule,
+        category: finalCategory,
         topic: finalTopicTitle,
         topicId: finalTopicId,
         department: pdfTargetDept !== 'All' ? pdfTargetDept : null
@@ -424,6 +426,9 @@ export const QuestionBankManagementPage = () => {
         setIsPdfModalOpen(false);
         setPdfFile(null);
         setExtractedQuestions([]);
+
+        if (finalModule) setSelectedModule(finalModule);
+        if (finalTopicId) setSelectedTopicId(finalTopicId);
         loadQuestions();
       } else {
         alert(res?.message || 'Failed to save questions.');
@@ -505,10 +510,9 @@ export const QuestionBankManagementPage = () => {
     setSubmitting(true);
     try {
       const res = await api.bulkDeleteQuestions({
-        topic: activeTopic?.title || activeTopic?.name,
-        topicId: selectedTopicId,
-        module: selectedModule,
-        category: selectedCategoryId
+        topic: activeTopic?.title || activeTopic?.name || topicName,
+        topicId: selectedTopicId !== 'All' ? selectedTopicId : undefined,
+        module: selectedModule !== 'All' ? selectedModule : undefined
       });
       if (res?.success) {
         setFeedback({
@@ -561,10 +565,13 @@ export const QuestionBankManagementPage = () => {
   }, [pdfTargetModule, categories]);
 
   const openPdfModal = () => {
-    const mod = selectedModule !== 'All' ? selectedModule : 'Aptitude';
+    const mod = activeTopic?.module || (selectedModule !== 'All' ? selectedModule : 'Aptitude');
     const dept = selectedDept !== 'All' ? selectedDept : 'All';
     let cat = 'Quantitative Aptitude';
-    if (selectedCategoryId !== 'All') {
+    if (activeTopic?.category) {
+      const matchedCat = categories.find(c => c.name === activeTopic.category || c.title === activeTopic.category || c._id === activeTopic.category);
+      cat = matchedCat ? (matchedCat.title || matchedCat.name) : activeTopic.category;
+    } else if (selectedCategoryId !== 'All') {
       const catObj = categories.find(c => String(c._id) === String(selectedCategoryId) || String(c.name) === String(selectedCategoryId) || String(c.title) === String(selectedCategoryId));
       cat = catObj ? (catObj.title || catObj.name) : selectedCategoryId;
     } else {
@@ -1316,6 +1323,13 @@ export const QuestionBankManagementPage = () => {
                         </div>
                       ))}
                     </div>
+
+                    {q.explanation && (
+                      <div className="pl-6 pt-1 text-[11px] text-slate-500 bg-slate-100/60 p-2 rounded-lg border border-slate-200/60">
+                        <span className="font-bold text-slate-700">Explanation: </span>
+                        {q.explanation}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
