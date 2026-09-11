@@ -1,5 +1,52 @@
 const { GoogleGenAI } = require('@google/genai');
 
+const sanitizeJsonString = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str.replace(/\\([a-zA-Z]+|\d+)/g, (match, p1) => {
+    if (['n', 'r', 't', 'b', 'f', '"', '\\', '/'].includes(p1) || p1.startsWith('u')) return match;
+    return p1;
+  });
+};
+
+const cleanAndParseJson = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  let stripped = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  try {
+    const parsed = JSON.parse(stripped);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    if (parsed.questions && Array.isArray(parsed.questions)) return parsed.questions;
+    if (parsed && typeof parsed === 'object') return [parsed];
+  } catch (e) {
+    try {
+      const sanitized = sanitizeJsonString(stripped);
+      const parsed = JSON.parse(sanitized);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (inner) {}
+  }
+
+  const firstBracket = stripped.indexOf('[');
+  const lastBracket = stripped.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const sub = stripped.substring(firstBracket, lastBracket + 1);
+    try {
+      const extracted = JSON.parse(sub);
+      if (Array.isArray(extracted) && extracted.length > 0) return extracted;
+    } catch (innerE) {
+      try {
+        const sanitized = sanitizeJsonString(sub);
+        const extracted = JSON.parse(sanitized);
+        if (Array.isArray(extracted) && extracted.length > 0) return extracted;
+      } catch (innerE2) {}
+    }
+  }
+  return null;
+};
+
 const COMPETENCIES = [
   'Communication',
   'Teamwork',
@@ -1017,36 +1064,25 @@ async function generateDynamicAIQuestions({
   if (apiKey && apiKey !== 'dummy_gemini_key_for_testing') {
     try {
       const ai = new GoogleGenAI({ apiKey });
-      const prompt = `
-You are a lead psychometrician and industrial psychologist at an elite talent assessment institute.
-Generate a professional psychometric assessment blueprint for candidates targeting "${targetRole}" in the category "${category || 'Behavioral Assessment'}".
+      const batchSize = 10;
+      const chunks = [];
+      for (let i = 0; i < count; i += batchSize) {
+        chunks.push(Math.min(batchSize, count - i));
+      }
 
-STRICT SPECIFICATIONS:
-1. Generate EXACTLY ${count} questions (No more, no less).
-2. Competency Distribution (${count} total):
-${Object.entries(compDistribution).map(([comp, num]) => `   - ${comp}: ${num} questions`).join('\n')}
-3. Format Distribution across Question Types (${count} total):
-${Object.entries(typeDistribution).map(([type, num]) => `   - ${type}: ${num} questions`).join('\n')}
-4. Include reverseScored: true on approximately 15-20% of questions.
-5. Question types specification:
-   - LIKERT: 5 options (Strongly Disagree=1 to Strongly Agree=5)
-   - FREQUENCY: 5 options (Never=1 to Always=5)
-   - SITUATIONAL_JUDGMENT: 4 options with realistic workplace scenario and scores 1 to 5
-   - FORCED_CHOICE: 2 options (Statement A vs Statement B)
-   - RANKING: 4 items to prioritize
-   - SELF_ASSESSMENT: 4 levels of proficiency
-   - SCENARIO_BASED: Scenario context + question + 4 choices
-6. All questions must be collegiate, realistic, non-clinical, non-discriminatory, and focused on workplace employability.
-
-Return ONLY a valid JSON array of ${count} objects with structure:
+      const generateBatch = async (chunkCount, batchOffset) => {
+        const batchComps = safeComps.slice(batchOffset % safeComps.length).concat(safeComps).slice(0, chunkCount);
+        const prompt = `You are a lead industrial psychologist. Generate a valid JSON array of exactly ${chunkCount} psychometric assessment questions for "${targetRole}" candidates in category "${category || 'Behavioral Assessment'}".
+Target competencies: ${batchComps.join(', ')}.
+Question JSON structure:
 [
   {
-    "questionId": "Q01",
+    "questionId": "Q${batchOffset + 1}",
     "questionType": "LIKERT",
-    "competency": "Communication",
-    "trait": "Clarity & Articulation",
+    "competency": "${batchComps[0] || 'Communication'}",
+    "trait": "Workplace Professionalism",
     "scenario": "",
-    "questionText": "...",
+    "questionText": "Question description...",
     "options": [
       { "text": "Strongly Disagree", "score": 1 },
       { "text": "Disagree", "score": 2 },
@@ -1059,48 +1095,44 @@ Return ONLY a valid JSON array of ${count} objects with structure:
     "difficulty": "Medium"
   }
 ]
-`;
+Output strictly a JSON array without markdown formatting.`;
 
-      let response = null;
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: prompt
-        });
-      } catch (gemErr) {
-        console.warn(`[Dynamic AI Question Gen Gemini]: gemini-3.6-flash retry (${gemErr.message}), trying gemini-2.5-flash...`);
-        try {
-          response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt
-          });
-        } catch (gemErr2) {
-          response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: prompt
-          });
+        const models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+        for (const model of models) {
+          try {
+            const res = await ai.models.generateContent({
+              model,
+              contents: prompt,
+              config: { temperature: 0.2, maxOutputTokens: 4096 }
+            });
+            const parsed = cleanAndParseJson(res.text || '');
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed;
+            }
+          } catch (err) {
+            console.warn(`[Dynamic AI Question Gen Gemini]: Model ${model} batch error: ${err.message}. Trying backup model...`);
+          }
         }
-      }
+        return [];
+      };
 
-      const rawText = response?.text || '';
-      const cleaned = rawText
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim();
+      let currentOffset = startIndex;
+      const batchPromises = chunks.map((c) => {
+        const offset = currentOffset;
+        currentOffset += c;
+        return generateBatch(c, offset);
+      });
 
-      let parsed = null;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (pe) {
-        const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
-        if (match) {
-          try { parsed = JSON.parse(match[0]); } catch (innerPe) {}
+      const settled = await Promise.allSettled(batchPromises);
+      const geminiQuestions = [];
+      settled.forEach((s) => {
+        if (s.status === 'fulfilled' && Array.isArray(s.value)) {
+          geminiQuestions.push(...s.value);
         }
-      }
+      });
 
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const formatted = parsed.slice(0, count).map((q, idx) => {
+      if (geminiQuestions.length > 0) {
+        const formatted = geminiQuestions.slice(0, count).map((q, idx) => {
           const qNum = startIndex + idx + 1;
           return {
             questionId: `Q${String(qNum).padStart(2, '0')}`,
@@ -1109,7 +1141,7 @@ Return ONLY a valid JSON array of ${count} objects with structure:
             trait: q.trait || 'Workplace Behavior',
             scenario: q.scenario || '',
             questionText: q.questionText || `Evaluates situational workplace readiness in ${q.competency || 'workplace settings'}.`,
-            options: q.options || [
+            options: Array.isArray(q.options) && q.options.length >= 2 ? q.options : [
               { text: 'Strongly Disagree', score: 1 },
               { text: 'Disagree', score: 2 },
               { text: 'Neutral', score: 3 },
@@ -1122,10 +1154,24 @@ Return ONLY a valid JSON array of ${count} objects with structure:
           };
         });
 
-        // If Gemini returned at least the required count, return formatted slice
-        if (formatted.length === count) {
-          return { success: true, questions: formatted, count: formatted.length, source: 'gemini' };
+        // Top up from calibrated battery if there is any minor shortfall
+        if (formatted.length < count) {
+          const deficit = count - formatted.length;
+          for (let d = 0; d < deficit; d++) {
+            const fallbackItem = CALIBRATED_50_QUESTIONS[(formatted.length + d) % CALIBRATED_50_QUESTIONS.length];
+            formatted.push({
+              ...fallbackItem,
+              questionId: `Q${String(startIndex + formatted.length + 1).padStart(2, '0')}`
+            });
+          }
         }
+
+        return {
+          success: true,
+          questions: formatted.slice(0, count),
+          count: count,
+          source: 'gemini'
+        };
       }
     } catch (err) {
       console.warn('[Dynamic AI Question Gen Gemini]:', err.message);
@@ -1498,22 +1544,17 @@ RULES:
 `;
 
       let response = null;
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: prompt
-        });
-      } catch (synthErr) {
+      const synthModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+      for (const model of synthModels) {
         try {
           response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt
+            model,
+            contents: prompt,
+            config: { temperature: 0.2, maxOutputTokens: 1024 }
           });
-        } catch (synthErr2) {
-          response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: prompt
-          });
+          if (response && response.text) break;
+        } catch (synthErr) {
+          console.warn(`[Gemini Talent Synthesis]: Model ${model} failed (${synthErr.message}). Trying backup model...`);
         }
       }
 

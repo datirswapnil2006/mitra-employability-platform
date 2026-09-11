@@ -1,5 +1,4 @@
 const { GoogleGenAI } = require('@google/genai');
-const axios = require('axios');
 
 /**
  * PDF Question Extractor Configuration
@@ -8,9 +7,7 @@ const PDF_CONFIG = {
   CHUNK_CHAR_LIMIT: 3500, // Maximum characters per PDF chunk for reliable token budgets
   MAX_CHUNKS: 5,           // Maximum logical chunks to process from a single PDF
   REDUCED_CHUNK_CHAR_LIMIT: 1800, // Reduced chunk size on 413 (Entity Too Large)
-  TIMEOUT_GEMINI: 20000,
-  TIMEOUT_GROQ: 25000,
-  TIMEOUT_HF: 15000
+  TIMEOUT_GEMINI: 20000
 };
 
 /**
@@ -246,171 +243,19 @@ async function extractWithGemini(prompt, apiKey) {
   throw new Error('Gemini extraction failed.');
 }
 
-// 5b. Groq Provider (Handles 413 by reducing chunk size once, ignores <think> tokens)
-async function extractWithGroq(prompt, apiKey, chunkText = '', chunkOptions = {}) {
-  const models = [
-    'openai/gpt-oss-120b',
-    'groq/compound-mini',
-    'openai/gpt-oss-20b',
-    'qwen/qwen3.8-27b'
-  ];
-
-  let currentPrompt = prompt;
-
-  for (const model of models) {
-    try {
-      console.log(`[PDF AI] Trying Groq model: ${model}`);
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert assessment extractor. Output strict JSON array only without any reasoning or markdown tags.'
-            },
-            { role: 'user', content: currentPrompt }
-          ],
-          temperature: 0.1,
-          max_tokens: 2500
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: PDF_CONFIG.TIMEOUT_GROQ
-        }
-      );
-
-      const content = response.data?.choices?.[0]?.message?.content || '';
-      const parsed = sanitizeAndParseJson(content);
-      if (parsed && parsed.length > 0) {
-        console.log(`[PDF AI] Groq response validated (${parsed.length} questions).`);
-        return parsed;
-      }
-    } catch (err) {
-      const status = err.response?.status;
-      const errorMsg = err.response?.data?.error?.message || err.message || '';
-
-      // 413: Request Entity Too Large -> Reduce chunk size and retry ONCE
-      if (status === 413 || errorMsg.includes('too large') || errorMsg.includes('Requested')) {
-        console.warn(`[PDF AI] Groq request too large (413 / TPM). Reducing chunk size and retrying once...`);
-        if (chunkText && !chunkOptions.hasRetriedReduced) {
-          const reducedChunk = chunkText.substring(0, Math.min(chunkText.length, PDF_CONFIG.REDUCED_CHUNK_CHAR_LIMIT));
-          currentPrompt = buildExtractionPrompt({
-            chunkText: reducedChunk,
-            category: chunkOptions.category,
-            topic: chunkOptions.topic,
-            difficulty: chunkOptions.difficulty,
-            count: Math.min(chunkOptions.count, 5)
-          });
-          chunkOptions.hasRetriedReduced = true;
-          // Retry immediately with next model on smaller prompt
-          continue;
-        }
-      }
-
-      // 429: Rate Limit -> Switch immediately to next model
-      if (status === 429) {
-        console.warn(`[PDF AI] Groq model ${model} rate limited (429). Trying next Groq model...`);
-        continue;
-      }
-
-      console.warn(`[PDF AI] Groq model ${model} error: ${errorMsg}. Trying next model...`);
-    }
-  }
-
-  throw new Error('Groq extraction failed.');
-}
-
-// 5c. Hugging Face Provider (Router API with Meta-Llama-3.3-70B-Instruct-Turbo)
-async function extractWithHuggingFace(prompt, apiKey) {
-  const models = ['meta-llama/Llama-3.3-70B-Instruct-Turbo'];
-
-  for (const model of models) {
-    try {
-      console.log(`[PDF AI] Trying Hugging Face model: ${model}`);
-      const response = await axios.post(
-        'https://router.huggingface.co/together/v1/chat/completions',
-        {
-          model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert exam extractor. Output strict JSON array of questions only.'
-            },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.1,
-          max_tokens: 2500
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: PDF_CONFIG.TIMEOUT_HF
-        }
-      );
-
-      const content = response.data?.choices?.[0]?.message?.content || '';
-      const parsed = sanitizeAndParseJson(content);
-      if (parsed && parsed.length > 0) {
-        console.log(`[PDF AI] Hugging Face extracted ${parsed.length} questions.`);
-        return parsed;
-      }
-    } catch (err) {
-      console.warn(`[PDF AI] Hugging Face model ${model} error: ${err.response?.data?.error || err.message}`);
-    }
-  }
-
-  throw new Error('Hugging Face extraction failed.');
-}
-
 /**
- * 6. Central AI Provider Manager with Cascading Fallback
- * Workflow: Gemini -> Groq -> Hugging Face
+ * 6. Central AI Provider Manager (Google Gemini)
  */
 async function extractChunkWithFallback({ chunkText, category, topic, difficulty, count }) {
   const prompt = buildExtractionPrompt({ chunkText, category, topic, difficulty, count });
-
   const geminiKey = (process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY || '').trim();
-  const groqKey = (process.env.GROQ_API_KEY || process.env.Groq_API_KEY || '').trim();
-  const hfKey = (
-    process.env.HF_API_KEY ||
-    process.env.HUGGINGFACE_API_KEY ||
-    process.env.HuggingFace_API_KEY ||
-    ''
-  ).trim();
 
-  // 1. Try Gemini
   if (geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
     try {
       const geminiQuestions = await extractWithGemini(prompt, geminiKey);
       if (geminiQuestions && geminiQuestions.length > 0) return geminiQuestions;
     } catch (err) {
-      console.warn(`[PDF AI] Switching to Groq (${err.message})`);
-    }
-  }
-
-  // 2. Try Groq
-  if (groqKey) {
-    try {
-      const groqQuestions = await extractWithGroq(prompt, groqKey, chunkText, { category, topic, difficulty, count });
-      if (groqQuestions && groqQuestions.length > 0) return groqQuestions;
-    } catch (err) {
-      console.warn(`[PDF AI] Switching to Hugging Face (${err.message})`);
-    }
-  }
-
-  // 3. Try Hugging Face
-  if (hfKey) {
-    try {
-      const hfQuestions = await extractWithHuggingFace(prompt, hfKey);
-      if (hfQuestions && hfQuestions.length > 0) return hfQuestions;
-    } catch (err) {
-      console.warn(`[PDF AI] Hugging Face failed: ${err.message}`);
+      console.warn(`[PDF AI] Gemini extraction error: ${err.message}`);
     }
   }
 
@@ -624,7 +469,7 @@ async function extractQuestionsFromPdfText({ pdfText, category = 'Quantitative A
     try {
       const { generateQuestionsAI } = require('./aiQuestionGenerator');
       const fallbackQuestions = await generateQuestionsAI({
-        provider: 'groq',
+        provider: 'gemini',
         module: 'Aptitude',
         category,
         topic,

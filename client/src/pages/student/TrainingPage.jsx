@@ -13,6 +13,8 @@ import NoteReaderModal from '../../components/NoteReaderModal';
 import Badge from '../../components/Badge';
 import ProgressBar from '../../components/ProgressBar';
 import TopicAssessmentSection from '../../components/training/TopicAssessmentSection';
+import SubmodulePracticeAnalytics from '../../components/training/SubmodulePracticeAnalytics';
+import PracticeTestModal from '../../components/training/PracticeTestModal';
 import {
   TRAINING_MODULES,
   MODULE_CATEGORIES,
@@ -137,6 +139,9 @@ export const TrainingPage = () => {
         { id: 'All', label: 'All Topics' },
         ...availableCategories
       ];
+
+  const [practiceModalTopic, setPracticeModalTopic] = useState(null);
+  const [isPracticeModalOpen, setIsPracticeModalOpen] = useState(false);
 
   // Reset states when module changes
   useEffect(() => {
@@ -1514,6 +1519,17 @@ export const TrainingPage = () => {
               onTabChange={setActiveSubfilter}
             />
           </div>
+
+          {/* Submodule Practice Analytics & Mastery Deck (Circle & Bar Charts) */}
+          <SubmodulePracticeAnalytics
+            moduleName="Aptitude"
+            categoryName={activeSubfilter}
+            categoryLabel={activeCategoryLabel}
+            onStartPractice={(topicDoc) => {
+              setPracticeModalTopic(topicDoc);
+              setIsPracticeModalOpen(true);
+            }}
+          />
 
           {loading ? (
             <LoadingState message={`Fetching published ${activeCategoryLabel} topics...`} />
@@ -3123,6 +3139,16 @@ export const TrainingPage = () => {
           note={activeNote}
         />
       )}
+
+      {/* 3. Modal: Targeted Practice Test Configuration */}
+      <PracticeTestModal
+        isOpen={isPracticeModalOpen}
+        onClose={() => {
+          setIsPracticeModalOpen(false);
+          setPracticeModalTopic(null);
+        }}
+        topic={practiceModalTopic}
+      />
     </div>
   );
 };

@@ -463,6 +463,11 @@ export const api = {
     const res = await fetch(`${API_BASE}/assessments/attempts`, { headers: getHeaders() });
     return res.json();
   },
+  getSubmodulePracticeAnalytics: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/assessments/student/practice-history?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
   getAllAssessmentsAdmin: async () => {
     const res = await fetch(`${API_BASE}/assessments/admin/all`, { headers: getHeaders() });
     return res.json();

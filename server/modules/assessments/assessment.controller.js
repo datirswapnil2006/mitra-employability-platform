@@ -13,8 +13,26 @@ const { cleanMathExpression } = require('../../utils/mathCleaner');
 // Get assessments list with module/department filtering
 exports.getAssessments = async (req, res) => {
   try {
-    const { module: moduleName, type, category, department, submoduleId, difficulty, status } = req.query;
+    const { module: moduleName, type, category, department, submoduleId, difficulty, status, isPracticeTest, isDefaultTopicAssessment, includeTopicAssessments } = req.query;
     const filter = {};
+
+    // Practice test filter: Exclude student self-practice tests by default unless explicitly queried
+    if (isPracticeTest === 'true' || isPracticeTest === true) {
+      filter.isPracticeTest = true;
+    } else if (isPracticeTest === 'all') {
+      // Do not set isPracticeTest filter
+    } else {
+      filter.isPracticeTest = { $ne: true };
+    }
+
+    // Default topic assessment filter:
+    // Exclude default topic baseline assessments from the Main Assessment module of BOTH Admin and Student
+    // (They belong in the Training Topic Hub, not in institutional/campus-wide assessments)
+    if (isDefaultTopicAssessment === 'true' || isDefaultTopicAssessment === true) {
+      filter.isDefaultTopicAssessment = true;
+    } else if (includeTopicAssessments !== 'true' && isDefaultTopicAssessment !== 'all') {
+      filter.isDefaultTopicAssessment = { $ne: true };
+    }
 
     const targetModule = moduleName || type;
     if (targetModule && targetModule !== 'All') {
@@ -39,7 +57,6 @@ exports.getAssessments = async (req, res) => {
 
     if (req.user && req.user.role === 'student') {
       filter.status = 'published';
-      filter.isPracticeTest = { $ne: true };
     } else if (status && status !== 'All') {
       filter.status = status;
     }
@@ -379,11 +396,10 @@ exports.getStudentAttempts = async (req, res) => {
   }
 };
 
-// Generate Questions for Review (AI)
+// Generate Questions for Review (Google Gemini)
 exports.generateQuestionsForReview = async (req, res) => {
   try {
     const {
-      provider = 'gemini',
       module: moduleName = 'Aptitude',
       category = 'Quantitative Aptitude',
       department = null,
@@ -396,10 +412,10 @@ exports.generateQuestionsForReview = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Topic name is required.' });
     }
 
-    const count = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 30);
+    const count = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 180);
 
     const questions = await generateQuestionsAI({
-      provider,
+      provider: 'gemini',
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
@@ -471,11 +487,10 @@ exports.extractPdfQuestions = async (req, res) => {
   }
 };
 
-// Generate Assessment via AI (Gemini, Groq, Hugging Face)
+// Generate Assessment via AI (Google Gemini)
 exports.generateAIAssessment = async (req, res) => {
   try {
     const {
-      provider = 'gemini',
       title,
       description,
       module: moduleName = 'Aptitude',
@@ -496,10 +511,10 @@ exports.generateAIAssessment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Topic name is required.' });
     }
 
-    const finalQuestionCount = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 30);
+    const finalQuestionCount = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 180);
 
     const generatedQuestions = await generateQuestionsAI({
-      provider,
+      provider: 'gemini',
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
@@ -508,7 +523,7 @@ exports.generateAIAssessment = async (req, res) => {
       count: finalQuestionCount
     });
 
-    const cappedQuestions = (generatedQuestions || []).slice(0, 30);
+    const cappedQuestions = (generatedQuestions || []).slice(0, 180);
     const totalMarks = cappedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0);
 
     const assessment = await Assessment.create({
@@ -552,7 +567,15 @@ exports.generateAIAssessment = async (req, res) => {
 // Admin CRUD
 exports.getAllAssessmentsAdmin = async (req, res) => {
   try {
-    const assessments = await Assessment.find()
+    const { includePractice, includeTopicAssessments } = req.query;
+    const filter = {};
+    if (includePractice !== 'true') {
+      filter.isPracticeTest = { $ne: true };
+    }
+    if (includeTopicAssessments !== 'true') {
+      filter.isDefaultTopicAssessment = { $ne: true };
+    }
+    const assessments = await Assessment.find(filter)
       .populate('moduleId', 'title category')
       .populate('submoduleId', 'title')
       .sort({ createdAt: -1 });
@@ -568,8 +591,8 @@ exports.createAssessment = async (req, res) => {
     if (req.user) data.createdBy = req.user._id;
 
     if (data.questions && Array.isArray(data.questions)) {
-      if (data.questions.length > 30) {
-        data.questions = data.questions.slice(0, 30);
+      if (data.questions.length > 180) {
+        data.questions = data.questions.slice(0, 180);
       }
       data.totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 1), 0);
     }
@@ -585,8 +608,8 @@ exports.updateAssessment = async (req, res) => {
   try {
     const data = { ...req.body, updatedAt: Date.now() };
     if (data.questions && Array.isArray(data.questions)) {
-      if (data.questions.length > 30) {
-        data.questions = data.questions.slice(0, 30);
+      if (data.questions.length > 180) {
+        data.questions = data.questions.slice(0, 180);
       }
       data.totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 1), 0);
     }
@@ -611,7 +634,7 @@ exports.deleteAssessment = async (req, res) => {
 // Admin Results & Performance Overview
 exports.getAllAttemptsAdmin = async (req, res) => {
   try {
-    const { module: moduleName, department, batch, status, search, page = 1, limit = 50 } = req.query;
+    const { module: moduleName, department, batch, status, search, includePractice, page = 1, limit = 50 } = req.query;
     const filter = {};
 
     if (status && status !== 'All') {
@@ -620,7 +643,7 @@ exports.getAllAttemptsAdmin = async (req, res) => {
 
     const attempts = await AssessmentAttempt.find(filter)
       .populate('user', 'name email department year phone')
-      .populate('assessmentId', 'title module category topic passingScorePercentage timeLimitMinutes difficulty assessmentMode')
+      .populate('assessmentId', 'title module category topic passingScorePercentage timeLimitMinutes difficulty assessmentMode isPracticeTest')
       .sort({ attemptedAt: -1 });
 
     const userIds = attempts.map((a) => a.user?._id).filter(Boolean);
@@ -642,6 +665,11 @@ exports.getAllAttemptsAdmin = async (req, res) => {
 
     const filtered = enrichedAttempts.filter((att) => {
       if (!att.user) return false;
+
+      // Exclude student practice tests and default topic tests from official admin assessment results unless requested
+      if (includePractice !== 'true' && (att.assessmentId?.isPracticeTest || att.assessmentId?.isDefaultTopicAssessment)) {
+        return false;
+      }
 
       // Module filter
       if (moduleName && moduleName !== 'All') {
@@ -753,8 +781,41 @@ exports.createPracticeTest = async (req, res) => {
       candidateQuestions = await Question.find(relaxedFilter);
     }
 
-    // Fallback if no questions in Question collection yet:
-    // Extract questions from any published assessments for this topic
+    // Fallback if candidate questions are empty:
+    // Try smart topic aliases from Question Bank
+    if (candidateQuestions.length === 0) {
+      const aliasMap = {
+        'Simplification': ['Number System', 'HCF and LCM', 'Average'],
+        'Ratio & Proportion': ['Allegation and Proportion'],
+        'Number & Letter Series': ['Number Series'],
+        'Number/Alphabet Series': ['Number Series'],
+        'Sentence Correction': ['Articles'],
+        'Vocabulary & Idioms': ['Articles'],
+        'Reading Comprehension': ['Articles']
+      };
+      const aliases = aliasMap[topicTitle];
+      if (aliases && aliases.length > 0) {
+        candidateQuestions = await Question.find({
+          topic: { $in: aliases },
+          status: 'active'
+        });
+      }
+    }
+
+    // Fallback 2: Category match from Question Bank
+    if (candidateQuestions.length === 0) {
+      const cleanCat = topicCategory.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+      candidateQuestions = await Question.find({
+        $or: [
+          { category: topicCategory },
+          { category: new RegExp(cleanCat, 'i') },
+          { category: topicModule }
+        ],
+        status: 'active'
+      }).limit(60);
+    }
+
+    // Fallback 3: Extract questions from any existing assessments for this topic
     if (candidateQuestions.length === 0) {
       const existingAssessments = await Assessment.find({
         $or: [{ topicId: topicDoc?._id }, { topic: topicTitle }]
@@ -777,6 +838,11 @@ exports.createPracticeTest = async (req, res) => {
         }
       });
       candidateQuestions = extracted;
+    }
+
+    // Fallback 4: Any active questions from Question collection
+    if (candidateQuestions.length === 0) {
+      candidateQuestions = await Question.find({ status: 'active' }).limit(30);
     }
 
     if (candidateQuestions.length === 0) {
@@ -978,31 +1044,103 @@ exports.getDefaultTopicAssessment = async (req, res) => {
     }
 
     // 1. Check if an assessment is already linked as default or has topicId & isDefaultTopicAssessment
-    let assessment = await Assessment.findOne({
-      $or: [
-        { _id: topicDoc.defaultAssessmentId },
-        { topicId: topicDoc._id, isDefaultTopicAssessment: true },
-        { topic: topicDoc.title, isDefaultTopicAssessment: true },
-        { topic: topicDoc.title, isPracticeTest: false, status: 'published' }
-      ]
-    }).sort({ isDefaultTopicAssessment: -1, createdAt: 1 });
+    let assessment = null;
+    if (topicDoc.defaultAssessmentId) {
+      assessment = await Assessment.findById(topicDoc.defaultAssessmentId);
+      if (!assessment) {
+        topicDoc.defaultAssessmentId = null;
+      }
+    }
 
-    // 2. If no assessment exists yet, check if Question Bank has questions to auto-provision one
     if (!assessment) {
-      const qPool = await Question.find({
-        $or: [{ topicId: topicDoc._id }, { topic: topicDoc.title }],
-        status: 'active'
+      assessment = await Assessment.findOne({
+        $or: [
+          { topicId: topicDoc._id, isDefaultTopicAssessment: true },
+          { topic: topicDoc.title, isDefaultTopicAssessment: true },
+          { topic: topicDoc.title, isPracticeTest: false, status: 'published' }
+        ]
+      }).sort({ isDefaultTopicAssessment: -1, createdAt: 1 });
+    }
+
+    // 2. If no assessment exists yet, auto-provision one from the Question Bank
+    if (!assessment) {
+      const topicTitle = topicDoc.title;
+      const topicCategory = topicDoc.category || 'Quantitative';
+      const cleanCat = topicCategory.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+
+      // Step 2a: Exact or regex match on topic title or topicId
+      let qPool = await Question.find({
+        $or: [
+          { topicId: topicDoc._id },
+          { topic: topicTitle },
+          { topic: new RegExp(`^${topicTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          { topic: new RegExp(topicTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
+        ],
+        status: { $ne: 'archived' }
       });
 
-      if (qPool.length >= 5) {
-        // Auto-provision default assessment with up to 15 questions (hard capped at 30)
-        const qCount = Math.min(qPool.length, 15);
-        const shuffled = [...qPool].sort(() => 0.5 - Math.random()).slice(0, qCount);
+      // Step 2b: Smart alias matching for known topics
+      if (qPool.length < 10) {
+        const aliasMap = {
+          'Simplification': ['Number System', 'HCF and LCM', 'Average'],
+          'Ratio & Proportion': ['Allegation and Proportion'],
+          'Number & Letter Series': ['Number Series'],
+          'Number/Alphabet Series': ['Number Series'],
+          'Sentence Correction': ['Articles'],
+          'Vocabulary & Idioms': ['Articles'],
+          'Reading Comprehension': ['Articles']
+        };
+
+        const aliases = aliasMap[topicTitle];
+        if (aliases && aliases.length > 0) {
+          const aliasQuestions = await Question.find({
+            topic: { $in: aliases },
+            status: { $ne: 'archived' }
+          });
+          qPool = [...qPool, ...aliasQuestions];
+        }
+      }
+
+      // Step 2c: Category match from Question Bank
+      if (qPool.length < 10) {
+        const categoryQuestions = await Question.find({
+          $or: [
+            { category: topicCategory },
+            { category: new RegExp(cleanCat, 'i') },
+            { category: topicDoc.module }
+          ],
+          status: { $ne: 'archived' }
+        }).limit(60);
+        qPool = [...qPool, ...categoryQuestions];
+      }
+
+      // Step 2d: Fallback to any active Question Bank questions
+      if (qPool.length < 5) {
+        const fallbackQuestions = await Question.find({
+          status: { $ne: 'archived' }
+        }).limit(30);
+        qPool = [...qPool, ...fallbackQuestions];
+      }
+
+      // Deduplicate pool by normalized questionText
+      const seen = new Set();
+      const uniquePool = [];
+      qPool.forEach((q) => {
+        const key = (q.questionText || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          uniquePool.push(q);
+        }
+      });
+
+      if (uniquePool.length > 0) {
+        const targetCount = Math.min(Math.max(uniquePool.length, 5), 15);
+        const shuffled = [...uniquePool].sort(() => 0.5 - Math.random()).slice(0, targetCount);
         const totalMarks = shuffled.reduce((acc, q) => acc + (q.marks || 1), 0);
 
         assessment = await Assessment.create({
           title: `${topicDoc.title} — Official Assessment`,
-          description: `Comprehensive default topic assessment testing core proficiency in ${topicDoc.title}.`,
+          description: `Standard curriculum evaluation testing core proficiency in ${topicDoc.title}. Questions selected from database Question Bank.`,
           module: topicDoc.module || 'Aptitude',
           category: topicDoc.category || 'Quantitative',
           department: topicDoc.department || null,
@@ -1015,7 +1153,7 @@ exports.getDefaultTopicAssessment = async (req, res) => {
           aiProvider: 'manual',
           creationMethod: 'MANUAL',
           assessmentMode: 'NORMAL',
-          questions: shuffled.map(q => ({
+          questions: shuffled.map((q) => ({
             questionText: q.questionText,
             codeSnippet: q.codeSnippet || '',
             type: q.type || 'mcq',
@@ -1027,7 +1165,7 @@ exports.getDefaultTopicAssessment = async (req, res) => {
           })),
           totalMarks,
           passingScorePercentage: 70,
-          timeLimitMinutes: Math.max(15, Math.round(qCount * 1.5)),
+          timeLimitMinutes: Math.max(15, Math.round(targetCount * 1.5)),
           status: 'published'
         });
 
@@ -1072,3 +1210,225 @@ exports.getDefaultTopicAssessment = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// ==========================================
+// Student Submodule Practice Analytics & History
+// ==========================================
+exports.getStudentSubmodulePracticeAnalytics = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { module: moduleName = 'Aptitude', category = 'Reasoning', submoduleId } = req.query;
+
+    const cleanCat = (category || 'Reasoning').replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+    const categoryRegex = new RegExp(cleanCat, 'i');
+
+    // 1. Fetch published topics in this submodule/category
+    const topicFilter = {
+      status: 'published'
+    };
+    if (moduleName && moduleName !== 'All') {
+      topicFilter.module = moduleName === 'Domain Knowledge' ? 'Domain' : moduleName;
+    }
+    if (category && category !== 'All') {
+      topicFilter.category = { $regex: categoryRegex };
+    }
+    if (submoduleId) {
+      topicFilter.submoduleId = submoduleId;
+    }
+
+    const topicsInSubmodule = await Topic.find(topicFilter).sort({ order: 1, title: 1 });
+
+    // 2. Fetch all practice & topic assessments matching this module and category
+    const assessFilter = {
+      $or: [
+        { isPracticeTest: true },
+        { isDefaultTopicAssessment: true },
+        { title: { $regex: 'Practice|Baseline|Self Practice Test', $options: 'i' } }
+      ]
+    };
+    if (moduleName && moduleName !== 'All') {
+      assessFilter.module = { $in: [moduleName, moduleName === 'Domain' ? 'Domain Knowledge' : moduleName] };
+    }
+    if (category && category !== 'All') {
+      assessFilter.category = { $regex: categoryRegex };
+    }
+
+    const practiceAssessments = await Assessment.find(assessFilter).select(
+      '_id title topic category module passingScorePercentage totalMarks'
+    );
+    const assessmentIds = practiceAssessments.map((a) => a._id);
+    const assessmentMap = new Map(practiceAssessments.map((a) => [a._id.toString(), a]));
+
+    // 3. Fetch all attempts by this student for these assessments
+    const attempts = await AssessmentAttempt.find({
+      user: userId,
+      assessmentId: { $in: assessmentIds }
+    })
+      .populate('assessmentId', 'title topic category module passingScorePercentage totalMarks isPracticeTest')
+      .sort({ attemptedAt: -1 });
+
+    // 4. Group attempts by topic
+    const topicStatsMap = {};
+
+    // Initialize map for all topics in the submodule
+    topicsInSubmodule.forEach((t) => {
+      topicStatsMap[t.title] = {
+        topicId: t._id,
+        topic: t.title,
+        category: t.category,
+        order: t.order || 0,
+        attemptsCount: 0,
+        totalScore: 0,
+        totalMaxScore: 0,
+        scores: [],
+        latestAttemptDate: null,
+        bestPercentage: 0,
+        avgPercentage: 0,
+        classification: 'UNPRACTICED'
+      };
+    });
+
+    // Process each student attempt
+    const historyList = [];
+
+    attempts.forEach((att) => {
+      const aDoc = att.assessmentId || assessmentMap.get(att.assessmentId?.toString());
+      const topicName = att.topic || aDoc?.topic || 'General Practice';
+
+      historyList.push({
+        _id: att._id,
+        assessmentId: aDoc?._id || att.assessmentId,
+        assessmentTitle: aDoc?.title || 'Practice Drill',
+        topic: topicName,
+        score: att.score,
+        totalMarks: att.totalMarks || aDoc?.totalMarks || 10,
+        percentage: att.percentage,
+        status: att.status,
+        timeSpentSeconds: att.timeSpentSeconds || 0,
+        attemptedAt: att.attemptedAt
+      });
+
+      if (!topicStatsMap[topicName]) {
+        topicStatsMap[topicName] = {
+          topicId: aDoc?.topicId || null,
+          topic: topicName,
+          category: aDoc?.category || category,
+          order: 99,
+          attemptsCount: 0,
+          totalScore: 0,
+          totalMaxScore: 0,
+          scores: [],
+          latestAttemptDate: null,
+          bestPercentage: 0,
+          avgPercentage: 0,
+          classification: 'UNPRACTICED'
+        };
+      }
+
+      const stat = topicStatsMap[topicName];
+      stat.attemptsCount += 1;
+      stat.totalScore += att.score || 0;
+      stat.totalMaxScore += att.totalMarks || 1;
+      stat.scores.push(att.percentage);
+      if (att.percentage > stat.bestPercentage) {
+        stat.bestPercentage = att.percentage;
+      }
+      if (!stat.latestAttemptDate || new Date(att.attemptedAt) > new Date(stat.latestAttemptDate)) {
+        stat.latestAttemptDate = att.attemptedAt;
+      }
+    });
+
+    // Compute averages and classify topics
+    const topicStatsArray = Object.values(topicStatsMap).map((st) => {
+      if (st.attemptsCount > 0) {
+        const avg = Math.round(st.scores.reduce((a, b) => a + b, 0) / st.scores.length);
+        st.avgPercentage = avg;
+        if (avg >= 75) {
+          st.classification = 'STRONG';
+        } else if (avg >= 50) {
+          st.classification = 'NEEDS_PRACTICE';
+        } else {
+          st.classification = 'WEAK';
+        }
+      } else {
+        st.avgPercentage = 0;
+        st.classification = 'UNPRACTICED';
+      }
+      return st;
+    });
+
+    // Sort: practiced topics first, then unpracticed
+    topicStatsArray.sort((a, b) => {
+      if (a.attemptsCount > 0 && b.attemptsCount === 0) return -1;
+      if (a.attemptsCount === 0 && b.attemptsCount > 0) return 1;
+      return a.order - b.order;
+    });
+
+    const strongTopics = topicStatsArray.filter((t) => t.classification === 'STRONG');
+    const needsPracticeTopics = topicStatsArray.filter((t) => t.classification === 'NEEDS_PRACTICE');
+    const weakTopics = topicStatsArray.filter((t) => t.classification === 'WEAK');
+    const unpracticedTopics = topicStatsArray.filter((t) => t.classification === 'UNPRACTICED');
+
+    const totalDrills = attempts.length;
+    const overallAvg =
+      totalDrills > 0 ? Math.round(attempts.reduce((acc, a) => acc + a.percentage, 0) / totalDrills) : 0;
+
+    // Donut Chart Mastery distribution (Among practiced topics or all topics)
+    const practicedCount = strongTopics.length + needsPracticeTopics.length + weakTopics.length;
+    const donutChart = {
+      strongCount: strongTopics.length,
+      needsPracticeCount: needsPracticeTopics.length,
+      weakCount: weakTopics.length,
+      unpracticedCount: unpracticedTopics.length,
+      totalTopics: topicStatsArray.length,
+      practicedCount,
+      strongShare: practicedCount > 0 ? Math.round((strongTopics.length / practicedCount) * 100) : 0,
+      needsPracticeShare: practicedCount > 0 ? Math.round((needsPracticeTopics.length / practicedCount) * 100) : 0,
+      weakShare: practicedCount > 0 ? Math.round((weakTopics.length / practicedCount) * 100) : 0,
+      overallProficiency: overallAvg
+    };
+
+    // Bar Chart Data: Topic-by-topic comparison
+    const barChart = topicStatsArray
+      .filter((t) => t.attemptsCount > 0)
+      .sort((a, b) => b.avgPercentage - a.avgPercentage)
+      .map((t) => ({
+        topicId: t.topicId,
+        topic: t.topic,
+        avgScore: t.avgPercentage,
+        bestScore: t.bestPercentage,
+        attemptsCount: t.attemptsCount,
+        classification: t.classification.toLowerCase()
+      }));
+
+    res.json({
+      success: true,
+      submodule: {
+        module: moduleName,
+        category,
+        cleanCategory: cleanCat
+      },
+      summary: {
+        totalDrills,
+        overallAvg,
+        strongCount: strongTopics.length,
+        needsPracticeCount: needsPracticeTopics.length,
+        weakCount: weakTopics.length,
+        unpracticedCount: unpracticedTopics.length,
+        totalTopicsCount: topicStatsArray.length
+      },
+      donutChart,
+      barChart,
+      allTopicStats: topicStatsArray,
+      strongTopics,
+      needsPracticeTopics,
+      weakTopics,
+      unpracticedTopics,
+      recentAttempts: historyList.slice(0, 30)
+    });
+  } catch (err) {
+    console.error('Error fetching submodule practice analytics:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+

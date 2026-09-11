@@ -1,9 +1,8 @@
-const axios = require('axios');
 const { GoogleGenAI } = require('@google/genai');
 
 /**
- * Multi-LLM AI Question Generator for MITRA Question Bank
- * Supports: Google Gemini, Groq Cloud, Hugging Face, and grounded fallback.
+ * AI Question Generator for MITRA Question Bank
+ * Powered exclusively by Google Gemini, with grounded academic fallback.
  */
 
 const generatePrompt = ({ module, category, department, topic, difficulty, count }) => {
@@ -174,107 +173,7 @@ const generateWithGemini = async (prompt, apiKey) => {
   throw lastError || new Error('Gemini question generation failed.');
 };
 
-// 2. Groq Cloud Provider
-const generateWithGroq = async (prompt, apiKey, count = 10) => {
-  const modelsToTry = [
-    'openai/gpt-oss-120b',
-    'groq/compound-mini',
-    'openai/gpt-oss-20b',
-    'qwen/qwen3.8-27b'
-  ];
-  const maxTokens = Math.min(Math.max(count * 250, 1000), 3000);
-  let lastError = null;
-
-  for (const modelName of modelsToTry) {
-    try {
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          model: modelName,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert assessment generator. Always output strict JSON arrays only without any formatting or reasoning tags.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.2,
-          max_tokens: maxTokens
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000
-        }
-      );
-
-      const rawContent = response.data?.choices?.[0]?.message?.content;
-      if (!rawContent) continue;
-
-      const parsed = cleanAndParseJson(rawContent);
-      if (parsed && parsed.length > 0) return parsed;
-    } catch (err) {
-      lastError = err;
-      console.warn(`[Groq Provider]: Model '${modelName}' error: ${err.response?.data?.error?.message || err.message}. Trying next Groq model...`);
-    }
-  }
-  throw lastError || new Error('Groq question generation failed.');
-};
-
-// 3. Hugging Face Inference API Provider
-const generateWithHuggingFace = async (prompt, apiKey) => {
-  const modelsToTry = [
-    'meta-llama/Llama-3.3-70B-Instruct-Turbo'
-  ];
-  let lastError = null;
-
-  for (const modelName of modelsToTry) {
-    try {
-      const response = await axios.post(
-        'https://router.huggingface.co/together/v1/chat/completions',
-        {
-          model: modelName,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert assessment generator. Always output strict JSON arrays only without any formatting or reasoning tags.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.2,
-          max_tokens: 3000
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 12000
-        }
-      );
-
-      const rawContent = response.data?.choices?.[0]?.message?.content;
-      if (!rawContent) continue;
-
-      const parsed = cleanAndParseJson(rawContent);
-      if (parsed && parsed.length > 0) return parsed;
-    } catch (err) {
-      lastError = err;
-      console.warn(`[HuggingFace Provider]: Model '${modelName}' error: ${err.response?.data?.error || err.message}. Trying backup...`);
-    }
-  }
-  throw lastError || new Error('Hugging Face question generation failed.');
-};
-
-// 4. Grounded Rule-Based Academic Fallback Generator
+// 2. Grounded Rule-Based Academic Fallback Generator
 const generateAcademicFallback = ({ module, category, topic, difficulty, count }) => {
   const questions = [];
   const diff = difficulty || 'Medium';
@@ -371,7 +270,7 @@ const generateAcademicFallback = ({ module, category, topic, difficulty, count }
   return questions;
 };
 
-// Helper: Single-batch question generator with provider fallback
+// Helper: Single-batch question generator with Google Gemini and grounded fallback
 const generateSingleBatch = async ({
   provider = 'gemini',
   module = 'Aptitude',
@@ -383,50 +282,20 @@ const generateSingleBatch = async ({
 }) => {
   const prompt = generatePrompt({ module, category, department, topic, difficulty, count });
   let questions = [];
-  let resolvedProvider = provider;
+  let resolvedProvider = 'gemini';
 
   const geminiKey = (process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY || '').trim();
-  const groqKey = (process.env.GROQ_API_KEY || process.env.Groq_API_KEY || '').trim();
-  const hfKey = (
-    process.env.HF_API_KEY ||
-    process.env.HUGGINGFACE_API_KEY ||
-    process.env.HuggingFace_API_KEY ||
-    ''
-  ).trim();
-
-  const tryOrder = [];
-  if (provider === 'gemini') {
-    tryOrder.push('gemini', 'groq', 'huggingface');
-  } else if (provider === 'groq') {
-    tryOrder.push('groq', 'gemini', 'huggingface');
-  } else if (provider === 'huggingface') {
-    tryOrder.push('huggingface', 'groq', 'gemini');
-  } else {
-    tryOrder.push('groq', 'gemini', 'huggingface');
-  }
-
   let generatedSuccessfully = false;
 
-  for (const prov of tryOrder) {
+  if (geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
     try {
-      if (prov === 'gemini' && geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
-        questions = await generateWithGemini(prompt, geminiKey);
+      questions = await generateWithGemini(prompt, geminiKey);
+      if (Array.isArray(questions) && questions.length > 0) {
         resolvedProvider = 'gemini';
         generatedSuccessfully = true;
-        break;
-      } else if (prov === 'groq' && groqKey) {
-        questions = await generateWithGroq(prompt, groqKey, count);
-        resolvedProvider = 'groq';
-        generatedSuccessfully = true;
-        break;
-      } else if (prov === 'huggingface' && hfKey) {
-        questions = await generateWithHuggingFace(prompt, hfKey);
-        resolvedProvider = 'huggingface';
-        generatedSuccessfully = true;
-        break;
       }
     } catch (err) {
-      console.warn(`[AI Question Generator]: Provider '${prov}' failed (${err.message}). Cascading to next available provider...`);
+      console.warn(`[AI Question Generator]: Google Gemini generation failed (${err.message}). Using academic fallback...`);
     }
   }
 

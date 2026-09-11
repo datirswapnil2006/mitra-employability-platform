@@ -77,7 +77,7 @@ export const StudentAssessmentsPage = () => {
   }, [rawModule, user?.department, isDomainModule, isAptitudeModule]);
 
   const queryParams = useMemo(() => {
-    const params = { module: currentModule };
+    const params = { module: currentModule, isPracticeTest: false, isDefaultTopicAssessment: false };
     if (activeSubfilter !== 'All') {
       if (isDomainModule) {
         params.department = activeSubfilter;

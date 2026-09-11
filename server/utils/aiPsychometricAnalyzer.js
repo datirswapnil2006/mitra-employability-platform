@@ -1,4 +1,3 @@
-const axios = require('axios');
 const { GoogleGenAI } = require('@google/genai');
 
 /**
@@ -163,7 +162,7 @@ const calculateDimensionScores = (responses = []) => {
 };
 
 /**
- * Generate AI Narrative via Gemini / Groq with Fallback
+ * Generate AI Narrative via Google Gemini with Fallback
  */
 const synthesizePsychometricProfileAI = async ({
   studentName = 'Student',
@@ -215,29 +214,23 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
 }`;
 
   const geminiKey = process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY;
-  const groqKey = (process.env.GROQ_API_KEY || process.env.Groq_API_KEY || '').trim();
 
-  // Try Gemini
+  // Try Google Gemini
   if (geminiKey && geminiKey !== 'dummy_gemini_key_for_testing') {
     try {
       const ai = new GoogleGenAI({ apiKey: geminiKey });
       let response = null;
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: prompt
-        });
-      } catch (gemErr) {
+      const psychoModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+      for (const model of psychoModels) {
         try {
           response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt
+            model,
+            contents: prompt,
+            config: { temperature: 0.2, maxOutputTokens: 2048 }
           });
-        } catch (gemErr2) {
-          response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: prompt
-          });
+          if (response && response.text) break;
+        } catch (gemErr) {
+          console.warn(`[Gemini Psychometric]: Model ${model} error (${gemErr.message}). Trying backup...`);
         }
       }
       const cleaned = (response.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -245,35 +238,6 @@ Return ONLY a valid JSON object (no markdown, no backticks) structured exactly a
       return { ...parsed, aiProvider: 'gemini' };
     } catch (err) {
       console.warn('[Gemini Psychometric]:', err.message);
-    }
-  }
-
-  // Try Groq
-  if (groqKey) {
-    const groqModels = ['qwen/qwen3.6-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'llama-3.3-70b-versatile'];
-    for (const model of groqModels) {
-      try {
-        const res = await axios.post(
-          'https://api.groq.com/openai/v1/chat/completions',
-          {
-            model,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3
-          },
-          {
-            headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-            timeout: 12000
-          }
-        );
-        const raw = res.data?.choices?.[0]?.message?.content || '';
-        const cleanedGroq = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json/gi, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanedGroq || '{}');
-        if (parsed.strengths && parsed.careerFit) {
-          return { ...parsed, aiProvider: 'groq' };
-        }
-      } catch (err) {
-        console.warn(`[Groq Psychometric ${model}]:`, err.message);
-      }
     }
   }
 

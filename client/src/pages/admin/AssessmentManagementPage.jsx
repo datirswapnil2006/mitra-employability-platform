@@ -106,7 +106,7 @@ export const AssessmentManagementPage = () => {
   ];
 
   const params = useMemo(() => {
-    const p = { module: currentModule };
+    const p = { module: currentModule, isPracticeTest: false, isDefaultTopicAssessment: false };
     if (activeCategory !== 'All') {
       if (isDomainModule) {
         p.department = activeCategory;
@@ -219,7 +219,7 @@ export const AssessmentManagementPage = () => {
 
       <PageHeader
         title={`${currentModule} Assessment Management`}
-        subtitle="Manage evaluations, generate tests with Gemini, Groq, and Hugging Face, and review candidate grading."
+        subtitle="Manage evaluations, generate tests with Google Gemini, and review candidate grading."
         breadcrumbs={[
           { label: 'Admin', link: '/admin/dashboard' },
           { label: 'Assessments' },
@@ -357,13 +357,7 @@ export const AssessmentManagementPage = () => {
                     {item.isAIGenerated && (
                       <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60 flex items-center gap-1">
                         <Sparkles className="w-3 h-3 text-purple-500" />
-                        {item.aiProvider === 'gemini'
-                          ? 'Gemini 3.6 Flash'
-                          : item.aiProvider === 'groq'
-                          ? 'Groq Cloud'
-                          : item.aiProvider === 'huggingface'
-                          ? 'Hugging Face'
-                          : 'AI Generated'}
+                        Google Gemini
                       </span>
                     )}
 
@@ -540,7 +534,7 @@ export const AssessmentManagementPage = () => {
           <div className="grid grid-cols-3 gap-3">
             <Select
               label="Questions"
-              options={['5', '10', '15', '20']}
+              options={['5', '10', '15', '20', '25', '30', '45', '50', '60', '75', '90', '100', '120', '150', '180']}
               value={String(aiForm.questionCount)}
               onChange={(e) =>
                 setAiForm({ ...aiForm, questionCount: parseInt(e.target.value, 10) })
@@ -548,7 +542,7 @@ export const AssessmentManagementPage = () => {
             />
             <Select
               label="Time Limit"
-              options={['10 mins', '15 mins', '20 mins', '30 mins', '45 mins', '60 mins']}
+              options={['10 mins', '15 mins', '20 mins', '30 mins', '45 mins', '60 mins', '90 mins', '120 mins', '150 mins', '180 mins', '240 mins']}
               value={`${aiForm.timeLimitMinutes} mins`}
               onChange={(e) =>
                 setAiForm({

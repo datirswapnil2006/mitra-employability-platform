@@ -16,7 +16,8 @@ const {
   deleteAssessment,
   getAllAttemptsAdmin,
   createPracticeTest,
-  getDefaultTopicAssessment
+  getDefaultTopicAssessment,
+  getStudentSubmodulePracticeAnalytics
 } = require('./assessment.controller');
 const { protect } = require('../../middleware/authMiddleware');
 const { authorize } = require('../../middleware/roleMiddleware');
@@ -48,6 +49,7 @@ const handlePdfUpload = (req, res, next) => {
 
 // Student endpoints
 router.get('/', protect, requireCompleteProfile, getAssessments);
+router.get('/student/practice-history', protect, requireCompleteProfile, getStudentSubmodulePracticeAnalytics);
 router.get('/topic-default/:topicId', protect, requireCompleteProfile, getDefaultTopicAssessment);
 router.post('/practice-test', protect, requireCompleteProfile, createPracticeTest);
 router.get('/take/:id', protect, requireCompleteProfile, getAssessmentById);

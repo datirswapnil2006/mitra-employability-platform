@@ -66,7 +66,7 @@ export const APTITUDE_TOPICS = {
   ]
 };
 
-export const QUESTION_COUNT_OPTIONS = [5, 10, 15, 20, 25, 30];
-export const TIME_LIMIT_OPTIONS = [10, 15, 20, 30, 45, 60, 90];
+export const QUESTION_COUNT_OPTIONS = [5, 10, 15, 20, 25, 30, 45, 50, 60, 75, 90, 100, 120, 150, 180];
+export const TIME_LIMIT_OPTIONS = [10, 15, 20, 30, 45, 60, 90, 120, 150, 180, 240];
 export const PASS_PERCENTAGE_OPTIONS = [40, 50, 60, 70, 80];
 export const DIFFICULTY_OPTIONS = ['Easy', 'Medium', 'Hard', 'Mixed'];

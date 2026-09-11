@@ -64,6 +64,7 @@ export const AptitudeAssessmentCreateModal = ({
   const [customTopic, setCustomTopic] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
   const [targetQuestionCount, setTargetQuestionCount] = useState(5);
+  const [isCustomCount, setIsCustomCount] = useState(false);
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(20);
   const [passingScorePercentage, setPassingScorePercentage] = useState(70);
 
@@ -125,6 +126,7 @@ export const AptitudeAssessmentCreateModal = ({
       setDescription('');
       setDifficulty('Medium');
       setTargetQuestionCount(5);
+      setIsCustomCount(false);
       setTimeLimitMinutes(20);
       setPassingScorePercentage(70);
       setAiProvider('gemini');
@@ -638,9 +640,9 @@ export const AptitudeAssessmentCreateModal = ({
                 <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <span className="font-extrabold text-indigo-950 block">Comprehensive Aptitude Mix Assessment</span>
-                  <p className="text-slate-600 leading-relaxed text-[11px]">
-                    Creates a balanced test distributing questions across <strong>Quantitative Aptitude</strong>, <strong>Logical Reasoning</strong>, and <strong>Verbal Ability</strong>. Recommended for full 30-question placement mock drives.
-                  </p>
+                    <p className="text-slate-600 leading-relaxed text-[11px]">
+                      Creates a balanced test distributing questions across <strong>Quantitative Aptitude</strong>, <strong>Logical Reasoning</strong>, and <strong>Verbal Ability</strong>. Recommended for full placement mock drives (up to 180 questions).
+                    </p>
                 </div>
               </div>
             )}
@@ -663,12 +665,36 @@ export const AptitudeAssessmentCreateModal = ({
 
             {/* Test Constraints Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-              <Select
-                label="Target Questions"
-                options={QUESTION_COUNT_OPTIONS.map(String)}
-                value={String(targetQuestionCount)}
-                onChange={(e) => setTargetQuestionCount(parseInt(e.target.value, 10))}
-              />
+              <div>
+                <Select
+                  label="Target Questions (Max 180)"
+                  options={[...QUESTION_COUNT_OPTIONS.map(String), 'Custom']}
+                  value={isCustomCount ? 'Custom' : String(targetQuestionCount)}
+                  onChange={(e) => {
+                    if (e.target.value === 'Custom') {
+                      setIsCustomCount(true);
+                    } else {
+                      setIsCustomCount(false);
+                      setTargetQuestionCount(parseInt(e.target.value, 10));
+                    }
+                  }}
+                />
+                {isCustomCount && (
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    placeholder="Enter 1 - 180"
+                    value={targetQuestionCount}
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value, 10);
+                      const val = isNaN(raw) ? '' : Math.min(Math.max(raw, 1), 180);
+                      setTargetQuestionCount(val);
+                    }}
+                    className="mt-1.5 block w-full px-3 py-1.5 text-xs bg-white border border-blue-400 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-800"
+                  />
+                )}
+              </div>
               <Select
                 label="Difficulty"
                 options={DIFFICULTY_OPTIONS}

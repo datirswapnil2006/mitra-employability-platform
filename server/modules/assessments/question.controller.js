@@ -115,12 +115,34 @@ exports.getTopicQuestionStats = async (req, res) => {
       filter.topic = topic;
     }
 
-    const total = await Question.countDocuments(filter);
-    const [easy, medium, hard] = await Promise.all([
+    let total = await Question.countDocuments(filter);
+    let [easy, medium, hard] = await Promise.all([
       Question.countDocuments({ ...filter, difficulty: { $in: ['Easy', 'Beginner'] } }),
       Question.countDocuments({ ...filter, difficulty: { $in: ['Medium', 'Intermediate', 'Mixed', 'mixed'] } }),
       Question.countDocuments({ ...filter, difficulty: { $in: ['Hard', 'Advanced'] } })
     ]);
+
+    if (total === 0 && topic) {
+      const aliasMap = {
+        'Simplification': ['Number System', 'HCF and LCM', 'Average'],
+        'Ratio & Proportion': ['Allegation and Proportion'],
+        'Number & Letter Series': ['Number Series'],
+        'Number/Alphabet Series': ['Number Series'],
+        'Sentence Correction': ['Articles'],
+        'Vocabulary & Idioms': ['Articles'],
+        'Reading Comprehension': ['Articles']
+      };
+      const aliases = aliasMap[topic];
+      if (aliases && aliases.length > 0) {
+        const aliasFilter = { topic: { $in: aliases } };
+        total = await Question.countDocuments(aliasFilter);
+        [easy, medium, hard] = await Promise.all([
+          Question.countDocuments({ ...aliasFilter, difficulty: { $in: ['Easy', 'Beginner'] } }),
+          Question.countDocuments({ ...aliasFilter, difficulty: { $in: ['Medium', 'Intermediate', 'Mixed', 'mixed'] } }),
+          Question.countDocuments({ ...aliasFilter, difficulty: { $in: ['Hard', 'Advanced'] } })
+        ]);
+      }
+    }
 
     res.json({
       success: true,
@@ -296,17 +318,17 @@ exports.bulkDeleteQuestions = async (req, res) => {
   }
 };
 
-// Generate AI Questions (Gemini, Groq, Hugging Face)
+// Generate AI Questions (Google Gemini)
 exports.generateAI = async (req, res) => {
   try {
-    const { provider, module: moduleName, category, department, topic, difficulty, count } = req.body;
+    const { module: moduleName, category, department, topic, difficulty, count } = req.body;
 
     if (!topic || !topic.trim()) {
       return res.status(400).json({ success: false, message: 'Topic name is required for AI generation.' });
     }
 
     const generated = await generateQuestionsAI({
-      provider: provider || 'gemini',
+      provider: 'gemini',
       module: moduleName || 'Aptitude',
       category: category || 'Quantitative',
       department: department || null,
@@ -318,7 +340,7 @@ exports.generateAI = async (req, res) => {
     res.json({
       success: true,
       count: generated.length,
-      provider: generated[0]?.aiProvider || provider,
+      provider: generated[0]?.aiProvider || 'gemini',
       questions: generated
     });
   } catch (err) {
