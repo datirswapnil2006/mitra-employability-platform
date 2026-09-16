@@ -13,6 +13,12 @@ export const TRAINING_MODULES = [
   { id: 'Interview', label: 'Interview Preparation' }
 ];
 
+export const QUESTION_BANK_MODULES = [
+  { id: 'Aptitude', label: 'Aptitude' },
+  { id: 'Domain', label: 'Domain Knowledge' },
+  { id: 'Communication', label: 'Communication' }
+];
+
 export const MODULE_CATEGORIES = {
   Aptitude: [
     { id: 'Quantitative', label: 'Quantitative Aptitude' },

@@ -29,6 +29,7 @@ const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const reportRoutes = require('./modules/reports/report.routes');
 const supportRoutes = require('./modules/support/support.routes');
 const gamificationRoutes = require('./modules/gamification/gamification.routes');
+const settingsRoutes = require('./modules/settings/settings.routes');
 
 const app = express();
 
@@ -64,7 +65,8 @@ const routes = [
   ['/analytics', analyticsRoutes],
   ['/reports', reportRoutes],
   ['/support', supportRoutes],
-  ['/gamification', gamificationRoutes]
+  ['/gamification', gamificationRoutes],
+  ['/settings', settingsRoutes]
 ];
 
 routes.forEach(([path, routeHandler]) => {

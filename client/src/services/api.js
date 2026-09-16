@@ -970,5 +970,100 @@ export const api = {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  },
+
+  // ==========================================
+  // Centralized Admin Settings & Configuration
+  // ==========================================
+  getSettings: async () => {
+    const res = await fetch(`${API_BASE}/settings`, { headers: getHeaders() });
+    return res.json();
+  },
+
+  getPublicSettings: async () => {
+    const res = await fetch(`${API_BASE}/settings/public`);
+    return res.json();
+  },
+
+  updateSettingsCategory: async (category, data) => {
+    const res = await fetch(`${API_BASE}/settings/category/${category}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  updateProfileConfig: async (data) => {
+    // Backwards-compatible alias for profileGating
+    const res = await fetch(`${API_BASE}/settings/category/profileGating`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  testAiConnection: async (data = {}) => {
+    const res = await fetch(`${API_BASE}/settings/ai/test-connection`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  replaceApiKey: async (apiKey) => {
+    const res = await fetch(`${API_BASE}/settings/ai/replace-key`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ apiKey })
+    });
+    return res.json();
+  },
+
+  getRoles: async () => {
+    const res = await fetch(`${API_BASE}/settings/roles`, { headers: getHeaders() });
+    return res.json();
+  },
+
+  createRole: async (data) => {
+    const res = await fetch(`${API_BASE}/settings/roles`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  updateRole: async (id, data) => {
+    const res = await fetch(`${API_BASE}/settings/roles/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  deleteRole: async (id) => {
+    const res = await fetch(`${API_BASE}/settings/roles/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+
+  getAuditLogs: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/settings/audit-logs?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
+
+  resetSettingsCategory: async (category) => {
+    const res = await fetch(`${API_BASE}/settings/category/${category}/reset`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return res.json();
   }
 };

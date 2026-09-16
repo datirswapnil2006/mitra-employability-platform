@@ -25,7 +25,7 @@ const questionSchema = new mongoose.Schema({
   },
   department: {
     type: String,
-    enum: [...OFFICIAL_DEPARTMENTS, null],
+    enum: [...OFFICIAL_DEPARTMENTS, 'All', 'General', null],
     default: null
   },
   topic: {

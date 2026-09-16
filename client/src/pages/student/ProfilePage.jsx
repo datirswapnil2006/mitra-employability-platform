@@ -16,7 +16,7 @@ import {
 import {
   User, Phone, Hash, Globe, ShieldCheck, Check, Sparkles, Save,
   Link as LinkIcon, FileText, Mail, GraduationCap, Award, MapPin,
-  CreditCard, Camera, Upload, Trash2, AlertCircle
+  CreditCard, AlertCircle
 } from 'lucide-react';
 import {
   OFFICIAL_DEPARTMENTS,
@@ -27,12 +27,10 @@ import {
 
 export const ProfilePage = () => {
   const { user, refreshUser } = useAuth();
-  const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [imgError, setImgError] = useState(false);
   const [showAllChecklist, setShowAllChecklist] = useState(false);
   const [profileData, setProfileData] = useState({
     erpNumber: '',
@@ -43,7 +41,6 @@ export const ProfilePage = () => {
     year: 'Third Year',
     batch: '2026',
     phone: '',
-    profilePhoto: '',
     hometown: '',
     aadhaarNumber: '',
     educationGap: 'No',
@@ -84,7 +81,6 @@ export const ProfilePage = () => {
         const res = await api.getProfile();
         if (res.success && (res.profile || res.student)) {
           const p = res.profile || res.student;
-          const photo = p.profilePhoto || user?.profilePhoto || '';
           const initialData = {
             erpNumber: p.erpNumber || p.rollNo || '',
             rollNo: p.erpNumber || p.rollNo || '',
@@ -94,7 +90,6 @@ export const ProfilePage = () => {
             year: p.year || 'Third Year',
             batch: p.batch || '2026',
             phone: p.phone || '',
-            profilePhoto: photo,
             hometown: p.hometown || '',
             aadhaarNumber: p.aadhaarNumber || '',
             educationGap: p.educationGap || 'No',
@@ -113,7 +108,6 @@ export const ProfilePage = () => {
             ...initialData,
             profileCompletionPercentage: completion
           });
-          setImgError(false);
         }
       } catch (err) {
         console.error('Error fetching profile:', err);
@@ -137,67 +131,6 @@ export const ProfilePage = () => {
     });
   };
 
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Photo size should be less than 5MB.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target.result;
-      setProfileData(prev => {
-        const next = { ...prev, profilePhoto: base64 };
-        return {
-          ...next,
-          profileCompletionPercentage: calculateProfileCompletion(next, user)
-        };
-      });
-      setImgError(false);
-
-      try {
-        const uploadRes = await api.uploadProfilePhoto({ photoData: base64 });
-        if (uploadRes.success && (uploadRes.photoUrl || uploadRes.profilePhoto)) {
-          const savedUrl = uploadRes.photoUrl || uploadRes.profilePhoto;
-          setProfileData(prev => {
-            const next = { ...prev, profilePhoto: savedUrl };
-            return {
-              ...next,
-              profileCompletionPercentage: calculateProfileCompletion(next, user)
-            };
-          });
-          await refreshUser();
-        }
-      } catch (uploadErr) {
-        console.warn('Direct upload photo endpoint failed, photo will be persisted on form save:', uploadErr);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleRemovePhoto = async () => {
-    setProfileData(prev => {
-      const next = { ...prev, profilePhoto: '' };
-      return {
-        ...next,
-        profileCompletionPercentage: calculateProfileCompletion(next, user)
-      };
-    });
-    setImgError(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    try {
-      await api.updateProfile({ profilePhoto: '' });
-      await refreshUser();
-    } catch (err) {
-      console.error('Error removing photo:', err);
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -216,10 +149,8 @@ export const ProfilePage = () => {
           ...updated,
           erpNumber: updated.erpNumber || updated.rollNo || prev.erpNumber,
           rollNo: updated.erpNumber || updated.rollNo || prev.erpNumber,
-          profilePhoto: updated.profilePhoto !== undefined ? updated.profilePhoto : prev.profilePhoto,
           profileCompletionPercentage: newCompletion
         }));
-        setImgError(false);
         if (newCompletion === 100) {
           setMessage('Profile verified at 100%! All requirements completed successfully. All portal modules unlocked.');
         } else {
@@ -267,46 +198,9 @@ export const ProfilePage = () => {
       {/* Header Profile Status Card */}
       <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-          {/* Avatar / Photo Upload Container */}
-          <div className="relative group shrink-0">
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="w-20 h-20 rounded-3xl bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-blue-700 font-black text-2xl shadow-xs overflow-hidden cursor-pointer relative transition-all hover:ring-4 hover:ring-blue-500/20"
-              title="Click to upload student profile photo"
-            >
-              {profileData.profilePhoto && !imgError ? (
-                <img
-                  src={getMediaUrl(profileData.profilePhoto)}
-                  alt={user?.name || 'Student Profile'}
-                  className="w-full h-full object-cover"
-                  onError={() => setImgError(true)}
-                />
-              ) : (
-                <span>{user?.name ? user.name.charAt(0).toUpperCase() : 'S'}</span>
-              )}
-
-              {/* Camera Hover Overlay */}
-              <div className="absolute inset-0 bg-slate-900/50 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[1px]">
-                <Camera className="w-5 h-5" />
-                <span className="text-[9px] font-bold mt-0.5">Upload</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute -bottom-1 -right-1 p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-md border-2 border-white transition"
-              title="Upload / Change Photo"
-            >
-              <Camera className="w-3.5 h-3.5" />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png, image/jpeg, image/jpg, image/webp"
-              onChange={handlePhotoUpload}
-              className="hidden"
-            />
+          {/* Student Initial Avatar Badge */}
+          <div className="w-20 h-20 rounded-3xl bg-linear-to-br from-blue-600 to-indigo-600 border-2 border-blue-200 flex items-center justify-center text-white font-black text-3xl shadow-md shrink-0">
+            <span>{user?.name ? user.name.charAt(0).toUpperCase() : 'S'}</span>
           </div>
 
           <div>
@@ -319,32 +213,9 @@ export const ProfilePage = () => {
             <p className="text-xs text-slate-500 mt-1">
               ERP: {profileData.erpNumber || 'Unassigned'} • {profileData.department} Department • Section {profileData.section}
             </p>
-            <div className="flex items-center justify-center sm:justify-start gap-2 mt-2">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className={`text-[11px] font-bold inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
-                  profileData.profilePhoto
-                    ? 'text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100'
-                    : 'text-amber-800 bg-amber-100 border-amber-300 hover:bg-amber-200'
-                }`}
-              >
-                <Upload className="w-3.5 h-3.5" />
-                {profileData.profilePhoto ? 'Change Photo' : 'Upload Profile Photo'}
-              </button>
-              {profileData.profilePhoto && (
-                <>
-                  <span className="text-slate-300">•</span>
-                  <button
-                    type="button"
-                    onClick={handleRemovePhoto}
-                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline inline-flex items-center gap-1"
-                  >
-                    <Trash2 className="w-3 h-3" /> Remove
-                  </button>
-                </>
-              )}
-            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Academic Year: {profileData.year} • Batch: {profileData.batch}
+            </p>
           </div>
         </div>
 
@@ -394,15 +265,6 @@ export const ProfilePage = () => {
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-900 truncate">{item.label}</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">{item.tip}</p>
-                  {item.id === 'photo' && (
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="mt-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 hover:underline"
-                    >
-                      <Upload className="w-3 h-3" /> Upload Photo
-                    </button>
-                  )}
                 </div>
               </div>
             ))}

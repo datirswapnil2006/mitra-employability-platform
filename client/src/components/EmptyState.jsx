@@ -10,12 +10,12 @@ export const EmptyState = ({
   onAction
 }) => {
   return (
-    <div className="bg-white rounded-2xl p-10 text-center flex flex-col items-center justify-center border border-slate-200 shadow-xs my-4">
-      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 mb-4 text-blue-600">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl p-10 text-center flex flex-col items-center justify-center border border-slate-200 dark:border-slate-800 shadow-xs my-4">
+      <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4 text-blue-600 dark:text-blue-400">
         <Icon className="w-8 h-8" />
       </div>
-      <h4 className="text-lg font-bold text-slate-900 mb-1">{title}</h4>
-      <p className="text-xs text-slate-500 max-w-md mb-6 leading-relaxed">{description}</p>
+      <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">{title}</h4>
+      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mb-6 leading-relaxed">{description}</p>
       {actionText && onAction && (
         <Button size="sm" onClick={onAction}>
           {actionText}

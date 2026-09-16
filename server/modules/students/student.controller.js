@@ -67,18 +67,13 @@ const getRequiredFieldsConfig = async () => {
 exports.getStudentProfile = async (req, res) => {
   try {
     const currentUserId = req.user._id || req.user.id;
-    let profile = await StudentProfile.findOne({ user: currentUserId }).populate('user', 'name email role department profilePhoto');
+    let profile = await StudentProfile.findOne({ user: currentUserId }).populate('user', 'name email role department');
     if (!profile) {
       profile = await StudentProfile.create({
         user: currentUserId,
         department: req.user.department || 'CSE'
       });
-      profile = await profile.populate('user', 'name email role department profilePhoto');
-    }
-
-    // Ensure photo consistency between User and Profile
-    if (!profile.profilePhoto && profile.user?.profilePhoto) {
-      profile.profilePhoto = profile.user.profilePhoto;
+      profile = await profile.populate('user', 'name email role department');
     }
 
     profile.calculateCompletion(profile.user);
@@ -95,49 +90,12 @@ exports.getStudentProfile = async (req, res) => {
   }
 };
 
-// Standalone endpoint: Upload profile photo
+// Standalone endpoint: Upload profile photo (Deprecated)
 exports.uploadProfilePhoto = async (req, res) => {
-  try {
-    const currentUserId = req.user._id || req.user.id;
-    const { photoData, profilePhoto } = req.body;
-    const photoToProcess = photoData || profilePhoto;
-
-    if (!photoToProcess) {
-      return res.status(400).json({ success: false, message: 'No photo data provided' });
-    }
-
-    const savedUrl = savePhotoToFile(photoToProcess, currentUserId);
-    if (!savedUrl) {
-      return res.status(400).json({ success: false, message: 'Invalid photo data' });
-    }
-
-    let profile = await StudentProfile.findOne({ user: currentUserId });
-    if (!profile) {
-      profile = new StudentProfile({ user: currentUserId });
-    }
-    profile.profilePhoto = savedUrl;
-
-    const user = await User.findById(currentUserId);
-    if (user) {
-      user.profilePhoto = savedUrl;
-      await user.save();
-    }
-
-    profile.calculateCompletion(user);
-    await profile.save();
-    await profile.populate('user', 'name email role department profilePhoto');
-
-    res.json({
-      success: true,
-      message: 'Profile photo uploaded successfully',
-      photoUrl: savedUrl,
-      profilePhoto: savedUrl,
-      profile,
-      student: profile
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  return res.status(400).json({
+    success: false,
+    message: 'Profile photo is not required or supported.'
+  });
 };
 
 // Update student profile
@@ -155,7 +113,6 @@ exports.updateStudentProfile = async (req, res) => {
       year,
       batch,
       phone,
-      profilePhoto,
       hometown,
       aadhaarNumber,
       educationGap,
@@ -226,11 +183,6 @@ exports.updateStudentProfile = async (req, res) => {
       }
     }
 
-    // 3. Process Profile Photo storage (file on disk, path/URL in DB)
-    if (profilePhoto !== undefined) {
-      profile.profilePhoto = savePhotoToFile(profilePhoto, currentUserId);
-    }
-
     if (gender !== undefined) profile.gender = gender;
     if (section !== undefined) profile.section = section;
     if (department !== undefined && OFFICIAL_DEPARTMENTS.includes(department)) {
@@ -268,12 +220,11 @@ exports.updateStudentProfile = async (req, res) => {
 
     profile.updatedAt = Date.now();
 
-    // Also update User department, name, email, profilePhoto
+    // Also update User department, name, email
     const userUpdates = {};
     if (name && name.trim()) userUpdates.name = name.trim();
     if (email && email.trim()) userUpdates.email = email.trim().toLowerCase();
     if (department) userUpdates.department = department;
-    if (profile.profilePhoto !== undefined) userUpdates.profilePhoto = profile.profilePhoto;
 
     let updatedUser = null;
     if (Object.keys(userUpdates).length > 0) {
@@ -286,7 +237,7 @@ exports.updateStudentProfile = async (req, res) => {
     profile.calculateCompletion(updatedUser);
     await profile.save();
 
-    await profile.populate('user', 'name email role department profilePhoto');
+    await profile.populate('user', 'name email role department');
 
     res.json({
       success: true,

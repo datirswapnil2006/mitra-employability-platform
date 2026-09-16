@@ -756,8 +756,13 @@ exports.createPracticeTest = async (req, res) => {
     const topicCategory = topicDoc ? topicDoc.category : 'Quantitative';
     const topicDept = topicDoc ? topicDoc.department : null;
 
-    // Build question query
-    const qFilter = {};
+    const effectiveModule = topicModule === 'Domain Knowledge' ? 'Domain' : (topicModule || 'Aptitude');
+
+    // Build question query - STRICT TO THE SPECIFIED MODULE
+    const qFilter = {
+      status: 'active',
+      module: effectiveModule
+    };
     if (topicDoc) {
       qFilter.$or = [
         { topicId: topicDoc._id },
@@ -771,84 +776,47 @@ exports.createPracticeTest = async (req, res) => {
       qFilter.difficulty = difficulty;
     }
 
-    let candidateQuestions = await Question.find({ ...qFilter, status: 'active' });
+    let candidateQuestions = await Question.find(qFilter);
 
-    // If candidate questions are empty with a strict difficulty filter, fallback to all difficulties for this topic
+    // If candidate questions are empty with a strict difficulty filter, fallback to all difficulties for this topic in same module
     if (candidateQuestions.length === 0 && difficulty && difficulty !== 'All') {
-      const relaxedFilter = topicDoc
-        ? { $or: [{ topicId: topicDoc._id }, { topic: topicDoc.title }], status: 'active' }
-        : { topic: topicTitle, status: 'active' };
+      const relaxedFilter = {
+        status: 'active',
+        module: effectiveModule
+      };
+      if (topicDoc) {
+        relaxedFilter.$or = [{ topicId: topicDoc._id }, { topic: topicDoc.title }];
+      } else {
+        relaxedFilter.topic = topicTitle;
+      }
       candidateQuestions = await Question.find(relaxedFilter);
     }
 
     // Fallback if candidate questions are empty:
-    // Try smart topic aliases from Question Bank
-    if (candidateQuestions.length === 0) {
+    // Try smart topic aliases ONLY within the same Aptitude module
+    if (candidateQuestions.length === 0 && effectiveModule === 'Aptitude') {
       const aliasMap = {
         'Simplification': ['Number System', 'HCF and LCM', 'Average'],
         'Ratio & Proportion': ['Allegation and Proportion'],
         'Number & Letter Series': ['Number Series'],
-        'Number/Alphabet Series': ['Number Series'],
-        'Sentence Correction': ['Articles'],
-        'Vocabulary & Idioms': ['Articles'],
-        'Reading Comprehension': ['Articles']
+        'Number/Alphabet Series': ['Number Series']
       };
       const aliases = aliasMap[topicTitle];
       if (aliases && aliases.length > 0) {
         candidateQuestions = await Question.find({
+          module: 'Aptitude',
           topic: { $in: aliases },
           status: 'active'
         });
       }
     }
 
-    // Fallback 2: Category match from Question Bank
-    if (candidateQuestions.length === 0) {
-      const cleanCat = topicCategory.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
-      candidateQuestions = await Question.find({
-        $or: [
-          { category: topicCategory },
-          { category: new RegExp(cleanCat, 'i') },
-          { category: topicModule }
-        ],
-        status: 'active'
-      }).limit(60);
-    }
-
-    // Fallback 3: Extract questions from any existing assessments for this topic
-    if (candidateQuestions.length === 0) {
-      const existingAssessments = await Assessment.find({
-        $or: [{ topicId: topicDoc?._id }, { topic: topicTitle }]
-      });
-      const extracted = [];
-      existingAssessments.forEach(a => {
-        if (a.questions && Array.isArray(a.questions)) {
-          a.questions.forEach(q => {
-            extracted.push({
-              questionText: q.questionText,
-              codeSnippet: q.codeSnippet || '',
-              type: q.type || 'mcq',
-              options: q.options || [],
-              correctAnswer: q.correctAnswer,
-              explanation: q.explanation || '',
-              difficulty: q.difficulty || 'Medium',
-              marks: q.marks || 1
-            });
-          });
-        }
-      });
-      candidateQuestions = extracted;
-    }
-
-    // Fallback 4: Any active questions from Question collection
-    if (candidateQuestions.length === 0) {
-      candidateQuestions = await Question.find({ status: 'active' }).limit(30);
-    }
-
+    // STRICT: IF NO QUESTIONS ARE FOUND IN THE QUESTION BANK FOR THIS TOPIC, STOP AND NOTIFY USER!
+    // NEVER pull unrelated math/aptitude questions into Communication or other modules!
     if (candidateQuestions.length === 0) {
       return res.status(400).json({
         success: false,
-        message: `No questions available in the question bank for "${topicTitle}". Please contact instructor or check back later.`
+        message: `No questions available in the question bank for "${topicTitle}". Please contact your instructor to add questions for this topic.`
       });
     }
 
@@ -1043,17 +1011,21 @@ exports.getDefaultTopicAssessment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Topic not found.' });
     }
 
+    const effectiveModule = topicDoc.module === 'Domain Knowledge' ? 'Domain' : (topicDoc.module || 'Aptitude');
+
     // 1. Check if an assessment is already linked as default or has topicId & isDefaultTopicAssessment
     let assessment = null;
     if (topicDoc.defaultAssessmentId) {
       assessment = await Assessment.findById(topicDoc.defaultAssessmentId);
-      if (!assessment) {
+      if (!assessment || assessment.module !== effectiveModule) {
+        assessment = null;
         topicDoc.defaultAssessmentId = null;
       }
     }
 
     if (!assessment) {
       assessment = await Assessment.findOne({
+        module: effectiveModule,
         $or: [
           { topicId: topicDoc._id, isDefaultTopicAssessment: true },
           { topic: topicDoc.title, isDefaultTopicAssessment: true },
@@ -1062,14 +1034,14 @@ exports.getDefaultTopicAssessment = async (req, res) => {
       }).sort({ isDefaultTopicAssessment: -1, createdAt: 1 });
     }
 
-    // 2. If no assessment exists yet, auto-provision one from the Question Bank
+    // 2. If no assessment exists yet, auto-provision one from the Question Bank (STRICT TO SAME MODULE)
     if (!assessment) {
       const topicTitle = topicDoc.title;
-      const topicCategory = topicDoc.category || 'Quantitative';
-      const cleanCat = topicCategory.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+      const topicCategory = topicDoc.category || 'General';
 
-      // Step 2a: Exact or regex match on topic title or topicId
+      // Step 2a: Exact or regex match on topic title or topicId within the SAME module
       let qPool = await Question.find({
+        module: effectiveModule,
         $or: [
           { topicId: topicDoc._id },
           { topic: topicTitle },
@@ -1079,21 +1051,19 @@ exports.getDefaultTopicAssessment = async (req, res) => {
         status: { $ne: 'archived' }
       });
 
-      // Step 2b: Smart alias matching for known topics
-      if (qPool.length < 10) {
+      // Step 2b: Smart alias matching ONLY within the same Aptitude module
+      if (qPool.length < 10 && effectiveModule === 'Aptitude') {
         const aliasMap = {
           'Simplification': ['Number System', 'HCF and LCM', 'Average'],
           'Ratio & Proportion': ['Allegation and Proportion'],
           'Number & Letter Series': ['Number Series'],
-          'Number/Alphabet Series': ['Number Series'],
-          'Sentence Correction': ['Articles'],
-          'Vocabulary & Idioms': ['Articles'],
-          'Reading Comprehension': ['Articles']
+          'Number/Alphabet Series': ['Number Series']
         };
 
         const aliases = aliasMap[topicTitle];
         if (aliases && aliases.length > 0) {
           const aliasQuestions = await Question.find({
+            module: 'Aptitude',
             topic: { $in: aliases },
             status: { $ne: 'archived' }
           });
@@ -1101,26 +1071,18 @@ exports.getDefaultTopicAssessment = async (req, res) => {
         }
       }
 
-      // Step 2c: Category match from Question Bank
-      if (qPool.length < 10) {
+      // Step 2c: Category match within the SAME module only
+      if (qPool.length < 5 && topicCategory) {
         const categoryQuestions = await Question.find({
-          $or: [
-            { category: topicCategory },
-            { category: new RegExp(cleanCat, 'i') },
-            { category: topicDoc.module }
-          ],
+          module: effectiveModule,
+          category: topicCategory,
           status: { $ne: 'archived' }
-        }).limit(60);
+        }).limit(30);
         qPool = [...qPool, ...categoryQuestions];
       }
 
-      // Step 2d: Fallback to any active Question Bank questions
-      if (qPool.length < 5) {
-        const fallbackQuestions = await Question.find({
-          status: { $ne: 'archived' }
-        }).limit(30);
-        qPool = [...qPool, ...fallbackQuestions];
-      }
+      // STRICT: DO NOT FALLBACK TO OTHER MODULES!
+      // If no questions exist in this module for this topic, assessment remains null.
 
       // Deduplicate pool by normalized questionText
       const seen = new Set();

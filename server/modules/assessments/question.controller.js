@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const Question = require('./question.model');
+const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
+const { Category, Topic } = require('../training/training.models');
 const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
 
 // Get Questions with filtering & search
@@ -29,20 +31,43 @@ exports.getQuestions = async (req, res) => {
       }
     }
     if (category && category !== 'All') {
-      let catPattern;
-      if (/Reasoning/i.test(category)) {
-        catPattern = '(?:Logical\\s+)?Reasoning';
-      } else if (/Quantitative|Quant/i.test(category)) {
-        catPattern = 'Quantitative(?:\\s+Aptitude)?';
-      } else if (/Verbal/i.test(category)) {
-        catPattern = 'Verbal(?:\\s+Ability)?';
+      if (/^[0-9a-fA-F]{24}$/.test(category)) {
+        // If an ObjectId was passed directly as category
+        const catDoc = await Category.findById(category).lean();
+        if (catDoc) {
+          const escapedTitle = catDoc.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          andConditions.push({
+            $or: [
+              { categoryId: catDoc._id },
+              { category: { $regex: new RegExp(`^${escapedTitle}$`, 'i') } }
+            ]
+          });
+        } else {
+          andConditions.push({ categoryId: new mongoose.Types.ObjectId(category) });
+        }
       } else {
-        const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
-        catPattern = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        let catPattern;
+        if (/Reasoning/i.test(category)) {
+          catPattern = '(?:Logical\\s+)?Reasoning';
+        } else if (/Quantitative|Quant/i.test(category)) {
+          catPattern = 'Quantitative(?:\\s+Aptitude)?';
+        } else if (/Verbal/i.test(category)) {
+          catPattern = 'Verbal(?:\\s+Ability)?';
+        } else {
+          const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+          catPattern = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        const catConditions = [
+          { category: { $regex: new RegExp(catPattern, 'i') } }
+        ];
+        if (categoryId && categoryId !== 'All' && /^[0-9a-fA-F]{24}$/.test(categoryId)) {
+          catConditions.push({ categoryId: new mongoose.Types.ObjectId(categoryId) });
+        }
+        andConditions.push({ $or: catConditions });
       }
-      filter.category = { $regex: new RegExp(catPattern, 'i') };
+    } else if (categoryId && categoryId !== 'All' && /^[0-9a-fA-F]{24}$/.test(categoryId)) {
+      andConditions.push({ categoryId: new mongoose.Types.ObjectId(categoryId) });
     }
-    if (categoryId && categoryId !== 'All') filter.categoryId = categoryId;
 
     if (department && department !== 'All') {
       andConditions.push({
@@ -52,20 +77,37 @@ exports.getQuestions = async (req, res) => {
 
     if (topicId && topicId !== 'All' && topic && topic !== 'All') {
       const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      andConditions.push({
-        $or: [
-          { topicId: topicId },
-          { topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } }
-        ]
-      });
+      const topicOr = [{ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } }];
+      if (/^[0-9a-fA-F]{24}$/.test(topicId)) {
+        topicOr.push({ topicId: new mongoose.Types.ObjectId(topicId) });
+      }
+      andConditions.push({ $or: topicOr });
     } else if (topicId && topicId !== 'All') {
-      filter.topicId = topicId;
+      if (/^[0-9a-fA-F]{24}$/.test(topicId)) {
+        const topDoc = await Topic.findById(topicId).lean();
+        if (topDoc) {
+          const escapedTitle = topDoc.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          andConditions.push({
+            $or: [
+              { topicId: topDoc._id },
+              { topic: { $regex: new RegExp(`^${escapedTitle}$`, 'i') } }
+            ]
+          });
+        } else {
+          andConditions.push({ topicId: new mongoose.Types.ObjectId(topicId) });
+        }
+      } else {
+        const escapedTopic = String(topicId).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        andConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
+      }
     } else if (topic && topic !== 'All') {
       const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      filter.topic = { $regex: new RegExp(`^${escapedTopic}$`, 'i') };
+      andConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
     }
 
-    if (difficulty && difficulty !== 'All') filter.difficulty = difficulty;
+    if (difficulty && difficulty !== 'All') {
+      andConditions.push({ difficulty });
+    }
 
     if (search && search.trim()) {
       const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -171,7 +213,7 @@ exports.getQuestionById = async (req, res) => {
   }
 };
 
-// Helper to normalize question payload (options, difficulty, correctAnswer)
+// Helper to normalize question payload (options, difficulty, correctAnswer, IDs, department)
 const normalizeQuestionPayload = (q) => {
   const rawOptions = Array.isArray(q.options) ? q.options : [];
   let correctAnswer = q.correctAnswer;
@@ -200,8 +242,26 @@ const normalizeQuestionPayload = (q) => {
     diff = 'Medium';
   }
 
+  // Sanitize department: null if 'All', 'General', or not in OFFICIAL_DEPARTMENTS
+  let dept = q.department;
+  if (!dept || dept === 'All' || dept === 'General' || !OFFICIAL_DEPARTMENTS.includes(dept)) {
+    dept = null;
+  }
+
+  // Sanitize ObjectIds: null if not a valid 24-hex string
+  const sanitizeId = (id) => (id && /^[0-9a-fA-F]{24}$/.test(String(id)) ? id : null);
+
+  // Normalize module
+  let mod = q.module || 'Aptitude';
+  if (mod === 'Domain Knowledge') mod = 'Domain';
+
   return {
     ...q,
+    module: mod,
+    department: dept,
+    categoryId: sanitizeId(q.categoryId),
+    topicId: sanitizeId(q.topicId),
+    moduleId: sanitizeId(q.moduleId),
     options: normalizedOptions,
     correctAnswer: finalAns,
     difficulty: diff
@@ -214,9 +274,34 @@ exports.createQuestion = async (req, res) => {
     const data = normalizeQuestionPayload({ ...req.body });
     if (req.user) data.createdBy = req.user._id;
 
+    // Auto-resolve category / categoryId
+    if (!data.categoryId && data.category) {
+      const escapedCat = data.category.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const catQuery = { title: new RegExp(`^${escapedCat}$`, 'i') };
+      if (data.module) catQuery.module = { $in: [data.module, data.module === 'Domain' ? 'Domain Knowledge' : data.module] };
+      const catDoc = await Category.findOne(catQuery).lean();
+      if (catDoc) data.categoryId = catDoc._id;
+    } else if (data.categoryId && !data.category) {
+      const catDoc = await Category.findById(data.categoryId).lean();
+      if (catDoc) data.category = catDoc.title;
+    }
+
+    // Auto-resolve topic / topicId
+    if (!data.topicId && data.topic) {
+      const escapedTopic = data.topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const topQuery = { title: new RegExp(`^${escapedTopic}$`, 'i') };
+      if (data.categoryId) topQuery.categoryId = data.categoryId;
+      const topDoc = await Topic.findOne(topQuery).lean();
+      if (topDoc) data.topicId = topDoc._id;
+    } else if (data.topicId && !data.topic) {
+      const topDoc = await Topic.findById(data.topicId).lean();
+      if (topDoc) data.topic = topDoc.title;
+    }
+
     const question = await Question.create(data);
     res.status(201).json({ success: true, question });
   } catch (err) {
+    console.error('Error creating question:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -356,17 +441,26 @@ exports.bulkSaveQuestions = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Questions array is required.' });
     }
 
+    const sanitizeId = (id) => (id && /^[0-9a-fA-F]{24}$/.test(String(id)) ? id : null);
+    const cleanDept = (d) => (!d || d === 'All' || d === 'General' || !OFFICIAL_DEPARTMENTS.includes(d)) ? null : d;
+
+    const fallbackCatId = sanitizeId(categoryId);
+    const fallbackTopicId = sanitizeId(topicId);
+    const fallbackModuleId = sanitizeId(moduleId);
+    const fallbackDept = cleanDept(department);
+    const fallbackModule = moduleName === 'Domain Knowledge' ? 'Domain' : (moduleName || 'Aptitude');
+
     const docs = questions.map((q) => {
       const normalized = normalizeQuestionPayload(q);
       return {
         ...normalized,
-        module: normalized.module || moduleName || 'Aptitude',
+        module: normalized.module || fallbackModule,
         category: normalized.category || category || 'Quantitative',
-        department: normalized.department !== undefined ? normalized.department : (department || null),
+        department: normalized.department !== undefined && normalized.department !== null ? normalized.department : fallbackDept,
         topic: normalized.topic || topic || '',
-        topicId: normalized.topicId || topicId || null,
-        categoryId: normalized.categoryId || categoryId || null,
-        moduleId: normalized.moduleId || moduleId || null,
+        topicId: normalized.topicId || fallbackTopicId,
+        categoryId: normalized.categoryId || fallbackCatId,
+        moduleId: normalized.moduleId || fallbackModuleId,
         createdBy: req.user ? req.user._id : undefined
       };
     });
@@ -378,6 +472,7 @@ exports.bulkSaveQuestions = async (req, res) => {
       questions: saved
     });
   } catch (err) {
+    console.error('Error in bulkSaveQuestions:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

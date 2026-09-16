@@ -47,7 +47,7 @@ export const Navbar = ({ onMenuToggle }) => {
 
   return (
     <header
-      className="h-16 border-b px-4 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs transition-colors duration-200"
+      className="h-16 border-b px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 backdrop-blur-md shadow-xs transition-colors duration-200"
       style={{
         backgroundColor: 'var(--header-bg, rgba(255, 255, 255, 0.95))',
         borderColor: 'var(--header-border, #E2E8F0)',

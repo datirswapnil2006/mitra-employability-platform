@@ -9,9 +9,9 @@ export const Select = ({
 }) => {
   return (
     <div className="w-full">
-      {label && <label className="block text-xs font-semibold text-slate-700 mb-1.5">{label}</label>}
+      {label && <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">{label}</label>}
       <select
-        className={`w-full bg-white border border-slate-300 text-slate-900 text-sm rounded-xl py-2.5 px-3.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all ${
+        className={`w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm rounded-xl py-2.5 px-3.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 dark:focus:border-blue-500 transition-all ${
           error ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : ''
         } ${className}`}
         {...props}
@@ -20,7 +20,7 @@ export const Select = ({
           const value = typeof opt === 'object' ? opt.value : opt;
           const labelText = typeof opt === 'object' ? opt.label : opt;
           return (
-            <option key={i} value={value} className="bg-white text-slate-900">
+            <option key={i} value={value} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
               {labelText}
             </option>
           );

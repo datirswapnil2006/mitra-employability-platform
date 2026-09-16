@@ -22,18 +22,18 @@ export const AdminDashboard = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">T&P Administration</span>
-            <span className="text-slate-300">•</span>
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">Control Panel</span>
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">T&P Administration</span>
+            <span className="text-slate-300 dark:text-slate-600">•</span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">Control Panel</span>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <LayoutDashboard className="w-6 h-6 text-blue-600" />
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
+            <LayoutDashboard className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             Training and Placement Department
           </h1>
-          <p className="text-xs text-slate-600 mt-1">Manage curriculum, submodule assessments, analytics, and Excel reports.</p>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Manage curriculum, submodule assessments, analytics, and Excel reports.</p>
         </div>
 
         <div className="flex gap-3">
@@ -77,30 +77,30 @@ export const AdminDashboard = () => {
 
       {/* Department Breakdown Table */}
       <Card title="Department Readiness Comparison" subtitle="Live analytics for EXTC, CSE, IT, Civil, Mech, MBA, MCA">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase bg-slate-50">
+              <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase bg-slate-50 dark:bg-slate-800/80">
                 <th className="py-3 px-4">Department</th>
                 <th className="py-3 px-4">Avg Profile Completion</th>
                 <th className="py-3 px-4">Avg Assessment Score</th>
                 <th className="py-3 px-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800 bg-white">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
               {(analytics?.departmentStats || [
                 { department: 'EXTC', avgProfileCompletion: 95, avgAssessmentScore: 82 },
                 { department: 'CSE', avgProfileCompletion: 98, avgAssessmentScore: 88 },
                 { department: 'IT', avgProfileCompletion: 94, avgAssessmentScore: 84 },
                 { department: 'Mechanical', avgProfileCompletion: 89, avgAssessmentScore: 76 }
               ]).map((dept, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/80 transition">
-                  <td className="py-3 px-4 font-bold text-slate-900">{dept.department}</td>
+                <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
+                  <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">{dept.department}</td>
                   <td className="py-3 px-4">
-                    <span className="font-bold text-emerald-600">{dept.avgProfileCompletion}%</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{dept.avgProfileCompletion}%</span>
                   </td>
                   <td className="py-3 px-4">
-                    <span className="font-bold text-blue-600">{dept.avgAssessmentScore}%</span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400">{dept.avgAssessmentScore}%</span>
                   </td>
                   <td className="py-3 px-4 text-right">
                     <Link to={`/admin/reports?department=${dept.department}`}>

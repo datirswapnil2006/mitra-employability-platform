@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Database,
   Plus,
@@ -16,6 +16,7 @@ import {
   Layers,
   Building2,
   ChevronRight,
+  ChevronDown,
   FileText,
   Check,
   X
@@ -30,19 +31,178 @@ import Modal from '../../components/Modal';
 import LoadingState from '../../components/LoadingState';
 import EmptyState from '../../components/EmptyState';
 import {
-  TRAINING_MODULES,
+  QUESTION_BANK_MODULES,
   MODULE_CATEGORIES,
   normalizeModuleName
 } from '../../constants/trainingModules';
 import { OFFICIAL_DEPARTMENTS } from '../../constants/departments';
 
+// Custom Downward-Opening Select to guarantee the menu opens strictly downside (below the button)
+const DownwardDropdownSelect = ({
+  label,
+  value,
+  onChange,
+  options = [],
+  placeholder = 'Select an option...',
+  searchPlaceholder = 'Search...',
+  emptyMessage = 'No matching options found'
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef(null);
+
+  // Close when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  // Current selected option label
+  const selectedOption = options.find((opt) => String(opt.value) === String(value));
+  const displayLabel = selectedOption ? selectedOption.label : (options[0]?.label || placeholder);
+
+  // Filter options by search term
+  const filteredOptions = useMemo(() => {
+    if (!searchTerm.trim()) return options;
+    const term = searchTerm.toLowerCase();
+    return options.filter((opt) => opt.label.toLowerCase().includes(term));
+  }, [options, searchTerm]);
+
+  return (
+    <div className={`relative ${isOpen ? 'z-20' : 'z-10'}`} ref={dropdownRef}>
+      {label && (
+        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+          {label}
+        </label>
+      )}
+
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => {
+          setIsOpen((prev) => !prev);
+          setSearchTerm('');
+        }}
+        className={`w-full text-xs font-semibold px-3 py-2.5 rounded-xl border text-left flex items-center justify-between transition-all duration-150 cursor-pointer ${
+          isOpen
+            ? 'border-blue-500 bg-white dark:bg-slate-900 ring-2 ring-blue-500/20 shadow-xs'
+            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500'
+        }`}
+      >
+        <span className="truncate pr-2 text-slate-800 dark:text-slate-200">
+          {displayLabel}
+        </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${
+            isOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''
+          }`}
+        />
+      </button>
+
+      {/* Downward Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* Search bar if list has more than 5 options */}
+          {options.length > 5 && (
+            <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="w-full text-xs pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchTerm('');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Options Scrollable Container */}
+          <div className="max-h-60 overflow-y-auto py-1 divide-y divide-slate-50 dark:divide-slate-800/60 custom-scrollbar">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-slate-400 dark:text-slate-500 text-center italic">
+                {emptyMessage}
+              </div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const isSelected = String(opt.value) === String(value);
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800 font-medium'
+                    }`}
+                    title={opt.label}
+                  >
+                    <span className="truncate pr-2">{opt.label}</span>
+                    {isSelected && (
+                      <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const MODULE_TABS = [
   { id: 'All', label: 'All Modules' },
   { id: 'Aptitude', label: 'Aptitude' },
   { id: 'Domain', label: 'Domain Knowledge' },
-  { id: 'Communication', label: 'Communication' },
-  { id: 'Resume', label: 'Resume' },
-  { id: 'Interview', label: 'Interview Preparation' }
+  { id: 'Communication', label: 'Communication' }
 ];
 
 export const QuestionBankManagementPage = () => {
@@ -53,6 +213,36 @@ export const QuestionBankManagementPage = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState('All');
   const [topics, setTopics] = useState([]);
   const [selectedTopicId, setSelectedTopicId] = useState('All');
+
+  // Memoized options for Submodule / Domain Downward Dropdown
+  const categoryOptions = useMemo(() => {
+    const opts = [{ value: 'All', label: 'All Submodules / Categories' }];
+    categories.forEach((c) => {
+      const catId = typeof c === 'object' ? (c._id || c.id || c.name) : c;
+      const catTitle = typeof c === 'object' ? (c.title || c.label || c.name || catId) : c;
+      opts.push({
+        value: String(catId),
+        label: String(catTitle)
+      });
+    });
+    return opts;
+  }, [categories]);
+
+  // Memoized options for Topic Downward Dropdown
+  const topicOptions = useMemo(() => {
+    const defaultLabel = `All Topics (${topics.length > 0 ? `${topics.length} topics` : 'None'})`;
+    const opts = [{ value: 'All', label: defaultLabel }];
+    topics.forEach((t) => {
+      const topId = typeof t === 'object' ? (t._id || t.id) : t;
+      const topTitle = typeof t === 'object' ? (t.title || t.name || topId) : t;
+      const badge = t.category ? ` [${t.category}]` : (t.module ? ` [${t.module}]` : '');
+      opts.push({
+        value: String(topId),
+        label: `${String(topTitle)}${badge}`
+      });
+    });
+    return opts;
+  }, [topics]);
 
   // Questions State
   const [questions, setQuestions] = useState([]);
@@ -81,6 +271,25 @@ export const QuestionBankManagementPage = () => {
 
   // Batch Selection State
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
+
+  // Manual Add Single Question State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [modalCategories, setModalCategories] = useState([]);
+  const [modalTopics, setModalTopics] = useState([]);
+  const [newQuestion, setNewQuestion] = useState({
+    module: 'Communication',
+    department: 'All',
+    category: 'Grammar',
+    categoryId: '',
+    topic: '',
+    topicId: '',
+    questionText: '',
+    options: ['', '', '', ''],
+    correctAnswerIndex: 0,
+    difficulty: 'Medium',
+    marks: 1,
+    explanation: ''
+  });
 
   // 1. Load Categories when Module or Dept changes
   // Handlers for Cascade Reset
@@ -131,14 +340,6 @@ export const QuestionBankManagementPage = () => {
         (MODULE_CATEGORIES.Communication || []).forEach(c => {
           allCats.push({ _id: c.id, title: `${c.label} (Communication)`, name: c.id, module: 'Communication' });
         });
-        // Resume standard categories
-        (MODULE_CATEGORIES.Resume || []).forEach(c => {
-          allCats.push({ _id: c.id, title: `${c.label} (Resume)`, name: c.id, module: 'Resume' });
-        });
-        // Interview standard categories
-        (MODULE_CATEGORIES.Interview || []).forEach(c => {
-          allCats.push({ _id: c.id, title: `${c.label} (Interview)`, name: c.id, module: 'Interview' });
-        });
         // Fetch domain categories from database
         try {
           const res = await api.getCategories({ module: 'Domain' });
@@ -183,8 +384,7 @@ export const QuestionBankManagementPage = () => {
         setCategories(formatted);
         setSelectedCategoryId('All');
       } else {
-        const modKey = mod === 'Interview' || mod === 'Interview Preparation' ? 'Interview Preparation' : mod;
-        const res = await api.getCategories({ module: modKey });
+        const res = await api.getCategories({ module: mod });
         const cats = res?.categories || [];
         if (cats.length > 0) {
           setCategories(cats.map(c => ({
@@ -193,7 +393,7 @@ export const QuestionBankManagementPage = () => {
             name: String(c.title || c.name)
           })));
         } else {
-          const fallbackCats = MODULE_CATEGORIES[mod] || MODULE_CATEGORIES[modKey] || [];
+          const fallbackCats = MODULE_CATEGORIES[mod] || [];
           setCategories(fallbackCats.map(c => ({
             _id: String(c.id || c.label),
             title: String(c.label || c.name || c.id),
@@ -218,7 +418,7 @@ export const QuestionBankManagementPage = () => {
     try {
       const params = {};
       if (mod && mod !== 'All') {
-        params.module = mod === 'Domain Knowledge' ? 'Domain' : (mod === 'Interview' || mod === 'Interview Preparation' ? 'Interview Preparation' : mod);
+        params.module = mod === 'Domain Knowledge' ? 'Domain' : mod;
       }
       if (dept && dept !== 'All') {
         params.department = dept;
@@ -266,12 +466,30 @@ export const QuestionBankManagementPage = () => {
         params.department = selectedDept;
       }
       if (selectedCategoryId && selectedCategoryId !== 'All') {
-        params.category = selectedCategoryId;
+        const catObj = categories.find(c => String(c._id) === String(selectedCategoryId) || String(c.name) === String(selectedCategoryId) || String(c.title) === String(selectedCategoryId));
+        if (catObj) {
+          params.category = catObj.name || catObj.title;
+          if (/^[0-9a-fA-F]{24}$/.test(catObj._id)) {
+            params.categoryId = catObj._id;
+          }
+        } else if (/^[0-9a-fA-F]{24}$/.test(selectedCategoryId)) {
+          params.categoryId = selectedCategoryId;
+        } else {
+          params.category = selectedCategoryId;
+        }
       }
       if (selectedTopicId && selectedTopicId !== 'All') {
-        params.topicId = selectedTopicId;
-        const activeTopic = topics.find(t => t._id === selectedTopicId);
-        if (activeTopic) params.topic = activeTopic.title;
+        const activeTopic = topics.find(t => String(t._id) === String(selectedTopicId) || t.title === selectedTopicId);
+        if (activeTopic) {
+          params.topic = activeTopic.title;
+          if (/^[0-9a-fA-F]{24}$/.test(activeTopic._id)) {
+            params.topicId = activeTopic._id;
+          }
+        } else if (/^[0-9a-fA-F]{24}$/.test(selectedTopicId)) {
+          params.topicId = selectedTopicId;
+        } else {
+          params.topic = selectedTopicId;
+        }
       }
       if (difficultyFilter && difficultyFilter !== 'All') {
         params.difficulty = difficultyFilter;
@@ -310,7 +528,7 @@ export const QuestionBankManagementPage = () => {
     try {
       const params = {};
       if (mod && mod !== 'All') {
-        params.module = mod === 'Domain Knowledge' ? 'Domain' : (mod === 'Interview' || mod === 'Interview Preparation' ? 'Interview Preparation' : mod);
+        params.module = mod === 'Domain Knowledge' ? 'Domain' : mod;
       }
       if (dept && dept !== 'All') params.department = dept;
       if (cat && cat !== 'All') params.category = cat;
@@ -590,6 +808,213 @@ export const QuestionBankManagementPage = () => {
     setIsPdfModalOpen(true);
   };
 
+  const loadModalCategories = async (mod, dept) => {
+    try {
+      if (mod === 'Aptitude') {
+        const raw = MODULE_CATEGORIES['Aptitude'] || [];
+        const cats = raw.map(c => ({ _id: c.id || c.label, title: c.label || c.name || c.id, name: c.id || c.label }));
+        setModalCategories(cats);
+        return cats;
+      } else if (mod === 'Domain' || mod === 'Domain Knowledge') {
+        const params = { module: 'Domain' };
+        if (dept && dept !== 'All') params.department = dept;
+        const res = await api.getCategories(params);
+        const cats = (res?.categories || []).map(c => ({ _id: c._id, title: c.title, name: c.title }));
+        setModalCategories(cats);
+        return cats;
+      } else {
+        const res = await api.getCategories({ module: mod });
+        const cats = res?.categories || [];
+        if (cats.length > 0) {
+          const mapped = cats.map(c => ({ _id: c._id, title: c.title || c.name, name: c.title || c.name }));
+          setModalCategories(mapped);
+          return mapped;
+        } else {
+          const raw = MODULE_CATEGORIES[mod] || [];
+          const mapped = raw.map(c => ({ _id: c.id || c.label, title: c.label || c.name || c.id, name: c.id || c.label }));
+          setModalCategories(mapped);
+          return mapped;
+        }
+      }
+    } catch (_) {
+      setModalCategories([]);
+      return [];
+    }
+  };
+
+  const loadModalTopics = async (mod, catId, catName, dept) => {
+    try {
+      const params = {};
+      if (mod && mod !== 'All') {
+        params.module = mod === 'Domain Knowledge' ? 'Domain' : mod;
+      }
+      if (dept && dept !== 'All') params.department = dept;
+      if (catId && /^[0-9a-fA-F]{24}$/.test(catId)) {
+        params.categoryId = catId;
+      } else if (catName) {
+        params.category = catName;
+      }
+      const res = await api.getTopics(params);
+      const list = res?.topics || [];
+      setModalTopics(list);
+      return list;
+    } catch (_) {
+      setModalTopics([]);
+      return [];
+    }
+  };
+
+  const openAddModal = async () => {
+    const mod = activeTopic?.module || (selectedModule !== 'All' ? selectedModule : 'Communication');
+    const dept = selectedDept !== 'All' ? selectedDept : 'All';
+    const cats = await loadModalCategories(mod, dept);
+
+    let chosenCat = null;
+    if (activeTopic?.category) {
+      chosenCat = cats.find(c => c.title === activeTopic.category || c.name === activeTopic.category || (activeTopic.categoryId && String(c._id) === String(activeTopic.categoryId)));
+    } else if (selectedCategoryId !== 'All') {
+      chosenCat = cats.find(c => String(c._id) === String(selectedCategoryId) || c.name === selectedCategoryId || c.title === selectedCategoryId);
+    }
+    if (!chosenCat && cats.length > 0) {
+      chosenCat = cats[0];
+    }
+
+    const catTitle = chosenCat ? (chosenCat.title || chosenCat.name) : (mod === 'Communication' ? 'Grammar' : (mod === 'Aptitude' ? 'Quantitative' : 'General'));
+    const catId = (chosenCat && /^[0-9a-fA-F]{24}$/.test(chosenCat._id)) ? chosenCat._id : '';
+
+    const tops = await loadModalTopics(mod, catId, catTitle, dept);
+
+    let chosenTop = null;
+    if (activeTopic?.title) {
+      chosenTop = tops.find(t => t.title === activeTopic.title || (activeTopic._id && String(t._id) === String(activeTopic._id)));
+    } else if (selectedTopicId !== 'All') {
+      chosenTop = tops.find(t => String(t._id) === String(selectedTopicId) || t.title === selectedTopicId);
+    }
+    if (!chosenTop && tops.length > 0) {
+      chosenTop = tops[0];
+    }
+
+    const topTitle = chosenTop ? chosenTop.title : '';
+    const topId = (chosenTop && /^[0-9a-fA-F]{24}$/.test(chosenTop._id)) ? chosenTop._id : '';
+
+    setNewQuestion({
+      module: mod,
+      department: dept,
+      category: catTitle,
+      categoryId: catId,
+      topic: topTitle,
+      topicId: topId,
+      questionText: '',
+      options: ['', '', '', ''],
+      correctAnswerIndex: 0,
+      difficulty: 'Medium',
+      marks: 1,
+      explanation: ''
+    });
+
+    setIsAddModalOpen(true);
+  };
+
+  const handleModalModuleChange = async (newMod) => {
+    const cats = await loadModalCategories(newMod, newQuestion.department);
+    const firstCat = cats.length > 0 ? cats[0] : null;
+    const catTitle = firstCat ? (firstCat.title || firstCat.name) : '';
+    const catId = (firstCat && /^[0-9a-fA-F]{24}$/.test(firstCat._id)) ? firstCat._id : '';
+
+    const tops = await loadModalTopics(newMod, catId, catTitle, newQuestion.department);
+    const firstTop = tops.length > 0 ? tops[0] : null;
+    const topTitle = firstTop ? firstTop.title : '';
+    const topId = (firstTop && /^[0-9a-fA-F]{24}$/.test(firstTop._id)) ? firstTop._id : '';
+
+    setNewQuestion(prev => ({
+      ...prev,
+      module: newMod,
+      category: catTitle,
+      categoryId: catId,
+      topic: topTitle,
+      topicId: topId
+    }));
+  };
+
+  const handleModalCategoryChange = async (newCatId, newCatTitle) => {
+    const validCatId = /^[0-9a-fA-F]{24}$/.test(newCatId) ? newCatId : '';
+    const tops = await loadModalTopics(newQuestion.module, validCatId, newCatTitle, newQuestion.department);
+    const firstTop = tops.length > 0 ? tops[0] : null;
+    const topTitle = firstTop ? firstTop.title : '';
+    const topId = (firstTop && /^[0-9a-fA-F]{24}$/.test(firstTop._id)) ? firstTop._id : '';
+
+    setNewQuestion(prev => ({
+      ...prev,
+      category: newCatTitle,
+      categoryId: validCatId,
+      topic: topTitle,
+      topicId: topId
+    }));
+  };
+
+  const handleSaveSingleQuestion = async (e) => {
+    e?.preventDefault();
+    if (!newQuestion.questionText.trim()) {
+      alert('Please enter the question text.');
+      return;
+    }
+    if (newQuestion.options.some(opt => !opt.trim())) {
+      alert('Please fill in all 4 options.');
+      return;
+    }
+    if (!newQuestion.topic) {
+      alert('Please select a valid topic.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const cleanCatId = /^[0-9a-fA-F]{24}$/.test(newQuestion.categoryId) ? newQuestion.categoryId : undefined;
+      const cleanTopId = /^[0-9a-fA-F]{24}$/.test(newQuestion.topicId) ? newQuestion.topicId : undefined;
+      const cleanDept = (newQuestion.department && newQuestion.department !== 'All' && OFFICIAL_DEPARTMENTS.includes(newQuestion.department))
+        ? newQuestion.department
+        : null;
+
+      const payload = {
+        module: newQuestion.module === 'Domain Knowledge' ? 'Domain' : newQuestion.module,
+        department: cleanDept,
+        category: newQuestion.category,
+        categoryId: cleanCatId,
+        topic: newQuestion.topic,
+        topicId: cleanTopId,
+        questionText: newQuestion.questionText.trim(),
+        options: newQuestion.options.map(o => o.trim()),
+        correctAnswer: newQuestion.options[newQuestion.correctAnswerIndex]?.trim() || newQuestion.options[0]?.trim(),
+        difficulty: newQuestion.difficulty,
+        marks: Number(newQuestion.marks) || 1,
+        explanation: newQuestion.explanation?.trim() || '',
+        type: 'mcq',
+        status: 'active'
+      };
+
+      const res = await api.createQuestion(payload);
+      if (res?.success) {
+        setFeedback({
+          type: 'success',
+          message: `Question added successfully to topic "${newQuestion.topic}" in ${newQuestion.module}!`
+        });
+        setIsAddModalOpen(false);
+
+        // If module was changed in modal, sync selectedModule
+        if (selectedModule !== 'All' && selectedModule !== payload.module) {
+          setSelectedModule(payload.module);
+        }
+        loadQuestions();
+      } else {
+        alert(res?.message || 'Failed to create question.');
+      }
+    } catch (err) {
+      alert(err.message || 'Error creating question.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -598,6 +1023,13 @@ export const QuestionBankManagementPage = () => {
         subtitle="Centralized repository of multiple choice questions organized by Training Module, Category, Department, and Topic."
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              icon={Plus}
+              onClick={openAddModal}
+            >
+              + Add Question
+            </Button>
             <Button
               variant="primary"
               icon={FileText}
@@ -629,7 +1061,7 @@ export const QuestionBankManagementPage = () => {
       )}
 
       {/* Top Module Tabs Bar (Pill Filter like Training Module) */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200">
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 dark:border-slate-800">
         {MODULE_TABS.map((tab) => {
           const isActive = selectedModule === tab.id;
           return (
@@ -637,10 +1069,10 @@ export const QuestionBankManagementPage = () => {
               key={tab.id}
               type="button"
               onClick={() => handleModuleChange(tab.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 border cursor-pointer ${
                 isActive
                   ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <BookOpen className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
@@ -651,10 +1083,10 @@ export const QuestionBankManagementPage = () => {
       </div>
 
       {/* Multi-Level Hierarchy Filter Bar (with 'All' at every level) */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 relative z-10">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-2">
-            <Layers className="w-4 h-4 text-blue-600" />
+          <div className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <Layers className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             Filter Hierarchy: Module → Department → Submodule → Topic
           </div>
 
@@ -666,7 +1098,7 @@ export const QuestionBankManagementPage = () => {
                 setDifficultyFilter('All');
                 setSearchQuery('');
               }}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline"
+              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline cursor-pointer"
             >
               Reset All Filters
             </button>
@@ -676,16 +1108,17 @@ export const QuestionBankManagementPage = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1. Module Selector */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-slate-400" />
               1. Training Module
             </label>
             <select
               value={selectedModule}
               onChange={(e) => handleModuleChange(e.target.value)}
-              className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             >
               <option value="All">All Modules</option>
-              {TRAINING_MODULES.map((m) => {
+              {QUESTION_BANK_MODULES.map((m) => {
                 const modId = typeof m === 'object' ? (m.id || m.name) : m;
                 const modLabel = typeof m === 'object' ? (m.label || m.name || m.id) : m;
                 return (
@@ -699,14 +1132,14 @@ export const QuestionBankManagementPage = () => {
 
           {/* 2. Department Selector (Domain specific or general) */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-slate-400" />
               2. Department
             </label>
             <select
               value={selectedDept}
               onChange={(e) => handleDeptChange(e.target.value)}
-              className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             >
               <option value="All">All Departments</option>
               {OFFICIAL_DEPARTMENTS.map((dept) => (
@@ -717,54 +1150,35 @@ export const QuestionBankManagementPage = () => {
             </select>
           </div>
 
-          {/* 3. Submodule / Category Selector */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              3. Submodule / Domain
-            </label>
-            <select
-              value={selectedCategoryId}
-              onChange={(e) => handleCategoryChange(e.target.value)}
-              className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="All">All Submodules / Categories</option>
-              {categories.map((c) => {
-                const catId = typeof c === 'object' ? (c._id || c.id || c.name) : c;
-                const catTitle = typeof c === 'object' ? (c.title || c.label || c.name || catId) : c;
-                return (
-                  <option key={String(catId)} value={String(catId)}>
-                    {String(catTitle)}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
+          {/* 3. Submodule / Category Selector (Opens Downside) */}
+          <DownwardDropdownSelect
+            label={
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-slate-400" />
+                3. Submodule / Domain
+              </span>
+            }
+            value={selectedCategoryId}
+            onChange={(newVal) => handleCategoryChange(newVal)}
+            options={categoryOptions}
+            placeholder="All Submodules / Categories"
+            searchPlaceholder="Search submodule / domain..."
+          />
 
-          {/* 4. Topic Selector */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              4. Topic
-            </label>
-            <select
-              value={selectedTopicId}
-              onChange={(e) => handleTopicChange(e.target.value)}
-              className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="All">
-                All Topics ({topics.length > 0 ? `${topics.length} topics` : 'None'})
-              </option>
-              {topics.map((t) => {
-                const topId = typeof t === 'object' ? (t._id || t.id) : t;
-                const topTitle = typeof t === 'object' ? (t.title || t.name || topId) : t;
-                const badge = t.category ? ` [${t.category}]` : (t.module ? ` [${t.module}]` : '');
-                return (
-                  <option key={String(topId)} value={String(topId)}>
-                    {String(topTitle)}{badge}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
+          {/* 4. Topic Selector (Opens Downside) */}
+          <DownwardDropdownSelect
+            label={
+              <span className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                4. Topic
+              </span>
+            }
+            value={selectedTopicId}
+            onChange={(newVal) => handleTopicChange(newVal)}
+            options={topicOptions}
+            placeholder="All Topics"
+            searchPlaceholder="Search topic..."
+          />
         </div>
       </div>
 
@@ -782,7 +1196,7 @@ export const QuestionBankManagementPage = () => {
             )}
             {selectedCategoryId !== 'All' && (
               <span className="text-[11px] font-bold bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded border border-violet-400/30">
-                {selectedCategoryId}
+                {categories.find(c => String(c._id) === String(selectedCategoryId) || c.name === selectedCategoryId || c.title === selectedCategoryId)?.title || selectedCategoryId}
               </span>
             )}
             <span className="text-[11px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-400/30">
@@ -829,7 +1243,7 @@ export const QuestionBankManagementPage = () => {
       </div>
 
       {/* Search & Secondary Filter Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="w-full sm:w-80">
           <Input
             icon={Search}
@@ -850,7 +1264,7 @@ export const QuestionBankManagementPage = () => {
               setDifficultyFilter(e.target.value);
               setPage(1);
             }}
-            className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white"
+            className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800"
           >
             <option value="All">All Difficulties</option>
             <option value="Easy">Easy</option>
@@ -871,19 +1285,19 @@ export const QuestionBankManagementPage = () => {
 
       {/* Batch Selection Bar */}
       {questions.length > 0 && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+        <div className="bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer select-none">
+            <label className="flex items-center gap-2 font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={allCurrentPageSelected}
                 onChange={toggleSelectAllCurrentPage}
-                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-600 cursor-pointer"
               />
               <span>Select All on Page ({questions.length})</span>
             </label>
             {selectedQuestionIds.length > 0 && (
-              <span className="font-extrabold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full text-[11px]">
+              <span className="font-extrabold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-full text-[11px]">
                 {selectedQuestionIds.length} selected
               </span>
             )}
@@ -961,8 +1375,8 @@ export const QuestionBankManagementPage = () => {
             return (
               <div
                 key={q._id || idx}
-                className={`bg-white rounded-2xl border transition p-5 ${
-                  isSelected ? 'border-blue-400 bg-blue-50/20 shadow-xs ring-1 ring-blue-400' : 'border-slate-200 shadow-xs hover:border-slate-300'
+                className={`bg-white dark:bg-slate-900 rounded-2xl border transition p-5 ${
+                  isSelected ? 'border-blue-400 bg-blue-50/20 dark:bg-blue-950/20 shadow-xs ring-1 ring-blue-400' : 'border-slate-200 dark:border-slate-800 shadow-xs hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -971,35 +1385,35 @@ export const QuestionBankManagementPage = () => {
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelectQuestion(q._id)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer mt-1.5 shrink-0"
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-600 cursor-pointer mt-1.5 shrink-0"
                       title="Select question"
                     />
-                    <span className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 border border-slate-200">
+                    <span className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black text-xs flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700">
                       {questionNumber}
                     </span>
                     <div>
                       <div className="flex flex-wrap items-center gap-2 mb-1.5">
                         {q.module && (
-                          <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                          <span className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900/50">
                             {q.module}
                           </span>
                         )}
                         {q.category && (
-                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                          <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
                             {q.category}
                           </span>
                         )}
                         {q.topic && (
-                          <span className="text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded border border-violet-200">
+                          <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/50 px-2 py-0.5 rounded border border-violet-200 dark:border-violet-900/50">
                             {q.topic}
                           </span>
                         )}
                         <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${
                           String(q.difficulty).toLowerCase() === 'hard'
-                            ? 'text-rose-700 bg-rose-50 border-rose-200'
+                            ? 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-900/50'
                             : String(q.difficulty).toLowerCase() === 'medium'
-                            ? 'text-amber-700 bg-amber-50 border-amber-200'
-                            : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            ? 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-900/50'
+                            : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-900/50'
                         }`}>
                           {q.difficulty || 'medium'}
                         </span>
@@ -1008,7 +1422,7 @@ export const QuestionBankManagementPage = () => {
                         </span>
                       </div>
 
-                      <p className="text-sm font-bold text-slate-900 leading-snug">
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
                         {q.questionText || q.text}
                       </p>
                     </div>
@@ -1016,7 +1430,7 @@ export const QuestionBankManagementPage = () => {
 
                   <button
                     onClick={() => handleDeleteQuestion(q._id)}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
                     title="Delete Question"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1024,7 +1438,7 @@ export const QuestionBankManagementPage = () => {
                 </div>
 
                 {/* Options Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
                   {q.options?.map((opt, oIdx) => {
                     const optText = typeof opt === 'object' && opt !== null ? (opt.text || opt.title) : opt;
                     const isCorrect = (oIdx === resolvedCorrectIdx);
@@ -1035,20 +1449,20 @@ export const QuestionBankManagementPage = () => {
                         key={oIdx}
                         className={`px-3 py-2 rounded-xl text-xs flex items-center gap-2 border ${
                           isCorrect
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
-                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700/60 text-emerald-900 dark:text-emerald-200 font-bold'
+                            : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-200'
                         }`}
                       >
                         <span className={`w-5 h-5 rounded-md flex items-center justify-center font-black text-[10px] ${
                           isCorrect
                             ? 'bg-emerald-600 text-white'
-                            : 'bg-slate-200 text-slate-600'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                         }`}>
                           {letter}
                         </span>
                         <span className="flex-1 truncate">{optText}</span>
                         {isCorrect && (
-                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         )}
                       </div>
                     );
@@ -1056,8 +1470,8 @@ export const QuestionBankManagementPage = () => {
                 </div>
 
                 {q.explanation && (
-                  <div className="mt-3 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-slate-600">
-                    <span className="font-bold text-slate-800">Explanation: </span>
+                  <div className="mt-3 text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-300">
+                    <span className="font-bold text-slate-800 dark:text-slate-100">Explanation: </span>
                     {q.explanation}
                   </div>
                 )}
@@ -1147,7 +1561,7 @@ export const QuestionBankManagementPage = () => {
                   }}
                   className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white"
                 >
-                  {TRAINING_MODULES.map((m) => (
+                  {QUESTION_BANK_MODULES.map((m) => (
                     <option key={m.id} value={m.id}>{m.label}</option>
                   ))}
                 </select>
@@ -1355,6 +1769,220 @@ export const QuestionBankManagementPage = () => {
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* MANUAL ADD SINGLE QUESTION MODAL */}
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Add Single Question to Bank"
+        maxWidth="max-w-2xl"
+      >
+        <form onSubmit={handleSaveSingleQuestion} className="space-y-4">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Create an individual multiple choice question tagged to a specific training module, category, and topic.
+          </p>
+
+          {/* Module, Category, Topic Selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+            {/* Module */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                1. Module
+              </label>
+              <select
+                value={newQuestion.module}
+                onChange={(e) => handleModalModuleChange(e.target.value)}
+                className="w-full text-xs px-2.5 py-2 rounded-xl border border-slate-200 bg-white font-medium focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              >
+                {QUESTION_BANK_MODULES.map((m) => {
+                  const mId = typeof m === 'object' ? (m.id || m.name) : m;
+                  const mLabel = typeof m === 'object' ? (m.label || m.name || m.id) : m;
+                  return (
+                    <option key={String(mId)} value={String(mId)}>
+                      {String(mLabel)}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                2. Category
+              </label>
+              <select
+                value={newQuestion.categoryId || newQuestion.category}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  const matched = modalCategories.find(c => String(c._id) === String(selectedId) || c.name === selectedId || c.title === selectedId);
+                  handleModalCategoryChange(selectedId, matched?.title || matched?.name || selectedId);
+                }}
+                className="w-full text-xs px-2.5 py-2 rounded-xl border border-slate-200 bg-white font-medium focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              >
+                {modalCategories.map((c) => {
+                  const cId = c._id || c.name || c.title;
+                  return (
+                    <option key={String(cId)} value={String(cId)}>
+                      {c.title || c.name || c.label || cId}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Topic */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                3. Topic
+              </label>
+              <select
+                value={newQuestion.topicId || newQuestion.topic}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  const matched = modalTopics.find(t => String(t._id) === String(selectedId) || t.title === selectedId);
+                  setNewQuestion(prev => ({
+                    ...prev,
+                    topic: matched?.title || selectedId,
+                    topicId: matched?._id || selectedId
+                  }));
+                }}
+                className="w-full text-xs px-2.5 py-2 rounded-xl border border-slate-200 bg-white font-medium focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              >
+                <option value="">-- Select Topic --</option>
+                {modalTopics.map((t) => (
+                  <option key={String(t._id)} value={String(t._id)}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Question Statement */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Question Text <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              required
+              value={newQuestion.questionText}
+              onChange={(e) => setNewQuestion(prev => ({ ...prev, questionText: e.target.value }))}
+              placeholder="Enter the question statement..."
+              className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden resize-none"
+            />
+          </div>
+
+          {/* 4 Options with radio selection for Correct Answer */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-2">
+              Answer Options <span className="text-slate-400 font-normal">(Select the button for the correct option)</span>
+            </label>
+            <div className="space-y-2">
+              {['A', 'B', 'C', 'D'].map((letter, idx) => {
+                const isSelected = newQuestion.correctAnswerIndex === idx;
+                return (
+                  <div key={letter} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewQuestion(prev => ({ ...prev, correctAnswerIndex: idx }))}
+                      className={`w-7 h-7 rounded-lg text-xs font-black flex items-center justify-center border transition shrink-0 ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title={isSelected ? 'Marked as Correct Answer' : 'Click to mark as Correct Answer'}
+                    >
+                      {letter}
+                    </button>
+                    <input
+                      type="text"
+                      required
+                      placeholder={`Option ${letter}`}
+                      value={newQuestion.options[idx] || ''}
+                      onChange={(e) => {
+                        const updated = [...newQuestion.options];
+                        updated[idx] = e.target.value;
+                        setNewQuestion(prev => ({ ...prev, options: updated }));
+                      }}
+                      className={`flex-1 text-xs px-3 py-2 rounded-xl border transition ${
+                        isSelected
+                          ? 'border-emerald-400 bg-emerald-50/40 text-emerald-950 font-semibold'
+                          : 'border-slate-200 bg-white'
+                      }`}
+                    />
+                    {isSelected && (
+                      <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md shrink-0">
+                        Correct
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Difficulty & Marks */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Difficulty</label>
+              <select
+                value={newQuestion.difficulty}
+                onChange={(e) => setNewQuestion(prev => ({ ...prev, difficulty: e.target.value }))}
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white"
+              >
+                <option value="Easy">Easy (Beginner)</option>
+                <option value="Medium">Medium (Standard)</option>
+                <option value="Hard">Hard (Advanced)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Marks</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={newQuestion.marks}
+                onChange={(e) => setNewQuestion(prev => ({ ...prev, marks: e.target.value }))}
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Explanation */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Explanation (Optional)</label>
+            <textarea
+              rows={2}
+              value={newQuestion.explanation}
+              onChange={(e) => setNewQuestion(prev => ({ ...prev, explanation: e.target.value }))}
+              placeholder="Explain why this answer is correct..."
+              className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white resize-none"
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAddModalOpen(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              icon={CheckCircle}
+              loading={submitting}
+            >
+              Save Question to Bank
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

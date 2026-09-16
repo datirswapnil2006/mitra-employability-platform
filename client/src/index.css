@@ -28,13 +28,14 @@
 
   [data-theme="dark"],
   .dark {
-    --page-bg: #0B1120;
-    --card-bg: #111827;
-    --card-border: #1F2937;
-    --text-primary: #F9FAFB;
-    --text-secondary: #9CA3AF;
-    --header-bg: rgba(17, 24, 39, 0.95);
-    --header-border: #1F2937;
+    --page-bg: #090E17;
+    --card-bg: #0F172A;
+    --card-border: #1E293B;
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --header-bg: rgba(15, 23, 42, 0.95);
+    --header-border: #1E293B;
+    color-scheme: dark;
   }
   
   body {
@@ -72,6 +73,11 @@
   border: 1px solid var(--card-border, #E2E8F0);
 }
 
+.dark .glass-panel {
+  background: var(--card-bg, rgba(15, 23, 42, 0.92));
+  border: 1px solid var(--card-border, #1E293B);
+}
+
 .glass-card {
   background: var(--card-bg, #FFFFFF);
   border: 1px solid var(--card-border, #E2E8F0);
@@ -84,8 +90,26 @@
   box-shadow: 0 6px 20px -4px rgba(0, 0, 0, 0.07), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
 }
 
+.dark .glass-card {
+  background: var(--card-bg, #0F172A);
+  border: 1px solid var(--card-border, #1E293B);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+}
+
+.dark .glass-card:hover {
+  border-color: var(--primary-color, #334155);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.6);
+}
+
 .gradient-text {
   background: linear-gradient(135deg, var(--text-primary, #0F172A) 0%, #475569 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .gradient-text {
+  background: linear-gradient(135deg, #F8FAFC 0%, #94A3B8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -112,8 +136,18 @@
     linear-gradient(to bottom, rgba(203, 213, 225, 0.4) 1px, transparent 1px);
 }
 
+.dark .bg-grid-slate {
+  background-image: 
+    linear-gradient(to right, rgba(30, 41, 59, 0.5) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 41, 59, 0.5) 1px, transparent 1px);
+}
+
 .hero-glow {
   background: radial-gradient(circle at 50% 10%, rgba(37, 99, 235, 0.08) 0%, rgba(99, 102, 241, 0.04) 40%, rgba(248, 250, 252, 0) 70%);
+}
+
+.dark .hero-glow {
+  background: radial-gradient(circle at 50% 10%, rgba(37, 99, 235, 0.16) 0%, rgba(99, 102, 241, 0.08) 40%, rgba(9, 14, 23, 0) 70%);
 }
 
 .custom-scrollbar::-webkit-scrollbar {

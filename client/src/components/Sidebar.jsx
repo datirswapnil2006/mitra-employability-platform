@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -35,6 +35,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
   const { openCustomizer } = useTheme();
   const location = useLocation();
   const isAdmin = user && user.role === 'admin';
+  const sidebarRef = useRef(null);
 
   // Internal collapse state fallback if not passed from layout
   const [internalCollapsed, setInternalCollapsed] = useState(() => {
@@ -54,31 +55,6 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
       });
     }
   };
-
-  // Manage open states of collapsible groups (Training, Registration, Assessment)
-  // Closed by default so sections do not open automatically upon login
-  const [openGroups, setOpenGroups] = useState({
-    registration: false,
-    training: false,
-    assessment: false
-  });
-
-  const toggleGroup = (groupKey, e) => {
-    if (e) e.preventDefault();
-    // If sidebar is collapsed on desktop, auto-expand it when clicking a group
-    if (effectiveCollapsed) {
-      handleToggleCollapse();
-    }
-    setOpenGroups((prev) => ({
-      ...prev,
-      [groupKey]: !prev[groupKey]
-    }));
-  };
-
-  // Close mobile drawer on route change
-  useEffect(() => {
-    if (onClose) onClose();
-  }, [location.pathname]);
 
   // Admin Navigation Definition (Section 31)
   const adminNav = [
@@ -274,8 +250,44 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
     return currentPath === itemTo;
   };
 
+  // Identify if current route belongs to one of the collapsible groups (e.g. Assessment, Training, Registration)
+  const activeRouteGroupKey = useMemo(() => {
+    const matchingGroup = currentNav.find(
+      (item) => item.type === 'group' && item.children?.some((c, cIdx) => isChildActive(c.to, cIdx, item.children))
+    );
+    return matchingGroup ? matchingGroup.key : null;
+  }, [currentNav, location.pathname, location.search]);
+
+  // Manage open state of collapsible groups (Training, Registration, Assessment)
+  // When inside a module's submodule (like Assessment), that module is open and does NOT close when navigating submodules
+  const [openGroup, setOpenGroup] = useState(() => activeRouteGroupKey);
+
+  // Sync openGroup when route changes between main modules or submodules
+  useEffect(() => {
+    setOpenGroup(activeRouteGroupKey);
+  }, [activeRouteGroupKey]);
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    if (onClose) onClose();
+  }, [location.pathname, location.search]);
+
+  const toggleGroup = (groupKey, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    // If sidebar is collapsed on desktop, auto-expand it when clicking a group
+    if (effectiveCollapsed) {
+      handleToggleCollapse();
+    }
+    // Accordion behavior: opening another main module automatically closes the last one
+    setOpenGroup((prev) => (prev === groupKey ? null : groupKey));
+  };
+
   const sidebarContent = (
     <div
+      ref={sidebarRef}
       className="flex flex-col h-full select-none overflow-hidden transition-colors duration-200"
       style={{
         backgroundColor: 'var(--sidebar-bg, #0F172A)',
@@ -421,6 +433,10 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
               <Link
                 key={idx}
                 to={item.to}
+                onClick={() => {
+                  setOpenGroup(null);
+                  if (onClose) onClose();
+                }}
                 title={effectiveCollapsed ? item.label : undefined}
                 style={
                   active
@@ -451,7 +467,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
 
           if (item.type === 'group') {
             const Icon = item.icon;
-            const isOpen = openGroups[item.key] ?? false;
+            const isOpen = openGroup === item.key;
             const hasActiveChild = item.children?.some((c, cIdx) => isChildActive(c.to, cIdx, item.children));
 
             return (
@@ -594,13 +610,13 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
       {isOpen && (
         <div
           onClick={onClose}
-          className="md:hidden fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 transition-opacity"
+          className="md:hidden fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 transition-opacity"
         />
       )}
 
       {/* Mobile Drawer */}
       <aside
-        className={`md:hidden fixed top-0 bottom-0 left-0 w-72 z-50 transform transition-transform duration-300 ease-in-out shadow-2xl ${
+        className={`md:hidden fixed top-0 bottom-0 left-0 w-72 z-60 transform transition-transform duration-300 ease-in-out shadow-2xl ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

@@ -20,10 +20,10 @@ export const Pagination = ({
   return (
     <div className={`flex flex-col sm:flex-row items-center justify-between gap-3 px-2 py-3 ${className}`}>
       {totalItems > 0 && (
-        <span className="text-xs text-slate-500 font-medium">
-          Showing <strong className="text-slate-800">{startItem}</strong> to{' '}
-          <strong className="text-slate-800">{endItem}</strong> of{' '}
-          <strong className="text-slate-800">{totalItems}</strong> records
+        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+          Showing <strong className="text-slate-800 dark:text-slate-200">{startItem}</strong> to{' '}
+          <strong className="text-slate-800 dark:text-slate-200">{endItem}</strong> of{' '}
+          <strong className="text-slate-800 dark:text-slate-200">{totalItems}</strong> records
         </span>
       )}
 
@@ -32,7 +32,7 @@ export const Pagination = ({
           type="button"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1}
-          className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
           aria-label="Previous Page"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -50,14 +50,14 @@ export const Pagination = ({
             const showEllipsisBefore = idx > 0 && page - arr[idx - 1] > 1;
             return (
               <React.Fragment key={page}>
-                {showEllipsisBefore && <span className="px-1 text-slate-400 text-xs">...</span>}
+                {showEllipsisBefore && <span className="px-1 text-slate-400 dark:text-slate-500 text-xs">...</span>}
                 <button
                   type="button"
                   onClick={() => onPageChange(page)}
                   className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold transition ${
                     currentPage === page
                       ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   {page}
@@ -70,7 +70,7 @@ export const Pagination = ({
           type="button"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages}
-          className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
           aria-label="Next Page"
         >
           <ChevronRight className="w-4 h-4" />

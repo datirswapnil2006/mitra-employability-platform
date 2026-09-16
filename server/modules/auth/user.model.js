@@ -13,7 +13,6 @@ const userSchema = new mongoose.Schema({
     enum: OFFICIAL_DEPARTMENTS,
     default: 'CSE'
   },
-  profilePhoto: { type: String, default: '' },
   status: { type: String, enum: ['active', 'inactive', 'suspended'], default: 'active' },
   themePreferences: {
     mode: { type: String, enum: ['light', 'dark', 'system'], default: 'light' },

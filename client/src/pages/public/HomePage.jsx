@@ -1,333 +1,347 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import Button from '../../components/Button';
 import Badge from '../../components/Badge';
 import Card from '../../components/Card';
 import ProgressBar from '../../components/ProgressBar';
+import { useAuth } from '../../context/AuthContext';
 import {
   ArrowRight,
   BookOpen,
-  Cpu,
   Brain,
   BarChart3,
   CheckCircle2,
   Sparkles,
   ShieldCheck,
   Award,
-  Users,
-  Terminal,
   Code,
   FileCheck,
   PlayCircle,
-  FileSpreadsheet,
   GraduationCap,
+  ChevronRight,
+  Target,
+  TrendingUp,
+  Flame,
   Layers
 } from 'lucide-react';
 
 export const HomePage = () => {
-  const [activeTab, setActiveTab] = useState('curriculum');
+  const { user } = useAuth();
 
+  // Truthful platform metrics based on actual system architecture
   const stats = [
-    { label: 'Student Capacity', value: '4,000+', icon: Users, color: 'text-blue-600' },
-    { label: 'Academic Streams', value: '9 Branches', icon: GraduationCap, color: 'text-indigo-600' },
-    { label: 'AI Question Grounding', value: '100%', icon: Sparkles, color: 'text-emerald-600' },
-    { label: 'T&P Excel Reports', value: 'Instant', icon: FileSpreadsheet, color: 'text-sky-600' }
+    { value: '9', label: 'Academic Departments', sub: 'Engineering & Management' },
+    { value: '5', label: 'Core Training Tracks', sub: 'Aptitude, Tech, Domain & Soft' },
+    { value: '100%', label: 'Profile Gating', sub: 'Verified Academic Records' },
+    { value: 'AI-Assisted', label: 'Diagnostic Engine', sub: 'Grounded Topic Assessments' }
   ];
 
-  const features = [
+  // 4 Single-Row Major Platform Capabilities
+  const capabilities = [
     {
       icon: BookOpen,
-      color: 'bg-blue-50 text-blue-600 border-blue-100',
-      title: 'Curated Training Modules',
-      desc: 'Structured curriculum across Technical Coding, Aptitude, SQL, Domain Knowledge, and Soft Skills.'
+      title: 'Training',
+      tag: 'Curriculum',
+      desc: 'Modular learning paths spanning Aptitude, Data Structures, SQL, Department Domains, and Professional Communication.',
+      iconColor: 'text-blue-600 bg-blue-50 border-blue-200'
+    },
+    {
+      icon: FileCheck,
+      title: 'Assessments',
+      tag: 'Evaluations',
+      desc: 'Timed submodule tests with automated evaluation, performance percentiles, and actionable solution explanations.',
+      iconColor: 'text-emerald-600 bg-emerald-50 border-emerald-200'
     },
     {
       icon: Brain,
-      color: 'bg-indigo-50 text-indigo-600 border-indigo-100',
-      title: 'Grounded AI Assessments',
-      desc: 'Topic-grounded assessments powered by Gemini AI with diagnostic feedback and zero hallucination.'
-    },
-    {
-      icon: ShieldCheck,
-      color: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-      title: '100% Profile Gating',
-      desc: 'Enforces complete academic and contact verification before unlocking modules and placement tests.'
+      title: 'AI Assistance',
+      tag: 'Intelligence',
+      desc: 'Curriculum-grounded question bank generator and psychometric self-discovery powered by Google Gemini.',
+      iconColor: 'text-indigo-600 bg-indigo-50 border-indigo-200'
     },
     {
       icon: BarChart3,
-      color: 'bg-rose-50 text-rose-600 border-rose-100',
-      title: 'Placement Intelligence',
-      desc: 'Cohort-level analytics with 1-click department Excel (.xlsx) export for Training & Placement Officers.'
+      title: 'Progress Tracking',
+      tag: 'Analytics',
+      desc: 'Cohort-level analytics for Training & Placement Officers with 1-click Excel export and student readiness benchmarking.',
+      iconColor: 'text-amber-600 bg-amber-50 border-amber-200'
     }
   ];
 
-  const trainingModules = [
-    { title: 'Aptitude & Reasoning', icon: Brain, desc: 'Quantitative, logical reasoning, and speed drills.' },
-    { title: 'Technical Coding & DSA', icon: Code, desc: 'Data structures, algorithms, and technical interview patterns.' },
-    { title: 'SQL & Databases', icon: Terminal, desc: 'Relational queries, Joins, grouping, and schema evaluation.' },
-    { title: 'Domain Knowledge', icon: Cpu, desc: 'Curriculum mapped to EXTC, CSE, IT, ME, Civil, IoT, AI/DS, MBA, MCA.' },
-    { title: 'Corporate Communication', icon: Users, desc: 'Business etiquette, group discussions, and presentations.' },
-    { title: 'Resume & Interviews', icon: Award, desc: 'ATS resume formatting and STAR-method behavioral preparation.' }
+  // 5-Step Horizontal Placement Journey
+  const journeySteps = [
+    {
+      step: '01',
+      title: 'Learn',
+      desc: 'Curated department-aware lessons and notes',
+      icon: BookOpen
+    },
+    {
+      step: '02',
+      title: 'Practice',
+      desc: 'Targeted drills across coding & aptitude',
+      icon: Code
+    },
+    {
+      step: '03',
+      title: 'Assess',
+      desc: 'Timed AI-grounded diagnostic tests',
+      icon: FileCheck
+    },
+    {
+      step: '04',
+      title: 'Improve',
+      desc: 'Review diagnostic reports & bridge gaps',
+      icon: TrendingUp
+    },
+    {
+      step: '05',
+      title: 'Get Placement Ready',
+      desc: 'Verified readiness for campus recruiters',
+      icon: Award
+    }
   ];
 
-  const departments = [
-    { name: 'EXTC', desc: 'Embedded Systems & IoT' },
-    { name: 'CSE', desc: 'Algorithms & Full-Stack' },
-    { name: 'IT', desc: 'Cloud, DevOps & Systems' },
-    { name: 'Mechanical', desc: 'CAD/CAM & Automation' },
-    { name: 'Civil', desc: 'Structural Design & BIM' },
-    { name: 'CSE-IoT', desc: 'Connected Edge Devices' },
-    { name: 'AI & DS', desc: 'Machine Learning & Big Data' },
-    { name: 'MBA', desc: 'Management & Finance' },
-    { name: 'MCA', desc: 'Enterprise Applications' }
-  ];
-
-  const steps = [
-    { num: '01', title: 'Onboard', desc: 'Register with institutional credentials' },
-    { num: '02', title: 'Verify Profile', desc: 'Complete 100% academic profile gating' },
-    { num: '03', title: 'Learn & Assess', desc: 'Curated videos, notes & AI evaluations' },
-    { num: '04', title: 'Get Placed', desc: 'Placement readiness & T&P shortlisting' }
-  ];
+  // Resolved dynamic CTA targets
+  const learningLink = user ? '/student/training' : '/training';
+  const assessmentLink = user ? '/student/assessments' : '/login';
+  const primaryCtaLink = user ? (user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard') : '/register';
 
   return (
-    <div className="space-y-16 sm:space-y-20 pb-16">
-      {/* 1. Compact Hero Section */}
-      <section className="relative pt-8 sm:pt-14 px-4 sm:px-6 max-w-7xl mx-auto hero-glow">
-        <div className="text-center max-w-3xl mx-auto space-y-5">
-          {/* Institutional Badge */}
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 px-3.5 py-1 rounded-full text-xs font-bold text-blue-700 shadow-xs">
-            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-            Institutional Employability & Placement Platform
-          </div>
-
-          {/* Main Title */}
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-tight text-slate-900 leading-[1.15]">
-            Build Skills. Test Knowledge. <br className="hidden sm:block" />
-            <span className="gradient-brand">Become Placement Ready.</span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="text-slate-600 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
-            An integrated campus platform uniting structured training, AI-grounded assessments, 
-            mandatory profile gating, and real-time placement analytics.
-          </p>
-
-          {/* Action CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <Link to="/register" className="w-full sm:w-auto">
-              <Button size="lg" variant="primary" icon={ArrowRight} className="w-full sm:w-auto justify-center shadow-md">
-                Get Started
-              </Button>
-            </Link>
-            <Link to="/training" className="w-full sm:w-auto">
-              <Button size="lg" variant="outline" className="w-full sm:w-auto justify-center bg-white">
-                Explore Curriculum
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Live Dashboard Preview Mockup */}
-        <div className="mt-10 max-w-4xl mx-auto bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-xl relative">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              </div>
-              <span className="text-[11px] font-mono text-slate-400 pl-2">mitra.edu/student/dashboard</span>
-            </div>
-            <Badge variant="success">Verified Profile</Badge>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-600">Profile Completion</span>
-                <span className="text-emerald-600 font-bold">100%</span>
-              </div>
-              <ProgressBar progress={100} color="emerald" showPercentage={false} />
+    <div className="space-y-10 sm:space-y-12 pb-12">
+      {/* 1. Compact Hero Section (2-Column Layout for minimum vertical scroll) */}
+      <section className="pt-6 sm:pt-10 px-4 sm:px-6 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+          {/* Left Column: Core Value Proposition */}
+          <div className="lg:col-span-7 space-y-4 text-left">
+            {/* Context Badge */}
+            <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200/80 px-3 py-1 rounded-full text-xs font-semibold text-blue-700 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>Institutional Employability & Placement Ecosystem</span>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-600">Core Curriculum</span>
-                <span className="text-blue-600 font-bold">82%</span>
-              </div>
-              <ProgressBar progress={82} color="indigo" showPercentage={false} />
+            {/* Main Headline */}
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 leading-[1.15]">
+              Build Skills. Assess Yourself.{' '}
+              <span className="text-blue-600">Get Placement Ready.</span>
+            </h1>
+
+            {/* Concise Professional Description */}
+            <p className="text-slate-600 text-sm sm:text-base leading-relaxed max-w-2xl">
+              MITRA is an AI-assisted, department-aware employability training and assessment platform. 
+              Equip students with structured curriculum, AI-grounded evaluations, and verifiable readiness analytics for campus recruitment.
+            </p>
+
+            {/* Action CTAs */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <Link to={learningLink}>
+                <Button size="md" variant="primary" icon={ArrowRight} className="shadow-xs font-bold text-xs sm:text-sm">
+                  Start Learning
+                </Button>
+              </Link>
+              <Link to={assessmentLink}>
+                <Button size="md" variant="outline" icon={CheckCircle2} className="bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs sm:text-sm">
+                  Take Assessment
+                </Button>
+              </Link>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-600">AI Mapped Tests</span>
-                <span className="text-slate-900 font-bold">9 / 10 Passed</span>
-              </div>
-              <ProgressBar progress={90} color="sky" showPercentage={false} />
-            </div>
-          </div>
-
-          <div className="mt-3.5 p-3 bg-blue-50/70 rounded-xl border border-blue-200 flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-blue-600 text-white rounded-lg">
-                <PlayCircle className="w-4 h-4" />
-              </div>
-              <span className="font-semibold text-slate-900 truncate">
-                Next: <strong className="text-blue-700">SQL Joins & Relational Queries</strong>
+            {/* Trust Badges */}
+            <div className="pt-2 flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                Department Mapped
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                Zero Hallucination AI
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                Placement Office Verified
               </span>
             </div>
-            <Link to="/login" className="text-blue-600 font-bold hover:underline shrink-0 flex items-center gap-1">
-              Resume <ArrowRight className="w-3 h-3" />
-            </Link>
+          </div>
+
+          {/* Right Column: Compact Live Dashboard Mockup */}
+          <div className="lg:col-span-5">
+            <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 sm:p-5 space-y-4">
+              {/* Mockup Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400 pl-1">student.mitra.edu</span>
+                </div>
+                <Badge variant="success" className="text-[10px] py-0.5 px-2">
+                  Profile Verified 100%
+                </Badge>
+              </div>
+
+              {/* Metric Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/70">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-semibold text-slate-600">Readiness Score</span>
+                    <span className="text-blue-600 font-bold text-xs">88%</span>
+                  </div>
+                  <ProgressBar progress={88} color="indigo" showPercentage={false} />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Recruiter Benchmark: 75%</span>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/70">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-semibold text-slate-600">Tests Passed</span>
+                    <span className="text-emerald-600 font-bold text-xs">14 / 16</span>
+                  </div>
+                  <ProgressBar progress={87.5} color="emerald" showPercentage={false} />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Diagnostic Accuracy: 91%</span>
+                </div>
+              </div>
+
+              {/* Active Next Step Banner */}
+              <div className="p-3 bg-blue-50/70 rounded-lg border border-blue-200/80 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-1.5 bg-blue-600 text-white rounded-md shrink-0">
+                    <PlayCircle className="w-4 h-4" />
+                  </div>
+                  <div className="truncate text-xs">
+                    <span className="text-[10px] uppercase font-bold text-blue-700 tracking-wider block">Recommended Next</span>
+                    <span className="font-semibold text-slate-900 truncate block">Technical Coding: DSA Trees & Graphs</span>
+                  </div>
+                </div>
+                <Link to={assessmentLink} className="shrink-0 text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                  Start <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
+              {/* Quick Tags Footer */}
+              <div className="pt-1 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
+                <span className="flex items-center gap-1">
+                  <Flame className="w-3.5 h-3.5 text-amber-500" />
+                  <strong>6-Day</strong> Practice Streak
+                </span>
+                <span className="text-slate-400 font-mono text-[10px]">T&P Cohort 2026</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 2. Compact Statistics Strip */}
+      {/* 2. Compact Statistics / Trust Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs grid grid-cols-2 md:grid-cols-4 gap-4 text-center divide-y md:divide-y-0 md:divide-x divide-slate-100">
-          {stats.map((s, idx) => {
-            const Icon = s.icon;
+        <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs grid grid-cols-2 md:grid-cols-4 gap-3 text-center divide-y md:divide-y-0 md:divide-x divide-slate-100">
+          {stats.map((s, idx) => (
+            <div key={idx} className="space-y-0.5 pt-2.5 md:pt-0">
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{s.value}</h2>
+              <div className="text-xs font-bold text-slate-700">{s.label}</div>
+              <p className="text-[11px] text-slate-400">{s.sub}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 3. Single-Row Feature Section (4 Compact Cards) */}
+      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1 border-b border-slate-200/80 pb-2">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Platform Features</span>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+              Integrated Capabilities for Employability
+            </h2>
+          </div>
+          <p className="text-xs text-slate-500 max-w-sm sm:text-right">
+            Purpose-built modules designed to align students, faculty, and recruiters.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {capabilities.map((cap, idx) => {
+            const Icon = cap.icon;
             return (
-              <div key={idx} className="space-y-1 pt-3 md:pt-0">
-                <div className={`flex items-center justify-center gap-1.5 ${s.color} mb-0.5`}>
-                  <Icon className="w-4 h-4" />
+              <div
+                key={idx}
+                className="bg-white rounded-xl p-4 border border-slate-200/80 hover:border-blue-300 hover:shadow-xs transition-all duration-200 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`p-2 rounded-lg border ${cap.iconColor}`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                      {cap.tag}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-slate-900 text-sm mb-1">{cap.title}</h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">{cap.desc}</p>
                 </div>
-                <h3 className="text-2xl sm:text-3xl font-black text-slate-900">{s.value}</h3>
-                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">{s.label}</p>
               </div>
             );
           })}
         </div>
       </section>
 
-      {/* 3. Core Capabilities Grid (4 Concise Cards) */}
-      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 space-y-6">
-        <div className="text-center max-w-xl mx-auto space-y-2">
-          <Badge variant="primary">Core Capabilities</Badge>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-            Engineered for Campus Employability
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {features.map((f, idx) => {
-            const Icon = f.icon;
-            return (
-              <Card key={idx} className="p-5 hover:shadow-md transition-all border-slate-200 flex flex-col justify-between">
-                <div>
-                  <div className={`p-2.5 rounded-xl w-fit mb-3 border ${f.color}`}>
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <h3 className="font-bold text-slate-900 text-sm mb-1.5">{f.title}</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">{f.desc}</p>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 4. Tabbed Curriculum & Department Explorer */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 space-y-6">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200 pb-3">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">Curriculum & Departments</h2>
-            <p className="text-xs text-slate-500">Comprehensive training modules and supported academic branches</p>
+      {/* 4. Compact "How MITRA Works" Horizontal Pipeline Section */}
+      <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 space-y-4">
+        <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200/80 shadow-2xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-100 pb-3">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Learning Journey</span>
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+                How MITRA Prepares You For Placements
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500">
+              A structured 5-stage roadmap from foundational learning to verified recruiter shortlisting.
+            </p>
           </div>
 
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
-            <button
-              onClick={() => setActiveTab('curriculum')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                activeTab === 'curriculum' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Training Modules (6)
-            </button>
-            <button
-              onClick={() => setActiveTab('departments')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                activeTab === 'departments' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Academic Branches (9)
-            </button>
-          </div>
-        </div>
-
-        {activeTab === 'curriculum' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {trainingModules.map((m, idx) => {
-              const Icon = m.icon;
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {journeySteps.map((step, idx) => {
+              const Icon = step.icon;
               return (
-                <div key={idx} className="p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-all shadow-xs">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <h4 className="font-bold text-slate-900 text-sm">{m.title}</h4>
+                <div
+                  key={idx}
+                  className="bg-slate-50/80 rounded-lg p-3.5 border border-slate-200/70 hover:bg-white hover:border-blue-200 hover:shadow-2xs transition-all space-y-2 relative"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      STAGE {step.step}
+                    </span>
+                    <Icon className="w-3.5 h-3.5 text-slate-400" />
                   </div>
-                  <p className="text-xs text-slate-600">{m.desc}</p>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-xs sm:text-sm">{step.title}</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">{step.desc}</p>
+                  </div>
                 </div>
               );
             })}
           </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {departments.map((dept, idx) => (
-              <div key={idx} className="p-3.5 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-all shadow-xs">
-                <span className="font-black text-blue-600 text-sm block">{dept.name}</span>
-                <span className="text-xs text-slate-600 block mt-0.5">{dept.desc}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* 5. Compact 4-Step Placement Roadmap */}
-      <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 space-y-6">
-        <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-xs">
-          <div className="text-center max-w-xl mx-auto mb-6 space-y-1">
-            <Badge variant="primary">How MITRA Works</Badge>
-            <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900">4 Steps to Placement Readiness</h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {steps.map((step, idx) => (
-              <div key={idx} className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5 relative">
-                <span className="text-blue-600 font-mono font-bold text-xs bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                  STEP {step.num}
-                </span>
-                <h4 className="font-bold text-slate-900 text-sm">{step.title}</h4>
-                <p className="text-xs text-slate-500">{step.desc}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
-      {/* 6. High-Conversion Professional CTA */}
-      <section className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
-        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl p-8 sm:p-10 text-white shadow-xl space-y-6">
-          <div className="max-w-xl mx-auto space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Ready to Accelerate Your Career?
+      {/* 5. Final Compact CTA Section */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="bg-slate-900 rounded-xl p-6 sm:p-8 text-white shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="space-y-1.5 text-center md:text-left">
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              Ready to prepare for your next opportunity?
             </h2>
-            <p className="text-blue-100 text-xs sm:text-sm">
-              Join students preparing with verified curriculum, AI assessments, and institutional analytics.
+            <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
+              Equip yourself with curated syllabus modules, take AI diagnostic assessments, and benchmark your readiness today.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to="/register" className="w-full sm:w-auto">
-              <Button size="lg" variant="secondary" icon={ArrowRight} className="w-full sm:w-auto bg-white hover:bg-slate-100 text-blue-700 font-bold border-0 shadow-md">
-                Get Started
-              </Button>
-            </Link>
-            <Link to="/login" className="w-full sm:w-auto">
-              <Button size="lg" variant="outline" className="hover:bg-slate-100 text-blue-700 font-bold border-0 shadow-md">
-                Sign In to Portal
+          <div className="flex items-center gap-3 shrink-0">
+            <Link to={primaryCtaLink}>
+              <Button size="md" variant="primary" icon={ArrowRight} className="font-bold text-xs sm:text-sm shadow-xs">
+                Start Your Preparation
               </Button>
             </Link>
           </div>
@@ -338,3 +352,4 @@ export const HomePage = () => {
 };
 
 export default HomePage;
+

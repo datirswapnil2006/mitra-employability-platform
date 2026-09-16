@@ -11,9 +11,8 @@ export const PublicLayout = () => {
   const { user } = useAuth();
 
   const navLinks = [
-    { to: '/', label: 'Home' },
-    { to: '/#features', label: 'Features' },
     { to: '/training', label: 'Training' },
+    { to: '/#features', label: 'Capabilities' },
     { to: '/#how-it-works', label: 'How It Works' },
     { to: '/about', label: 'About' },
     { to: '/contact', label: 'Contact' }
@@ -21,24 +20,20 @@ export const PublicLayout = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col">
-      {/* Sticky Public Navbar */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-18 flex items-center justify-between">
+      {/* Compact & Modern Public Navbar */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-15 flex items-center justify-between">
           {/* Institutional & Product Logo */}
-          <Link to="/" className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-2.5 group">
             <img
               src="/college-logo.jpg"
               alt="College Logo"
-              className="h-10 w-auto rounded-lg object-contain bg-white p-1 border border-slate-200 shadow-xs"
+              className="h-8 w-auto rounded-md object-contain bg-white p-0.5 border border-slate-200 shadow-2xs"
             />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-base font-black tracking-wider text-slate-900">MITRA</span>
-                <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-1.5 py-0.2 rounded border border-blue-200">
-                  PORTAL
-                </span>
-              </div>
-              <p className="text-[10px] font-semibold text-slate-500">Employability Platform</p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-base font-medium tracking-tight text-slate-900 group-hover:text-blue-600 transition">
+                MITRA Employability Portal
+              </span>
             </div>
           </Link>
 
@@ -56,22 +51,22 @@ export const PublicLayout = () => {
           </nav>
 
           {/* Action Buttons */}
-          <div className="hidden sm:flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2.5">
             {user ? (
               <Link to={user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard'}>
-                <Button size="sm" variant="primary" icon={ArrowRight}>
-                  Go to Dashboard
+                <Button size="sm" variant="primary" icon={ArrowRight} className="h-8 text-xs font-bold shadow-xs">
+                  Dashboard
                 </Button>
               </Link>
             ) : (
               <>
                 <Link to="/login">
-                  <Button size="sm" variant="outline">
-                    Login
+                  <Button size="sm" variant="outline" className="h-8 text-xs font-bold text-slate-700 hover:text-slate-900">
+                    Sign In
                   </Button>
                 </Link>
                 <Link to="/register">
-                  <Button size="sm" variant="primary" icon={ArrowRight}>
+                  <Button size="sm" variant="primary" icon={ArrowRight} className="h-8 text-xs font-bold shadow-xs">
                     Get Started
                   </Button>
                 </Link>
@@ -82,9 +77,10 @@ export const PublicLayout = () => {
           {/* Mobile Hamburger Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100"
+            className="md:hidden p-1.5 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            aria-label="Toggle Navigation Menu"
           >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
 

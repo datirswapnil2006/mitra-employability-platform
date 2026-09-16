@@ -26,16 +26,16 @@ export const TrainingCard = ({
   const TypeIcon = getTypeIcon();
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden flex flex-col h-full group border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden flex flex-col h-full group border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md transition-all">
       {/* Thumbnail Header */}
-      <div className="relative h-44 w-full bg-slate-100 overflow-hidden">
+      <div className="relative h-44 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <img
           src={thumbnailUrl || defaultThumb}
           alt={title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           onError={(e) => { e.target.src = defaultThumb; }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent" />
         
         <div className="absolute top-3 left-3 flex gap-2">
           <Badge variant="primary">{technology || 'General'}</Badge>
@@ -54,15 +54,15 @@ export const TrainingCard = ({
       {/* Card Content */}
       <div className="p-5 flex-1 flex flex-col justify-between">
         <div>
-          <h4 className="font-bold text-base text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+          <h4 className="font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
             {title}
           </h4>
-          <p className="text-xs text-slate-600 mt-2 line-clamp-2 leading-relaxed">
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed">
             {description || 'Learn core concepts and practical implementation.'}
           </p>
         </div>
 
-        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
           <Button
             size="sm"
             variant="outline"
@@ -82,7 +82,7 @@ export const TrainingCard = ({
               Mark Complete
             </Button>
           ) : (
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1">
               ✓ Completed
             </span>
           )}

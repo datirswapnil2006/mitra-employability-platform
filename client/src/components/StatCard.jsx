@@ -13,11 +13,11 @@ export const StatCard = ({
   activeColor = 'blue'
 }) => {
   const iconColors = {
-    indigo: 'bg-blue-50 text-blue-600 border-blue-100',
-    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-    amber: 'bg-amber-50 text-amber-600 border-amber-100',
-    sky: 'bg-sky-50 text-sky-600 border-sky-100',
-    rose: 'bg-rose-50 text-rose-600 border-rose-100'
+    indigo: 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/50',
+    emerald: 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/50',
+    amber: 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/50',
+    sky: 'bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 border-sky-100 dark:border-sky-900/50',
+    rose: 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/50'
   };
 
   const activeRings = {
@@ -31,7 +31,7 @@ export const StatCard = ({
   return (
     <div
       onClick={onClick}
-      className={`bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-start justify-between relative overflow-hidden transition-all duration-200 h-full w-full ${
+      className={`bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex items-start justify-between relative overflow-hidden transition-all duration-200 h-full w-full ${
         onClick ? 'cursor-pointer' : ''
       } ${
         active
@@ -42,9 +42,9 @@ export const StatCard = ({
       } ${className}`}
     >
       <div className="flex-1 min-w-0 pr-2">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">{title}</p>
-        <h4 className="text-2xl font-extrabold text-slate-900 mt-1 tracking-tight">{value}</h4>
-        {subtitle && <p className="text-xs text-slate-500 mt-1 truncate">{subtitle}</p>}
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider truncate">{title}</p>
+        <h4 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mt-1 tracking-tight">{value}</h4>
+        {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">{subtitle}</p>}
         {trend && (
           <span className={`inline-flex items-center text-xs font-bold mt-2 ${trend.positive ? 'text-emerald-600' : 'text-rose-600'}`}>
             {trend.positive ? '↑' : '↓'} {trend.value}

@@ -7,7 +7,7 @@ const variants = {
   danger: 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs font-semibold focus:ring-rose-500/25',
   success: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs font-semibold focus:ring-emerald-500/25',
   warning: 'bg-amber-500 hover:bg-amber-600 text-white shadow-xs font-semibold focus:ring-amber-500/25',
-  ghost: 'bg-transparent hover:bg-slate-100 text-slate-700 font-medium'
+  ghost: 'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium'
 };
 
 const sizes = {

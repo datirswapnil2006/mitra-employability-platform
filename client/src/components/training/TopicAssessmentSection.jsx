@@ -94,12 +94,12 @@ export const TopicAssessmentSection = ({
       {/* Grid: Default Assessment & Practice Test Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Card 1: Default Topic Assessment */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute -top-12 -right-12 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute -top-12 -right-12 w-32 h-32 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
 
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
-              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 flex items-center gap-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-900/50 flex items-center gap-1">
                 <FileCheck className="w-3.5 h-3.5" />
                 Official Topic Test
               </span>
@@ -110,38 +110,47 @@ export const TopicAssessmentSection = ({
               )}
             </div>
 
-            <h4 className="font-black text-base text-slate-900 leading-snug">
+            <h4 className="font-black text-base text-slate-900 dark:text-slate-100 leading-snug">
               {defaultAssessment?.title || `${topic?.title} — Official Assessment`}
             </h4>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
               Standard curriculum evaluation. Earn 40 XP upon passing (70%+). Zero AI latency.
             </p>
 
             {/* Test Metrics */}
-            <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">Questions</span>
-                <span className="text-xs font-black text-slate-800">
-                  {defaultAssessment?.questions?.length || 15} Q (Max 30)
+            <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-100 dark:border-slate-700/60">
+                <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Questions</span>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                  {defaultAssessment?.questions?.length || (questionStats.total > 0 ? Math.min(questionStats.total, 15) : 0)} Q
                 </span>
               </div>
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">Time Limit</span>
-                <span className="text-xs font-black text-slate-800">
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-100 dark:border-slate-700/60">
+                <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Time Limit</span>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200">
                   {defaultAssessment?.timeLimitMinutes || 20} Mins
                 </span>
               </div>
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">Pass Mark</span>
-                <span className="text-xs font-black text-emerald-600">
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-100 dark:border-slate-700/60">
+                <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Pass Mark</span>
+                <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
                   {defaultAssessment?.passingScorePercentage || 70}%
                 </span>
               </div>
             </div>
+
+            {!defaultAssessment && !loading && (
+              <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed font-medium">
+                  Official test not available yet. Questions for this topic have not been added to the Question Bank by an instructor.
+                </p>
+              </div>
+            )}
           </div>
 
-          <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
-            <div className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+          <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-1">
               <Zap className="w-3.5 h-3.5 text-amber-500 fill-current" />
               <span>+40 XP on completion</span>
             </div>
@@ -157,7 +166,7 @@ export const TopicAssessmentSection = ({
               </Button>
             ) : (
               <Button size="sm" variant="outline" disabled>
-                Setting Up...
+                No Official Test Available
               </Button>
             )}
           </div>
@@ -192,11 +201,20 @@ export const TopicAssessmentSection = ({
               </div>
               <div className="bg-white/5 p-2 rounded-xl border border-white/10 backdrop-blur-xs">
                 <span className="block text-[10px] font-bold text-blue-300 uppercase">Available in Bank</span>
-                <span className="text-xs font-black text-amber-300">
-                  {questionStats.total > 0 ? `${questionStats.total} Questions` : '200 Questions'}
+                <span className={`text-xs font-black ${questionStats.total > 0 ? 'text-amber-300' : 'text-slate-400'}`}>
+                  {questionStats.total > 0 ? `${questionStats.total} Questions` : '0 Questions'}
                 </span>
               </div>
             </div>
+
+            {questionStats.total === 0 && !loading && (
+              <div className="mt-3 p-3 bg-blue-950/60 border border-blue-800/50 rounded-2xl flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-200/90 leading-relaxed font-medium">
+                  No questions in bank for this topic yet. Practice test will unlock once questions are added.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="pt-4 mt-4 border-t border-blue-800/60 flex items-center justify-between">
@@ -205,14 +223,24 @@ export const TopicAssessmentSection = ({
               <span>+20 XP + Daily Streak</span>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsPracticeModalOpen(true)}
-              className="px-4 py-2 rounded-xl text-xs font-black bg-white hover:bg-slate-100 text-slate-900 shadow-md hover:shadow-lg flex items-center gap-2 transition-all cursor-pointer active:scale-95 border border-white"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>Configure Test</span>
-            </button>
+            {questionStats.total > 0 ? (
+              <button
+                type="button"
+                onClick={() => setIsPracticeModalOpen(true)}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-white hover:bg-slate-100 text-slate-900 shadow-md hover:shadow-lg flex items-center gap-2 transition-all cursor-pointer active:scale-95 border border-white"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <span>Configure Test</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-white/20 text-white/50 cursor-not-allowed border border-white/10"
+              >
+                No Questions in Bank
+              </button>
+            )}
           </div>
         </div>
       </div>

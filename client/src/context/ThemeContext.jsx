@@ -222,13 +222,13 @@ export const ThemeProvider = ({ children }) => {
     root.setAttribute('data-theme', isDark ? 'dark' : 'light');
     if (isDark) {
       root.classList.add('dark');
-      root.style.setProperty('--page-bg', '#0B1120');
-      root.style.setProperty('--card-bg', '#111827');
-      root.style.setProperty('--card-border', '#1F2937');
-      root.style.setProperty('--text-primary', '#F9FAFB');
-      root.style.setProperty('--text-secondary', '#9CA3AF');
-      root.style.setProperty('--header-bg', 'rgba(17, 24, 39, 0.95)');
-      root.style.setProperty('--header-border', '#1F2937');
+      root.style.setProperty('--page-bg', '#090E17');
+      root.style.setProperty('--card-bg', '#0F172A');
+      root.style.setProperty('--card-border', '#1E293B');
+      root.style.setProperty('--text-primary', '#F8FAFC');
+      root.style.setProperty('--text-secondary', '#94A3B8');
+      root.style.setProperty('--header-bg', 'rgba(15, 23, 42, 0.95)');
+      root.style.setProperty('--header-border', '#1E293B');
     } else {
       root.classList.remove('dark');
       root.style.setProperty('--page-bg', '#F8FAFC');

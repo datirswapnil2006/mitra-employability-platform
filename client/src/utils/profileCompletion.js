@@ -2,66 +2,49 @@
  * Centralized Profile Completion Calculator
  * 
  * Standardized Section Weights:
- * - Profile Photo: 15%
- * - Section 1 (Academic & Institutional Identity): 25% (Name 3%, Email 3%, ERP 7%, Department 3%, Gender 3%, Year 2%, Section 2%, Batch 2%)
- * - Section 2 (Academic Qualifications & Performance): 25% (10th 8%, 12th/Diploma 8%, CGPA 9%)
+ * - Section 1 (Academic & Institutional Identity): 30% (Name 4%, Email 4%, ERP 8%, Department 4%, Gender 4%, Year 2%, Section 2%, Batch 2%)
+ * - Section 2 (Academic Qualifications & Performance): 30% (10th 10%, 12th/Diploma 10%, CGPA 10%)
  * - Section 3 (Contact Details & Identity): 20% (Phone 7%, Aadhaar 7%, Hometown 6%)
- * - Section 4 (Career & Portfolio Profiles): 15% (Resume 10%, LinkedIn/GitHub 5%)
+ * - Section 4 (Career & Portfolio Profiles): 20% (Resume 20%)
  * Total: 100%
  */
 
 export const PROFILE_SECTION_WEIGHTS = {
-  photo: 15,
-  identity: 25,
-  qualifications: 25,
+  identity: 30,
+  qualifications: 30,
   contact: 20,
-  career: 15
+  career: 20
 };
 
 export const PROFILE_FIELD_WEIGHTS = {
-  // Photo (15%)
-  profilePhoto: 15,
-
-  // Section 1: Identity (25%)
-  name: 3,
-  email: 3,
-  erpNumber: 7,
-  department: 3,
-  gender: 3,
+  // Section 1: Identity (30%)
+  name: 4,
+  email: 4,
+  erpNumber: 8,
+  department: 4,
+  gender: 4,
   academicYear: 2,
   section: 2,
   graduationBatch: 2,
 
-  // Section 2: Qualifications (25%)
-  tenthPercentage: 8,
-  twelfthOrDiploma: 8,
-  cgpa: 9,
+  // Section 2: Qualifications (30%)
+  tenthPercentage: 10,
+  twelfthOrDiploma: 10,
+  cgpa: 10,
 
   // Section 3: Contact Details (20%)
   phone: 7,
   aadhaarNumber: 7,
   hometown: 6,
 
-  // Section 4: Career & Portfolio (15%)
-  resumeUrl: 15
+  // Section 4: Career & Portfolio (20%)
+  resumeUrl: 20
 };
 
 export const calculateProfileCompletion = (profileData = {}, user = {}) => {
   let score = 0;
 
-  // --- 1. Profile Photo (15%) ---
-  const photo = (profileData?.profilePhoto || user?.profilePhoto || '').trim();
-  const isPlaceholder =
-    !photo ||
-    photo === 'null' ||
-    photo === 'undefined' ||
-    photo.includes('placeholder') ||
-    photo.includes('default-avatar');
-  if (photo && !isPlaceholder) {
-    score += PROFILE_FIELD_WEIGHTS.profilePhoto;
-  }
-
-  // --- 2. Section 1: Academic & Institutional Identity (25%) ---
+  // --- 1. Section 1: Academic & Institutional Identity (30%) ---
   const name = (user?.name || profileData?.name || '').trim();
   if (name) score += PROFILE_FIELD_WEIGHTS.name;
 
@@ -86,7 +69,7 @@ export const calculateProfileCompletion = (profileData = {}, user = {}) => {
   const batch = (profileData?.batch || profileData?.graduationBatch || user?.batch || '').trim();
   if (batch) score += PROFILE_FIELD_WEIGHTS.graduationBatch;
 
-  // --- 3. Section 2: Academic Qualifications & Performance (25%) ---
+  // --- 2. Section 2: Academic Qualifications & Performance (30%) ---
   const tenth = profileData?.tenthPercentage;
   if (tenth !== null && tenth !== undefined && tenth !== '' && !isNaN(tenth) && Number(tenth) > 0) {
     score += PROFILE_FIELD_WEIGHTS.tenthPercentage;
@@ -105,7 +88,7 @@ export const calculateProfileCompletion = (profileData = {}, user = {}) => {
     score += PROFILE_FIELD_WEIGHTS.cgpa;
   }
 
-  // --- 4. Section 3: Contact Details & Identity (20%) ---
+  // --- 3. Section 3: Contact Details & Identity (20%) ---
   const phone = (profileData?.phone || user?.phone || '').trim();
   if (phone) score += PROFILE_FIELD_WEIGHTS.phone;
 
@@ -115,7 +98,7 @@ export const calculateProfileCompletion = (profileData = {}, user = {}) => {
   const hometown = (profileData?.hometown || '').trim();
   if (hometown) score += PROFILE_FIELD_WEIGHTS.hometown;
 
-  // --- 5. Section 4: Career & Portfolio Profiles (15%) ---
+  // --- 4. Section 4: Career & Portfolio Profiles (20%) ---
   const resume = (profileData?.resumeUrl || '').trim();
   if (resume) score += PROFILE_FIELD_WEIGHTS.resumeUrl;
 
@@ -123,14 +106,6 @@ export const calculateProfileCompletion = (profileData = {}, user = {}) => {
 };
 
 export const getProfileRequirements = (profileData = {}, user = {}) => {
-  const photo = (profileData?.profilePhoto || user?.profilePhoto || '').trim();
-  const hasPhoto =
-    !!photo &&
-    photo !== 'null' &&
-    photo !== 'undefined' &&
-    !photo.includes('placeholder') &&
-    !photo.includes('default-avatar');
-
   const name = (user?.name || profileData?.name || '').trim();
   const email = (user?.email || profileData?.email || '').trim();
   const erp = (profileData?.erpNumber || profileData?.rollNo || user?.erpNumber || '').trim();
@@ -159,22 +134,21 @@ export const getProfileRequirements = (profileData = {}, user = {}) => {
   const resume = (profileData?.resumeUrl || '').trim();
 
   return [
-    { id: 'photo', label: 'Student Profile Photo', completed: hasPhoto, weight: 15, section: 'Photo', tip: 'Upload your profile photo' },
-    { id: 'erpNumber', label: 'ERP / Roll Number', completed: !!erp, weight: 7, section: 'Identity', tip: 'Enter your assigned ERP number' },
-    { id: 'department', label: 'Department', completed: !!dept, weight: 3, section: 'Identity', tip: 'Select your department' },
-    { id: 'gender', label: 'Gender', completed: !!gender, weight: 3, section: 'Identity', tip: 'Select your gender' },
+    { id: 'erpNumber', label: 'ERP / Roll Number', completed: !!erp, weight: 8, section: 'Identity', tip: 'Enter your assigned ERP number' },
+    { id: 'department', label: 'Department', completed: !!dept, weight: 4, section: 'Identity', tip: 'Select your department' },
+    { id: 'gender', label: 'Gender', completed: !!gender, weight: 4, section: 'Identity', tip: 'Select your gender' },
     { id: 'year', label: 'Academic Year', completed: !!year, weight: 2, section: 'Identity', tip: 'Select your academic year' },
     { id: 'section', label: 'Section / Division', completed: !!section, weight: 2, section: 'Identity', tip: 'Select your section' },
     { id: 'batch', label: 'Graduation Batch', completed: !!batch, weight: 2, section: 'Identity', tip: 'Enter your batch year' },
-    { id: 'name', label: 'Student Name', completed: !!name, weight: 3, section: 'Identity', tip: 'Registered account name' },
-    { id: 'email', label: 'Email Address', completed: !!email, weight: 3, section: 'Identity', tip: 'Registered account email' },
-    { id: 'tenthPercentage', label: '10th Standard %', completed: hasTenth, weight: 8, section: 'Academics', tip: 'Enter SSC percentage > 0' },
-    { id: 'twelfthOrDiploma', label: '12th Standard % or Diploma %', completed: hasTwelfthOrDiploma, weight: 8, section: 'Academics', tip: 'Enter 12th or Diploma percentage > 0' },
-    { id: 'cgpa', label: 'Degree CGPA', completed: hasCgpa, weight: 9, section: 'Academics', tip: 'Enter cumulative CGPA > 0' },
+    { id: 'name', label: 'Student Name', completed: !!name, weight: 4, section: 'Identity', tip: 'Registered account name' },
+    { id: 'email', label: 'Email Address', completed: !!email, weight: 4, section: 'Identity', tip: 'Registered account email' },
+    { id: 'tenthPercentage', label: '10th Standard %', completed: hasTenth, weight: 10, section: 'Academics', tip: 'Enter SSC percentage > 0' },
+    { id: 'twelfthOrDiploma', label: '12th Standard % or Diploma %', completed: hasTwelfthOrDiploma, weight: 10, section: 'Academics', tip: 'Enter 12th or Diploma percentage > 0' },
+    { id: 'cgpa', label: 'Degree CGPA', completed: hasCgpa, weight: 10, section: 'Academics', tip: 'Enter cumulative CGPA > 0' },
     { id: 'phone', label: 'Contact Phone Number', completed: !!phone, weight: 7, section: 'Contact', tip: 'Enter 10-digit mobile number' },
     { id: 'aadhaarNumber', label: 'Aadhaar Card Number', completed: !!aadhaar, weight: 7, section: 'Contact', tip: 'Enter 12-digit Aadhaar number' },
     { id: 'hometown', label: 'Hometown / City', completed: !!hometown, weight: 6, section: 'Contact', tip: 'City and State of residence' },
-    { id: 'resumeUrl', label: 'Resume Document URL', completed: !!resume, weight: 15, section: 'Career', tip: 'Link to updated PDF resume' }
+    { id: 'resumeUrl', label: 'Resume Document URL', completed: !!resume, weight: 20, section: 'Career', tip: 'Link to updated PDF resume' }
   ];
 };
 
