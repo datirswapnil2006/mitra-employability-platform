@@ -121,49 +121,49 @@ export const QuestionCard = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-8 space-y-7">
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-6 space-y-4">
       {/* Top Header: Dynamic Question Counter & Progress Bar */}
-      <div className="space-y-4 border-b border-slate-100 pb-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="space-y-3 border-b border-slate-100 pb-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           {/* Question Index & Competency */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
               Question <span className="text-indigo-600 font-mono font-black">{questionNumber}</span> of {totalQuestions}
             </span>
 
             {/* Question Type Badge */}
-            <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/70">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/70">
               {questionTypeLabel}
             </span>
 
             {/* Competency Badge if available */}
             {question.competency && (
-              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200/60">
+              <span className="text-[10px] sm:text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
                 {question.competency}
               </span>
             )}
           </div>
 
           {/* Quick Metrics */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200/70">
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200/70">
               Answered: {answeredCount}
             </span>
-            <span className="text-slate-500 font-semibold bg-slate-50 px-3 py-1 rounded-lg border border-slate-200/70">
+            <span className="text-slate-500 font-medium bg-slate-50 px-2.5 py-0.5 rounded-md border border-slate-200/70">
               Remaining: {remainingCount}
             </span>
           </div>
         </div>
 
         {/* Progress bar */}
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
             <span>Assessment Progress</span>
-            <span className="font-mono text-indigo-600 font-black">{progressPercent}%</span>
+            <span className="font-mono text-indigo-600 font-bold">{progressPercent}%</span>
           </div>
-          <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-200/70">
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden p-0.5 border border-slate-200/70">
             <div
-              className="bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-600 h-full rounded-full transition-all duration-300"
+              className="bg-gradient-to-r from-indigo-600 to-blue-600 h-full rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -172,35 +172,35 @@ export const QuestionCard = ({
 
       {/* Workplace Scenario Context (if present) */}
       {question.scenario && (
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-indigo-50/70 via-blue-50/40 to-slate-50/60 border-l-4 border-indigo-600 rounded-r-2xl text-xs text-indigo-950 flex items-start gap-3.5 shadow-2xs">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-            <Lightbulb className="w-4 h-4" />
+        <div className="p-3 sm:p-3.5 bg-indigo-50/60 border-l-3 border-indigo-600 rounded-r-xl text-xs text-indigo-950 flex items-start gap-2.5 shadow-2xs">
+          <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+            <Lightbulb className="w-3.5 h-3.5" />
           </div>
-          <div className="space-y-1 flex-1">
-            <span className="font-black uppercase text-[10px] text-indigo-900 tracking-wider block">
+          <div className="space-y-0.5 flex-1 min-w-0">
+            <span className="font-bold uppercase text-[10px] text-indigo-900 tracking-wider block">
               Scenario Context
             </span>
-            <p className="leading-relaxed text-slate-800 font-medium text-xs sm:text-sm italic">
+            <p className="leading-relaxed text-slate-800 font-medium text-xs sm:text-[13px] italic">
               "{question.scenario}"
             </p>
           </div>
         </div>
       )}
 
-      {/* Main Question Statement */}
-      <div className="space-y-2">
-        <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-black text-slate-900 leading-snug tracking-tight">
+      {/* Main Question Statement - Simple, Clear, Friendly Typography */}
+      <div className="space-y-1">
+        <h3 className="text-sm sm:text-base md:text-lg font-bold text-slate-900 leading-snug tracking-tight">
           {question.questionText}
         </h3>
       </div>
 
-      {/* Dynamic Answer Component */}
-      <div className="pt-2">
+      {/* Dynamic Answer Component with Clean Scrollable Area */}
+      <div className="pt-1 max-h-[50vh] sm:max-h-[55vh] overflow-y-auto overscroll-contain pr-1 sm:pr-1.5 custom-scrollbar">
         {renderQuestionComponent()}
       </div>
 
       {/* Psychometric UX Guidance Disclaimer */}
-      <div className="pt-4 border-t border-slate-100 flex items-center gap-2 text-slate-500 text-[11px] leading-relaxed">
+      <div className="pt-3 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 text-[10px] leading-relaxed">
         <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         <span>
           There are no right or wrong answers. Select the response that genuinely reflects your workplace approach.

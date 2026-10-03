@@ -19,6 +19,13 @@ export const QUESTION_BANK_MODULES = [
   { id: 'Communication', label: 'Communication' }
 ];
 
+export const STUDENT_ASSESSMENT_MODULES = [
+  { id: 'Aptitude', label: 'Aptitude' },
+  { id: 'Domain', label: 'Domain Knowledge' },
+  { id: 'Communication', label: 'Communication' },
+  { id: 'Full', label: 'Full Assessment' }
+];
+
 export const MODULE_CATEGORIES = {
   Aptitude: [
     { id: 'Quantitative', label: 'Quantitative Aptitude' },

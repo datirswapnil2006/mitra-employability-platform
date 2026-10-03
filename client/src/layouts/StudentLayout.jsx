@@ -1,18 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Navigate, useLocation, Link } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
 import Button from '../components/Button';
+import { AssessmentSessionProvider, useAssessmentSession } from '../context/AssessmentSessionContext';
 
-export const StudentLayout = () => {
+const StudentLayoutInner = () => {
   const { user, token, loading, profileCompletion } = useAuth();
   const location = useLocation();
+  const { isAssessmentActive } = useAssessmentSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem('mitra_sidebar_collapsed') === 'true';
   });
+
+  // Automatically close and collapse sidebar when an assessment session starts/is active
+  useEffect(() => {
+    if (isAssessmentActive) {
+      setMobileMenuOpen(false);
+      setIsCollapsed(true);
+    }
+  }, [isAssessmentActive]);
 
   const handleToggleCollapse = () => {
     setIsCollapsed((prev) => {
@@ -63,7 +73,7 @@ export const StudentLayout = () => {
       <Sidebar
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
-        isCollapsed={isCollapsed}
+        isCollapsed={isAssessmentActive ? true : isCollapsed}
         onToggleCollapse={handleToggleCollapse}
       />
       <div className="flex-1 flex flex-col min-w-0">
@@ -115,6 +125,14 @@ export const StudentLayout = () => {
         </main>
       </div>
     </div>
+  );
+};
+
+export const StudentLayout = () => {
+  return (
+    <AssessmentSessionProvider>
+      <StudentLayoutInner />
+    </AssessmentSessionProvider>
   );
 };
 

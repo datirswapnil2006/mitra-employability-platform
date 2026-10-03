@@ -8,6 +8,7 @@ const { Category, Topic, Company, LearningContent } = require('./modules/trainin
  */
 const seedData = async () => {
   try {
+    const forceSeed = process.env.FORCE_SEED === 'true';
     const adminUser = await User.findOne({ role: 'admin' });
     let adminId = adminUser ? adminUser._id : null;
 
@@ -68,7 +69,7 @@ const seedData = async () => {
 
     // Initialize default Aptitude topics if none exist
     const topicCount = await Topic.countDocuments({ module: 'Aptitude' });
-    if (topicCount === 0) {
+    if (topicCount === 0 || forceSeed) {
       console.log('[System Init]: Bootstrapping default standard Aptitude topics...');
       
       const defaultTopics = [
@@ -190,7 +191,9 @@ const seedData = async () => {
       ]
     };
 
-    console.log('[System Init]: Checking & initializing official Domain categories for 9 departments...');
+    const domainCatCount = await Category.countDocuments({ module: 'Domain' });
+    if (domainCatCount === 0 || forceSeed) {
+      console.log('[System Init]: Checking & initializing official Domain categories for 9 departments...');
     for (const [dept, categories] of Object.entries(domainDeptCategories)) {
       for (let i = 0; i < categories.length; i++) {
         const catTitle = categories[i];
@@ -335,7 +338,8 @@ const seedData = async () => {
         }
       }
     }
-    console.log('[System Init]: Official Domain categories and topics verified.');
+      console.log('[System Init]: Official Domain categories and topics verified.');
+    }
 
     // ==========================================
     // Bootstrapping Communication Categories & Default Topics
@@ -412,41 +416,44 @@ const seedData = async () => {
       }
     ];
 
-    console.log('[System Init]: Checking & initializing Communication categories and default topics...');
-    for (const catDef of commCategoryDefs) {
-      let cat = await Category.findOne({ module: 'Communication', title: catDef.title });
-      if (!cat) {
-        cat = await Category.create({
-          module: 'Communication',
-          department: null,
-          departmentId: null,
-          title: catDef.title,
-          description: catDef.description,
-          order: catDef.order,
-          status: 'published',
-          createdBy: adminId
-        });
-      }
-
-      for (const topDef of catDef.topics) {
-        const topExists = await Topic.findOne({ module: 'Communication', categoryId: cat._id, title: topDef.title });
-        if (!topExists) {
-          await Topic.create({
+    const commCatCount = await Category.countDocuments({ module: 'Communication' });
+    if (commCatCount === 0 || forceSeed) {
+      console.log('[System Init]: Checking & initializing Communication categories and default topics...');
+      for (const catDef of commCategoryDefs) {
+        let cat = await Category.findOne({ module: 'Communication', title: catDef.title });
+        if (!cat) {
+          cat = await Category.create({
             module: 'Communication',
             department: null,
             departmentId: null,
-            categoryId: cat._id,
-            category: catDef.title,
-            title: topDef.title,
-            description: topDef.description,
-            order: topDef.order,
+            title: catDef.title,
+            description: catDef.description,
+            order: catDef.order,
             status: 'published',
             createdBy: adminId
           });
         }
+
+        for (const topDef of catDef.topics) {
+          const topExists = await Topic.findOne({ module: 'Communication', categoryId: cat._id, title: topDef.title });
+          if (!topExists) {
+            await Topic.create({
+              module: 'Communication',
+              department: null,
+              departmentId: null,
+              categoryId: cat._id,
+              category: catDef.title,
+              title: topDef.title,
+              description: topDef.description,
+              order: topDef.order,
+              status: 'published',
+              createdBy: adminId
+            });
+          }
+        }
       }
+      console.log('[System Init]: Communication categories and default topics verified.');
     }
-    console.log('[System Init]: Communication categories and default topics verified.');
 
     // ==========================================
     // Bootstrapping Resume Categories & Default Topics
@@ -520,41 +527,44 @@ const seedData = async () => {
       }
     ];
 
-    console.log('[System Init]: Checking & initializing Resume categories and default topics...');
-    for (const catDef of resumeCategoryDefs) {
-      let cat = await Category.findOne({ module: 'Resume', title: catDef.title });
-      if (!cat) {
-        cat = await Category.create({
-          module: 'Resume',
-          department: null,
-          departmentId: null,
-          title: catDef.title,
-          description: catDef.description,
-          order: catDef.order,
-          status: 'published',
-          createdBy: adminId
-        });
-      }
-
-      for (const topDef of catDef.topics) {
-        const topExists = await Topic.findOne({ module: 'Resume', categoryId: cat._id, title: topDef.title });
-        if (!topExists) {
-          await Topic.create({
+    const resumeCatCount = await Category.countDocuments({ module: 'Resume' });
+    if (resumeCatCount === 0 || forceSeed) {
+      console.log('[System Init]: Checking & initializing Resume categories and default topics...');
+      for (const catDef of resumeCategoryDefs) {
+        let cat = await Category.findOne({ module: 'Resume', title: catDef.title });
+        if (!cat) {
+          cat = await Category.create({
             module: 'Resume',
             department: null,
             departmentId: null,
-            categoryId: cat._id,
-            category: catDef.title,
-            title: topDef.title,
-            description: topDef.description,
-            order: topDef.order,
+            title: catDef.title,
+            description: catDef.description,
+            order: catDef.order,
             status: 'published',
             createdBy: adminId
           });
         }
+
+        for (const topDef of catDef.topics) {
+          const topExists = await Topic.findOne({ module: 'Resume', categoryId: cat._id, title: topDef.title });
+          if (!topExists) {
+            await Topic.create({
+              module: 'Resume',
+              department: null,
+              departmentId: null,
+              categoryId: cat._id,
+              category: catDef.title,
+              title: topDef.title,
+              description: topDef.description,
+              order: topDef.order,
+              status: 'published',
+              createdBy: adminId
+            });
+          }
+        }
       }
+      console.log('[System Init]: Resume categories and default topics verified.');
     }
-    console.log('[System Init]: Resume categories and default topics verified.');
 
     // ==========================================
     // Bootstrapping Interview Preparation Categories & Default Topics
@@ -639,48 +649,51 @@ const seedData = async () => {
       }
     ];
 
-    console.log('[System Init]: Checking & initializing Interview Preparation categories and default topics...');
-    for (const catDef of interviewCategoryDefs) {
-      let cat = await Category.findOne({
-        module: { $in: ['Interview Preparation', 'Interview'] },
-        title: catDef.title
-      });
-      if (!cat) {
-        cat = await Category.create({
-          module: 'Interview Preparation',
-          department: null,
-          departmentId: null,
-          title: catDef.title,
-          description: catDef.description,
-          order: catDef.order,
-          status: 'published',
-          createdBy: adminId
-        });
-      }
-
-      for (const topDef of catDef.topics) {
-        const topExists = await Topic.findOne({
+    const interviewCatCount = await Category.countDocuments({ module: { $in: ['Interview Preparation', 'Interview'] } });
+    if (interviewCatCount === 0 || forceSeed) {
+      console.log('[System Init]: Checking & initializing Interview Preparation categories and default topics...');
+      for (const catDef of interviewCategoryDefs) {
+        let cat = await Category.findOne({
           module: { $in: ['Interview Preparation', 'Interview'] },
-          categoryId: cat._id,
-          title: topDef.title
+          title: catDef.title
         });
-        if (!topExists) {
-          await Topic.create({
+        if (!cat) {
+          cat = await Category.create({
             module: 'Interview Preparation',
             department: null,
             departmentId: null,
-            categoryId: cat._id,
-            category: catDef.title,
-            title: topDef.title,
-            description: topDef.description,
-            order: topDef.order,
+            title: catDef.title,
+            description: catDef.description,
+            order: catDef.order,
             status: 'published',
             createdBy: adminId
           });
         }
+
+        for (const topDef of catDef.topics) {
+          const topExists = await Topic.findOne({
+            module: { $in: ['Interview Preparation', 'Interview'] },
+            categoryId: cat._id,
+            title: topDef.title
+          });
+          if (!topExists) {
+            await Topic.create({
+              module: 'Interview Preparation',
+              department: null,
+              departmentId: null,
+              categoryId: cat._id,
+              category: catDef.title,
+              title: topDef.title,
+              description: topDef.description,
+              order: topDef.order,
+              status: 'published',
+              createdBy: adminId
+            });
+          }
+        }
       }
+      console.log('[System Init]: Interview Preparation categories and default topics verified.');
     }
-    console.log('[System Init]: Interview Preparation categories and default topics verified.');
 
     // ==========================================
     // Bootstrapping Initial Companies for Company Preparation
@@ -709,50 +722,53 @@ const seedData = async () => {
       { title: 'Interview Tips', description: 'Expert guidance, dos and don’ts, mindset strategies, and key tips for final round success.', order: 8 }
     ];
 
-    console.log('[System Init]: Checking & initializing default Company Preparation companies...');
-    const companyCat = await Category.findOne({
-      module: { $in: ['Interview Preparation', 'Interview'] },
-      title: 'Company Preparation'
-    });
+    const companyCount = await Company.countDocuments();
+    if (companyCount === 0 || forceSeed) {
+      console.log('[System Init]: Checking & initializing default Company Preparation companies...');
+      const companyCat = await Category.findOne({
+        module: { $in: ['Interview Preparation', 'Interview'] },
+        title: 'Company Preparation'
+      });
 
-    for (const compDef of defaultCompanies) {
-      let comp = await Company.findOne({ name: compDef.name });
-      if (!comp) {
-        comp = await Company.create({
-          name: compDef.name,
-          description: compDef.description,
-          order: compDef.order,
-          status: 'published',
-          createdBy: adminId
-        });
-      }
-
-      // Seed standard 8 topics for this company
-      for (const topDef of standardCompanyTopics) {
-        const topExists = await Topic.findOne({
-          module: { $in: ['Interview Preparation', 'Interview'] },
-          companyId: comp._id,
-          title: topDef.title
-        });
-        if (!topExists) {
-          await Topic.create({
-            module: 'Interview Preparation',
-            category: 'Company Preparation',
-            categoryId: companyCat ? companyCat._id : null,
-            companyId: comp._id,
-            company: comp.name,
-            department: null,
-            departmentId: null,
-            title: topDef.title,
-            description: `${comp.name} ${topDef.description}`,
-            order: topDef.order,
+      for (const compDef of defaultCompanies) {
+        let comp = await Company.findOne({ name: compDef.name });
+        if (!comp) {
+          comp = await Company.create({
+            name: compDef.name,
+            description: compDef.description,
+            order: compDef.order,
             status: 'published',
             createdBy: adminId
           });
         }
+
+        // Seed standard 8 topics for this company
+        for (const topDef of standardCompanyTopics) {
+          const topExists = await Topic.findOne({
+            module: { $in: ['Interview Preparation', 'Interview'] },
+            companyId: comp._id,
+            title: topDef.title
+          });
+          if (!topExists) {
+            await Topic.create({
+              module: 'Interview Preparation',
+              category: 'Company Preparation',
+              categoryId: companyCat ? companyCat._id : null,
+              companyId: comp._id,
+              company: comp.name,
+              department: null,
+              departmentId: null,
+              title: topDef.title,
+              description: `${comp.name} ${topDef.description}`,
+              order: topDef.order,
+              status: 'published',
+              createdBy: adminId
+            });
+          }
+        }
       }
+      console.log('[System Init]: Company Preparation companies and default topics verified.');
     }
-    console.log('[System Init]: Company Preparation companies and default topics verified.');
 
     // Safe migration: Link any existing LearningContent without topicId to matching Topic or default Topic
     const unlinkedContents = await LearningContent.find({

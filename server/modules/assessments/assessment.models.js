@@ -36,6 +36,7 @@ const assessmentSchema = new mongoose.Schema({
     default: null
   },
   topic: { type: String, default: '' },
+  prompt: { type: String, default: '' },
   topicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic' },
   difficulty: {
     type: String,
@@ -81,10 +82,10 @@ const assessmentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Enforce system-wide hard limit: maximum 30 questions per test
+// Enforce system-wide limit: maximum 180 questions per test
 assessmentSchema.pre('save', function () {
-  if (this.questions && this.questions.length > 30) {
-    this.questions = this.questions.slice(0, 30);
+  if (this.questions && this.questions.length > 180) {
+    this.questions = this.questions.slice(0, 180);
   }
 });
 

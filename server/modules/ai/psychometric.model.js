@@ -124,21 +124,42 @@ const psychometricProfileSchema = new mongoose.Schema({
     communication: { type: Number, default: 79 }
   },
   strengths: [{
-    type: String
+    type: mongoose.Schema.Types.Mixed
   }],
   growthAreas: [{
-    type: String
+    type: mongoose.Schema.Types.Mixed
+  }],
+  developmentAreas: [{
+    type: mongoose.Schema.Types.Mixed
   }],
   careerFit: [{
-    type: String
+    type: mongoose.Schema.Types.Mixed
   }],
   actionPlan: [{
-    type: String
+    type: mongoose.Schema.Types.Mixed
   }],
+  recommendations: [{
+    type: mongoose.Schema.Types.Mixed
+  }],
+  scores: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  traitScores: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
   aiSummary: {
     type: String,
     default: ''
   },
+  aiAnalysis: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  suggestedWorkEnvironment: [{
+    type: String
+  }],
   aiProvider: {
     type: String,
     enum: ['gemini', 'groq', 'huggingface', 'fallback'],
@@ -154,6 +175,9 @@ const psychometricProfileSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+}, {
+  timestamps: true,
+  strict: false
 });
 
 const PsychometricProfile = mongoose.model('PsychometricProfile', psychometricProfileSchema);

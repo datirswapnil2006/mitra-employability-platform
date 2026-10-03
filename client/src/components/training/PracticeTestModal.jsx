@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import Modal from '../Modal';
 import Button from '../Button';
 import Select from '../Select';
 import { Sparkles, Play, Clock, Award, ShieldCheck, AlertCircle, HelpCircle } from 'lucide-react';
+import { enterFullscreen } from '../../utils/fullscreen';
 
 export const PracticeTestModal = ({ isOpen, onClose, topic, availableQuestionsCount: propCount }) => {
   const navigate = useNavigate();
@@ -79,6 +80,9 @@ export const PracticeTestModal = ({ isOpen, onClose, topic, availableQuestionsCo
 
       if (res.success && res.assessmentId) {
         onClose();
+        try {
+          await enterFullscreen();
+        } catch (_) {}
         navigate(`/student/practice/${res.assessmentId}`, { state: { returnTopic: topic } });
       } else {
         setError(res.message || 'Failed to create practice test.');

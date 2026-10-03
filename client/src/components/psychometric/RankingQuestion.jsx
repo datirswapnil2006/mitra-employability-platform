@@ -49,7 +49,7 @@ export const RankingQuestion = ({
       </div>
 
       {/* Options List */}
-      <div className="grid grid-cols-1 gap-2.5">
+      <div className="grid grid-cols-1 gap-2">
         {options.map((opt, idx) => {
           const optText = typeof opt === 'string' ? opt : opt.text || '';
           const rankIdx = currentRankList.indexOf(optText);
@@ -60,19 +60,19 @@ export const RankingQuestion = ({
               key={idx}
               type="button"
               onClick={() => handleToggleRank(optText)}
-              className={`w-full p-4 rounded-xl border text-left transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer select-none group ${
+              className={`w-full p-2.5 sm:p-3 rounded-xl border text-left transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer select-none group ${
                 isRanked
-                  ? 'bg-indigo-50/90 border-indigo-600 shadow-xs ring-2 ring-indigo-500/20'
-                  : 'bg-white hover:bg-slate-50 border-slate-200/90 hover:border-slate-300'
+                  ? 'bg-indigo-50/90 border-indigo-600 shadow-2xs ring-1.5 ring-indigo-500/20'
+                  : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300'
               }`}
             >
               {/* Option Text */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <span className="text-xs font-black text-slate-400">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <span className="text-xs font-bold text-slate-400">
                   {String.fromCharCode(65 + idx)}.
                 </span>
                 <span
-                  className={`text-xs sm:text-sm leading-relaxed ${
+                  className={`text-xs sm:text-[13px] leading-relaxed ${
                     isRanked ? 'text-indigo-950 font-bold' : 'text-slate-700 font-medium'
                   }`}
                 >
@@ -82,7 +82,7 @@ export const RankingQuestion = ({
 
               {/* Rank Position Badge */}
               <div
-                className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0 transition-colors ${
+                className={`w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 transition-colors ${
                   isRanked
                     ? 'bg-indigo-600 text-white shadow-2xs'
                     : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'

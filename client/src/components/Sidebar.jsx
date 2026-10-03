@@ -29,10 +29,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useAssessmentSession } from '../context/AssessmentSessionContext';
 
 export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
   const { user, profileCompletion } = useAuth();
   const { openCustomizer } = useTheme();
+  const { isAssessmentActive, handleAttemptNavigation } = useAssessmentSession();
   const location = useLocation();
   const isAdmin = user && user.role === 'admin';
   const sidebarRef = useRef(null);
@@ -42,7 +44,8 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
     return localStorage.getItem('mitra_sidebar_collapsed') === 'true';
   });
 
-  const effectiveCollapsed = isCollapsed !== undefined ? isCollapsed : internalCollapsed;
+  // When an assessment is actively running, force sidebar to be collapsed/closed
+  const effectiveCollapsed = isAssessmentActive ? true : (isCollapsed !== undefined ? isCollapsed : internalCollapsed);
 
   const handleToggleCollapse = () => {
     if (onToggleCollapse) {
@@ -101,9 +104,6 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
       children: [
         { to: '/admin/assessments?type=Aptitude', label: 'Aptitude' },
         { to: '/admin/assessments?type=Domain', label: 'Domain Knowledge' },
-        { to: '/admin/assessments?type=Communication', label: 'Communication' },
-        { to: '/admin/assessments?type=Resume', label: 'Resume' },
-        { to: '/admin/assessments?type=Interview', label: 'Interview' },
         { to: '/admin/assessments?type=Full', label: 'Full Assessment' }
       ]
     },
@@ -325,6 +325,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Link
               to={isAdmin ? '/admin/dashboard' : '/student/dashboard'}
+              onClick={(e) => {
+                if (handleAttemptNavigation(isAdmin ? '/admin/dashboard' : '/student/dashboard', 'Dashboard')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              }}
               className="w-10 h-10 rounded-xl bg-white p-1 border shadow-xs flex items-center justify-center shrink-0 hover:scale-105 transition"
               style={{ borderColor: 'var(--sidebar-border, #E2E8F0)' }}
               title={isAdmin ? 'Admin Dashboard' : 'Student Dashboard'}
@@ -433,7 +439,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
               <Link
                 key={idx}
                 to={item.to}
-                onClick={() => {
+                onClick={(e) => {
+                  if (handleAttemptNavigation(item.to, item.label)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                  }
                   setOpenGroup(null);
                   if (onClose) onClose();
                 }}
@@ -512,6 +523,14 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                         <Link
                           key={cIdx}
                           to={child.to}
+                          onClick={(e) => {
+                            if (handleAttemptNavigation(child.to, child.label)) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              return;
+                            }
+                            if (onClose) onClose();
+                          }}
                           style={
                             active
                               ? {

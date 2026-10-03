@@ -404,12 +404,17 @@ exports.generateQuestionsForReview = async (req, res) => {
       category = 'Quantitative Aptitude',
       department = null,
       topic,
+      prompt,
+      customPrompt,
       difficulty = 'Medium',
-      questionCount = 5
+      questionCount = 5,
+      existingQuestions = []
     } = req.body;
 
-    if (!topic || !topic.trim()) {
-      return res.status(400).json({ success: false, message: 'Topic name is required.' });
+    const effectivePrompt = (prompt || customPrompt || topic || '').trim();
+
+    if (!effectivePrompt) {
+      return res.status(400).json({ success: false, message: 'Test generation prompt or topic is required.' });
     }
 
     const count = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 180);
@@ -419,9 +424,12 @@ exports.generateQuestionsForReview = async (req, res) => {
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
-      topic: topic.trim(),
+      topic: (topic && topic.trim()) || effectivePrompt.slice(0, 60),
+      prompt: effectivePrompt,
+      customPrompt: effectivePrompt,
       difficulty,
-      count
+      count,
+      existingQuestions
     });
 
     res.json({
@@ -497,6 +505,8 @@ exports.generateAIAssessment = async (req, res) => {
       category = 'Quantitative',
       department = null,
       topic,
+      prompt,
+      customPrompt,
       difficulty = 'Medium',
       questionCount = 5,
       timeLimitMinutes = 20,
@@ -507,8 +517,10 @@ exports.generateAIAssessment = async (req, res) => {
       status = 'published'
     } = req.body;
 
-    if (!topic || !topic.trim()) {
-      return res.status(400).json({ success: false, message: 'Topic name is required.' });
+    const effectivePrompt = (prompt || customPrompt || topic || '').trim();
+
+    if (!effectivePrompt) {
+      return res.status(400).json({ success: false, message: 'Test generation prompt or topic is required.' });
     }
 
     const finalQuestionCount = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 180);
@@ -518,7 +530,9 @@ exports.generateAIAssessment = async (req, res) => {
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
-      topic: topic.trim(),
+      topic: (topic && topic.trim()) || effectivePrompt.slice(0, 60),
+      prompt: effectivePrompt,
+      customPrompt: effectivePrompt,
       difficulty,
       count: finalQuestionCount
     });
@@ -527,12 +541,13 @@ exports.generateAIAssessment = async (req, res) => {
     const totalMarks = cappedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0);
 
     const assessment = await Assessment.create({
-      title: title || `${moduleName} Assessment — ${topic.trim()}`,
-      description: description || `AI-generated assessment covering ${topic.trim()} (${category}) concepts.`,
+      title: title || `${moduleName} Assessment — ${(topic && topic.trim()) || effectivePrompt.slice(0, 40)}`,
+      description: description || `AI-generated assessment covering ${effectivePrompt.slice(0, 100)} (${category}) concepts.`,
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
-      topic: topic.trim(),
+      topic: (topic && topic.trim()) || effectivePrompt.slice(0, 60),
+      prompt: effectivePrompt,
       difficulty,
       questions: cappedQuestions,
       passingScorePercentage: parseInt(passingScorePercentage, 10) || 70,

@@ -7,6 +7,7 @@ const PsychometricQuestion = require('./psychometricQuestion.model');
 const PsychometricAttempt = require('./psychometricAttempt.model');
 const StudentProgress = require('../progress/progress.model');
 const User = require('../auth/user.model');
+const { StudentProfile } = require('../students/student.model');
 const {
   PSYCHOMETRIC_QUESTIONS,
   calculateDimensionScores,
@@ -634,8 +635,8 @@ exports.submitPsychometricAttempt = async (req, res) => {
 
     // 5. Update / Synchronize legacy PsychometricProfile for analytics & master report compatibility
     const legacyScores = {};
-    Object.keys(traitScores).forEach((k) => {
-      legacyScores[k] = traitScores[k].score;
+    Object.keys(traitScores || {}).forEach((k) => {
+      legacyScores[k] = traitScores[k]?.score ?? 70;
     });
 
     await PsychometricProfile.findOneAndUpdate(
@@ -645,13 +646,17 @@ exports.submitPsychometricAttempt = async (req, res) => {
         scores: legacyScores,
         traitScores,
         employabilityIndex: overallScore,
-        strengths: aiAnalysis.strengths,
-        developmentAreas: aiAnalysis.developmentAreas,
-        recommendations: aiAnalysis.recommendations,
+        strengths: aiAnalysis.strengths || [],
+        developmentAreas: aiAnalysis.developmentAreas || [],
+        growthAreas: aiAnalysis.developmentAreas || [],
+        recommendations: aiAnalysis.recommendations || [],
+        actionPlan: (aiAnalysis.recommendations || []).map((r) => `${r.title || ''}: ${r.description || ''}`.trim()),
+        aiSummary: aiAnalysis.aiSummary || '',
+        suggestedWorkEnvironment: aiAnalysis.suggestedWorkEnvironment || [],
         aiAnalysis: {
           executiveSummary: aiAnalysis.aiSummary,
           suggestedWorkEnvironment: aiAnalysis.suggestedWorkEnvironment,
-          growthMindsetScore: traitScores.adaptability?.score || 75
+          growthMindsetScore: traitScores?.adaptability?.score || 75
         },
         evaluatedAt: new Date()
       },

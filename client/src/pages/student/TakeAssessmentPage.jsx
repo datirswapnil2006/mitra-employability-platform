@@ -23,6 +23,7 @@ import {
   Camera,
   Monitor,
   Maximize2,
+  Minimize2,
   Eye,
   Copy,
   Users,
@@ -35,6 +36,8 @@ import {
   Brain
 } from 'lucide-react';
 import { getAssessmentSections } from '../../utils/assessmentSections';
+import { useFullscreen } from '../../utils/fullscreen';
+import { useAssessmentSession } from '../../context/AssessmentSessionContext';
 
 export const TakeAssessmentPage = () => {
   const { id } = useParams();
@@ -44,6 +47,12 @@ export const TakeAssessmentPage = () => {
   const [assessment, setAssessment] = useState(null);
   const [lockedInfo, setLockedInfo] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
+
+  // Fullscreen option controller
+  const { isFullscreen, toggleFullscreen, enterFullscreen: triggerFullscreen } = useFullscreen();
+
+  // Active examination session controller (auto-closes sidebar & protects navigation with 24h lock)
+  const { startSession, endSession } = useAssessmentSession();
 
   // Examination State
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -484,6 +493,7 @@ export const TakeAssessmentPage = () => {
 
     if (currentStrikes >= 3) {
       // 3 CHEATING ATTEMPTS REACHED: IMMEDIATELY TERMINATE AND LOCK FOR 24 HOURS
+      endSession();
       isTerminatedRef.current = true;
       setTestStarted(false);
       isModalOpenRef.current = false;
@@ -664,21 +674,64 @@ export const TakeAssessmentPage = () => {
         setSystemCheckError('Please share your screen before starting the proctored test.');
         return;
       }
+    }
 
-      // Trigger Fullscreen if enabled
-      if (settings.fullScreen) {
-        try {
-          if (document.documentElement.requestFullscreen) {
-            await document.documentElement.requestFullscreen();
-          }
-        } catch (e) {
-          console.warn('Fullscreen request bypassed:', e.message);
-        }
-      }
+    // Default to Fullscreen for any assessment (Normal, Practice, or Proctored)
+    try {
+      await triggerFullscreen();
+    } catch (e) {
+      console.warn('Fullscreen request bypassed:', e?.message);
     }
 
     setStartTime(Date.now());
     setTestStarted(true);
+
+    // Register active assessment session (auto-closes sidebar and enforces 24h lock on exit)
+    startSession({
+      assessmentId: id,
+      assessmentTitle: assessment?.title || 'Assessment',
+      isPractice: false,
+      requires24hLock: true,
+      onSubmit: async () => {
+        await handleFinalSubmit();
+      },
+      onAbandon: async () => {
+        await handleAbandonAssessment();
+      }
+    });
+  };
+
+  const handleAbandonAssessment = async () => {
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        try { await document.exitFullscreen(); } catch (_) {}
+      }
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
+      }
+
+      const formattedAnswers = Object.keys(answers).map((qId) => ({
+        questionId: qId,
+        studentAnswer: answers[qId]
+      }));
+      const timeSpentSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+      const currentVCount = violationsCountRef.current || violationsCount || 1;
+      const currentLogs = proctoringLogsRef.current.length > 0 ? proctoringLogsRef.current : (proctoringLogs || []);
+
+      await api.abandonAssessment({
+        assessmentId: id,
+        violationsCount: currentVCount,
+        proctoringLogs: currentLogs,
+        submissionReason: 'Candidate navigated away from examination module (24-hour retake lockout enforced)',
+        timeSpentSeconds,
+        answers: formattedAnswers
+      });
+    } catch (err) {
+      console.error('Error locking test on manual abandonment:', err);
+    }
   };
 
   const handleSelectOption = (qId, optionText) => {
@@ -745,6 +798,7 @@ export const TakeAssessmentPage = () => {
       });
 
       if (res.success && res.result) {
+        endSession();
         setConfirmSubmitOpen(false);
         navigate(`/student/assessment-result/${res.result._id}`, {
           state: { result: res.result }
@@ -999,6 +1053,28 @@ export const TakeAssessmentPage = () => {
             </ul>
           </div>
 
+          {/* Fullscreen Option Notice */}
+          <div className="flex items-center justify-between p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs text-blue-900">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-blue-600 text-white rounded-lg shrink-0">
+                <Maximize2 className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <span className="font-black text-slate-900">Default Fullscreen Mode</span>
+                <p className="text-[11px] text-slate-500">
+                  Assessment will automatically launch in full screen. You can also toggle fullscreen anytime during the exam.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="px-2.5 py-1 text-[11px] font-bold bg-white hover:bg-slate-50 border border-blue-200 text-blue-700 rounded-lg shadow-2xs transition shrink-0 ml-2"
+            >
+              {isFullscreen ? 'Exit Fullscreen' : 'Enable Fullscreen'}
+            </button>
+          </div>
+
           <Button
             size="lg"
             icon={Play}
@@ -1061,7 +1137,31 @@ export const TakeAssessmentPage = () => {
           </div>
 
           {/* Right Action & Continuous Countdown Timer */}
-          <div className="flex items-center gap-3 sm:gap-4 self-stretch sm:self-auto justify-between sm:justify-end">
+          <div className="flex items-center gap-2 sm:gap-3.5 self-stretch sm:self-auto justify-between sm:justify-end">
+            {/* Fullscreen Option Toggle */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold transition-all shadow-inner ${
+                isFullscreen
+                  ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700'
+                  : 'bg-indigo-950/80 border-indigo-700 text-indigo-200 hover:bg-indigo-900 hover:text-white'
+              }`}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enable Fullscreen'}
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="hidden sm:inline">Exit Fullscreen</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="hidden sm:inline">Fullscreen</span>
+                </>
+              )}
+            </button>
+
             <div
               className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl border font-mono font-black text-sm shadow-inner transition-all ${
                 isTimeCritical

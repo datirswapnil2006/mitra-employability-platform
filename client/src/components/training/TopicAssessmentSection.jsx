@@ -20,6 +20,7 @@ import {
   Flame,
   ShieldCheck
 } from 'lucide-react';
+import { enterFullscreen } from '../../utils/fullscreen';
 
 export const TopicAssessmentSection = ({
   topic,
@@ -160,7 +161,12 @@ export const TopicAssessmentSection = ({
                 size="sm"
                 variant={userAttempt ? 'outline' : 'primary'}
                 icon={userAttempt ? RotateCcw : Play}
-                onClick={() => navigate(`/student/practice/${defaultAssessment._id}`, { state: { returnTopic: topic } })}
+                onClick={async () => {
+                  try {
+                    await enterFullscreen();
+                  } catch (_) {}
+                  navigate(`/student/practice/${defaultAssessment._id}`, { state: { returnTopic: topic } });
+                }}
               >
                 {userAttempt ? 'Retake Test' : 'Start Baseline Test'}
               </Button>

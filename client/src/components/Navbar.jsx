@@ -20,10 +20,12 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getMediaUrl } from '../services/api';
+import { useAssessmentSession } from '../context/AssessmentSessionContext';
 
 export const Navbar = ({ onMenuToggle }) => {
   const { user, profileCompletion, logout, logoutAll } = useAuth();
   const { preferences, effectiveMode, isDark, openCustomizer, updateTheme } = useTheme();
+  const { isAssessmentActive, handleAttemptNavigation } = useAssessmentSession();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -70,6 +72,11 @@ export const Navbar = ({ onMenuToggle }) => {
 
         <Link
           to={isAdmin ? '/admin/dashboard' : '/student/dashboard'}
+          onClick={(e) => {
+            if (handleAttemptNavigation(isAdmin ? '/admin/dashboard' : '/student/dashboard', 'Dashboard')) {
+              e.preventDefault();
+            }
+          }}
           className="flex items-center gap-2.5 md:hidden"
         >
           <img
@@ -194,7 +201,13 @@ export const Navbar = ({ onMenuToggle }) => {
                 {isStudent && (
                   <Link
                     to="/student/profile"
-                    onClick={() => setProfileDropdownOpen(false)}
+                    onClick={(e) => {
+                      if (handleAttemptNavigation('/student/profile', 'Profile')) {
+                        e.preventDefault();
+                        return;
+                      }
+                      setProfileDropdownOpen(false);
+                    }}
                     className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
                   >
                     <User className="w-4 h-4 text-slate-400" />
@@ -241,7 +254,13 @@ export const Navbar = ({ onMenuToggle }) => {
                 {isStudent && (
                   <Link
                     to="/student/settings"
-                    onClick={() => setProfileDropdownOpen(false)}
+                    onClick={(e) => {
+                      if (handleAttemptNavigation('/student/settings', 'Settings')) {
+                        e.preventDefault();
+                        return;
+                      }
+                      setProfileDropdownOpen(false);
+                    }}
                     className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-700 dark:text-slate-200"
                   >
                     <Settings className="w-4 h-4 text-slate-400" />
@@ -254,7 +273,11 @@ export const Navbar = ({ onMenuToggle }) => {
               <div className="pt-2 mt-1 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    if (handleAttemptNavigation('/login', 'Logout')) {
+                      e.preventDefault();
+                      return;
+                    }
                     setProfileDropdownOpen(false);
                     logout();
                   }}

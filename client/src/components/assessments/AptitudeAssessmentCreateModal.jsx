@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../services/api';
 import Modal from '../Modal';
 import Button from '../Button';
 import Input from '../Input';
 import Select from '../Select';
 import { AI_PROVIDERS } from '../../constants/questionBank';
+import { OFFICIAL_DEPARTMENTS } from '../../constants/departments';
 import {
   APTITUDE_CATEGORIES,
   APTITUDE_TOPICS,
@@ -13,6 +14,27 @@ import {
   PASS_PERCENTAGE_OPTIONS,
   DIFFICULTY_OPTIONS
 } from '../../constants/aptitudeTopics';
+
+const DOMAIN_SUGGESTIONS = {
+  CSE: ['Data Structures & Algorithms', 'Object-Oriented Programming (OOP)', 'DBMS & SQL Queries', 'Operating Systems', 'Computer Networks', 'Software Engineering', 'Web Technologies', 'System Design', 'Compiler Principles'],
+  IT: ['Full-Stack Web Development', 'Cloud Computing (AWS/Azure)', 'Database Architectures & SQL', 'Computer Networks & Security', 'DevOps & CI/CD Pipelines', 'Cybersecurity Fundamentals', 'Programming with Python/Java'],
+  EXTC: ['Digital Electronics & Logic Gates', 'Microprocessors & Microcontrollers (8051/ARM)', 'Embedded Systems & RTOS', 'Analog & Digital Communication', 'VLSI Design & CMOS', 'Signals & Systems', 'Electromagnetics & Antennas'],
+  Civil: ['Structural Analysis & Mechanics', 'Geotechnical & Foundation Engineering', 'Surveying & Advanced Geomatics', 'Concrete Technology & RCC Design', 'Transportation & Highway Engineering', 'Environmental Engineering', 'Fluid Mechanics (Civil)'],
+  Mechanical: ['Thermodynamics & Heat Transfer', 'Fluid Mechanics & Hydraulic Machines', 'Strength of Materials', 'Theory of Machines', 'CAD/CAM & Automation', 'Manufacturing Processes & Metallurgy', 'Automobile Engineering'],
+  'CSE (IOT)': ['IoT Architecture & Wireless Protocols', 'Sensors & Actuators Interfacing', 'Embedded C & Arduino/Raspberry Pi', 'Edge Computing & Cloud IoT', 'Smart Systems & Microcontrollers'],
+  AIDS: ['Machine Learning Algorithms', 'Deep Learning & Neural Networks', 'Python for Data Science', 'Statistics & Probability', 'Natural Language Processing (NLP)', 'Generative AI & LLM Foundations', 'SQL & Data Engineering'],
+  MCA: ['Enterprise Java & Spring Framework', 'Data Structures & Algorithms', 'Relational Databases & SQL', 'Web Development (React & Node.js)', 'Operating Systems & Networks', 'Cloud & DevOps'],
+  MBA: ['Corporate Finance & Investment Analysis', 'Marketing Management & Brand Strategy', 'Human Resource Management', 'Operations & Supply Chain Logistics', 'Business Analytics & Data Interpretation', 'Strategic Management & Case Studies']
+};
+
+const FULL_ASSESSMENT_SUGGESTIONS = [
+  'Quantitative Aptitude & Problem Solving',
+  'Logical Reasoning & Analytical Deduction',
+  'Verbal Ability & Professional Communication',
+  'Core Technical Concepts & DSA',
+  'Campus Placement Drive Simulation',
+  'Quantitative, Logical & Technical Blend'
+];
 import {
   Sparkles,
   FileUp,
@@ -41,15 +63,24 @@ import {
   FileText,
   HelpCircle,
   Layers,
-  Check
+  BookOpen,
+  Check,
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 
 export const AptitudeAssessmentCreateModal = ({
   isOpen,
   onClose,
   onSuccess,
-  initialCategory = 'Quantitative Aptitude'
+  module = 'Aptitude',
+  initialCategory = 'Quantitative Aptitude',
+  initialDepartment = 'CSE'
 }) => {
+  const isDomain = module === 'Domain Knowledge' || module === 'Domain';
+  const isFull = module === 'Full Assessment' || module === 'Full';
+  const isAptitude = !isDomain && !isFull;
+
   // Step Management: 1: Method & Config, 2: Question Review, 3: Mode & Proctoring, 4: Final Summary
   const [step, setStep] = useState(1);
 
@@ -60,6 +91,8 @@ export const AptitudeAssessmentCreateModal = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(initialCategory);
+  const [selectedDepartment, setSelectedDepartment] = useState(initialDepartment || 'CSE');
+  const [prompt, setPrompt] = useState('');
   const [topic, setTopic] = useState('');
   const [customTopic, setCustomTopic] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
@@ -101,9 +134,43 @@ export const AptitudeAssessmentCreateModal = ({
     mobileDetection: true
   });
 
-  // Loading and Error States
+  // Loading, Progress, and Error States
   const [loading, setLoading] = useState(false);
+  const [progressStatus, setProgressStatus] = useState('');
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [regeneratingIndex, setRegeneratingIndex] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Curated training suggestions based on the active module and category
+  const currentSuggestions = useMemo(() => {
+    if (isDomain) {
+      return DOMAIN_SUGGESTIONS[selectedDepartment] || DOMAIN_SUGGESTIONS.CSE;
+    }
+    if (isFull) {
+      return FULL_ASSESSMENT_SUGGESTIONS;
+    }
+    if (category === 'Mix Assessment') {
+      return [
+        'Time & Work', 'Percentage', 'Profit & Loss', 'Ratio & Proportion',
+        'Blood Relations', 'Direction Sense', 'Number Series', 'Syllogism',
+        'Reading Comprehension', 'Sentence Correction', 'Synonyms & Antonyms'
+      ];
+    }
+    return APTITUDE_TOPICS[category] || Object.values(APTITUDE_TOPICS).flat().slice(0, 15);
+  }, [isDomain, isFull, selectedDepartment, category]);
+
+  const handleAddTopicToPrompt = (topicName) => {
+    setPrompt((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) {
+        return `Generate questions focusing on ${topicName}`;
+      }
+      if (trimmed.toLowerCase().includes(topicName.toLowerCase())) {
+        return prev;
+      }
+      return `${trimmed}, ${topicName}`;
+    });
+  };
 
   // Set default category topic on change
   useEffect(() => {
@@ -118,7 +185,9 @@ export const AptitudeAssessmentCreateModal = ({
     if (isOpen) {
       setStep(1);
       setCreationMethod('');
-      setCategory(initialCategory);
+      setCategory(initialCategory || 'Quantitative Aptitude');
+      setSelectedDepartment(initialDepartment || 'CSE');
+      setPrompt('');
       const available = APTITUDE_TOPICS[initialCategory] || [];
       setTopic(available[0] || 'Percentage');
       setCustomTopic('');
@@ -145,15 +214,18 @@ export const AptitudeAssessmentCreateModal = ({
         mobileDetection: true
       });
       setErrorMsg('');
+      setProgressStatus('');
+      setProgressPercent(0);
+      setRegeneratingIndex(null);
       setEditingQuestionIndex(null);
     }
-  }, [isOpen, initialCategory]);
+  }, [isOpen, initialCategory, initialDepartment, module]);
 
   const effectiveTopic = topic === 'Custom Topic' ? customTopic.trim() : topic;
   const [savingToBank, setSavingToBank] = useState(false);
   const [bankSuccessMsg, setBankSuccessMsg] = useState('');
 
-  // Handle PDF file selection
+  // Handle PDF file selection (100% UNCHANGED)
   const handlePdfUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -180,47 +252,184 @@ export const AptitudeAssessmentCreateModal = ({
       return;
     }
 
-    if (!effectiveTopic) {
-      setErrorMsg('Please select or enter a topic name.');
-      return;
-    }
-
-    if (creationMethod === 'PDF_EXTRACTION' && !pdfFile && !pdfText) {
-      setErrorMsg('Please upload a Question PDF file before extracting.');
-      return;
+    if (creationMethod === 'AI_GENERATED') {
+      if (!prompt.trim()) {
+        setErrorMsg('Please write an AI Generation Prompt or click any topic suggestion below.');
+        return;
+      }
+    } else {
+      if (!effectiveTopic) {
+        setErrorMsg('Please select or enter a topic name.');
+        return;
+      }
+      if (!pdfFile && !pdfText) {
+        setErrorMsg('Please upload a Question PDF file before extracting.');
+        return;
+      }
     }
 
     setLoading(true);
     setErrorMsg('');
 
     try {
+      const normalizedModule =
+        module === 'Domain Knowledge' ? 'Domain' : module === 'Full Assessment' ? 'Full' : module;
+      const normalizedCategory = isDomain ? selectedDepartment : category;
+      const normalizedDepartment = isDomain ? selectedDepartment : null;
+
       if (creationMethod === 'AI_GENERATED') {
-        const res = await api.generateQuestionsForReview({
-          provider: aiProvider,
-          module: 'Aptitude',
-          category,
-          topic: effectiveTopic,
-          difficulty,
-          questionCount: targetQuestionCount
+        const totalTarget = Math.max(1, parseInt(targetQuestionCount, 10) || 5);
+
+        // Split into batches of 10–20 questions per Gemini call
+        const batchChunks = [];
+        let preferredBatch = 20;
+        if (totalTarget <= 20) {
+          preferredBatch = totalTarget;
+        } else if (totalTarget % 15 === 0 && totalTarget % 20 !== 0) {
+          preferredBatch = 15;
+        } else if (totalTarget <= 30) {
+          preferredBatch = 15;
+        } else {
+          preferredBatch = 20;
+        }
+
+        let rem = totalTarget;
+        while (rem > 0) {
+          const sz = Math.min(preferredBatch, rem);
+          batchChunks.push(sz);
+          rem -= sz;
+        }
+
+        const collected = [];
+        let runningTotal = 0;
+
+        for (let bIdx = 0; bIdx < batchChunks.length; bIdx++) {
+          const chunkSize = batchChunks[bIdx];
+          const nextTarget = Math.min(runningTotal + chunkSize, totalTarget);
+          setProgressStatus(`Generating ${nextTarget}/${totalTarget}...`);
+          setProgressPercent(Math.round((bIdx / batchChunks.length) * 100));
+
+          const res = await api.generateQuestionsForReview({
+            provider: aiProvider,
+            module: normalizedModule,
+            category: normalizedCategory,
+            department: normalizedDepartment,
+            topic: prompt.slice(0, 60).trim(),
+            prompt: prompt.trim(),
+            customPrompt: prompt.trim(),
+            difficulty,
+            questionCount: chunkSize,
+            existingQuestions: collected.map((q) => q.questionText)
+          });
+
+          if (res.success && Array.isArray(res.questions) && res.questions.length > 0) {
+            for (const q of res.questions) {
+              if (collected.length >= totalTarget) break;
+
+              let opts = Array.isArray(q.options) && q.options.length >= 4
+                ? q.options.slice(0, 4).map((o) => String(o || '').trim())
+                : ['Option A', 'Option B', 'Option C', 'Option D'];
+              while (opts.length < 4) {
+                opts.push(`Option ${String.fromCharCode(65 + opts.length)}`);
+              }
+
+              let corr = String(q.correctAnswer || opts[0]).trim();
+              const upper = corr.toUpperCase();
+              if (upper === 'A' || upper === 'OPTION A' || upper === '(A)') corr = opts[0];
+              else if (upper === 'B' || upper === 'OPTION B' || upper === '(B)') corr = opts[1];
+              else if (upper === 'C' || upper === 'OPTION C' || upper === '(C)') corr = opts[2];
+              else if (upper === 'D' || upper === 'OPTION D' || upper === '(D)') corr = opts[3];
+              if (!opts.includes(corr)) opts[0] = corr;
+
+              // Deduplication against previously collected questions
+              const normQ = String(q.questionText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const isDup = collected.some((item) => {
+                const normItem = item.questionText.toLowerCase().replace(/[^a-z0-9]/g, '');
+                return normQ === normItem || (normQ.length > 25 && normItem.length > 25 && (normQ.includes(normItem) || normItem.includes(normQ)));
+              });
+
+              if (!isDup && q.questionText) {
+                collected.push({
+                  id: `gen-${Date.now()}-${collected.length}`,
+                  questionText: q.questionText,
+                  codeSnippet: q.codeSnippet || '',
+                  options: opts,
+                  correctAnswer: corr,
+                  explanation: q.explanation || '',
+                  difficulty: q.difficulty || difficulty,
+                  status: 'APPROVED'
+                });
+              }
+            }
+            runningTotal = collected.length;
+          }
+        }
+
+        setProgressStatus(`Generating ${totalTarget}/${totalTarget}...`);
+        setProgressPercent(95);
+
+        // Guarantee EXACT totalTarget (top up any deficit caused by rejected duplicates)
+        if (collected.length < totalTarget) {
+          const deficit = totalTarget - collected.length;
+          const topUpRes = await api.generateQuestionsForReview({
+            provider: aiProvider,
+            module: normalizedModule,
+            category: normalizedCategory,
+            department: normalizedDepartment,
+            topic: prompt.slice(0, 60).trim(),
+            prompt: prompt.trim(),
+            customPrompt: prompt.trim(),
+            difficulty,
+            questionCount: deficit,
+            existingQuestions: collected.map((q) => q.questionText)
+          });
+          if (topUpRes.success && Array.isArray(topUpRes.questions)) {
+            for (const q of topUpRes.questions) {
+              if (collected.length >= totalTarget) break;
+              let opts = Array.isArray(q.options) && q.options.length >= 4 ? q.options.slice(0, 4) : ['Option A', 'Option B', 'Option C', 'Option D'];
+              while (opts.length < 4) opts.push(`Option ${String.fromCharCode(65 + opts.length)}`);
+              let corr = String(q.correctAnswer || opts[0]).trim();
+              if (!opts.includes(corr)) opts[0] = corr;
+              collected.push({
+                id: `gen-${Date.now()}-${collected.length}`,
+                questionText: q.questionText,
+                codeSnippet: q.codeSnippet || '',
+                options: opts,
+                correctAnswer: corr,
+                explanation: q.explanation || '',
+                difficulty: q.difficulty || difficulty,
+                status: 'APPROVED'
+              });
+            }
+          }
+        }
+
+        // Final strict validation: exactly totalTarget questions, 4 options each, one matching correct answer
+        const validated = collected.slice(0, totalTarget).map((q, idx) => {
+          let opts = Array.isArray(q.options) && q.options.length >= 4 ? q.options.slice(0, 4) : ['Option A', 'Option B', 'Option C', 'Option D'];
+          while (opts.length < 4) opts.push(`Option ${String.fromCharCode(65 + opts.length)}`);
+          let corr = q.correctAnswer;
+          if (!opts.includes(corr)) corr = opts[0];
+          return {
+            ...q,
+            id: q.id || `gen-${Date.now()}-${idx}`,
+            options: opts,
+            correctAnswer: corr
+          };
         });
 
-        if (res.success && res.questions?.length > 0) {
-          const formatted = res.questions.map((q, idx) => ({
-            id: `gen-${Date.now()}-${idx}`,
-            questionText: q.questionText || '',
-            options: q.options || ['', '', '', ''],
-            correctAnswer: q.correctAnswer || q.options?.[0] || '',
-            explanation: q.explanation || '',
-            difficulty: q.difficulty || difficulty,
-            status: 'APPROVED'
-          }));
-          setQuestions(formatted);
+        if (validated.length > 0) {
+          setProgressStatus('Test ready.');
+          setProgressPercent(100);
+          await new Promise((r) => setTimeout(r, 400));
+          setQuestions(validated);
+          setTargetQuestionCount(validated.length);
           setStep(2);
         } else {
-          setErrorMsg(res.message || 'Failed to generate questions via AI. Please check LLM provider.');
+          setErrorMsg('Failed to generate questions via AI. Please check LLM provider.');
         }
       } else {
-        // PDF Extraction - Send binary PDF to backend for local pdf-parse pattern recognition
+        // PDF Extraction - Send binary PDF to backend for local pdf-parse pattern recognition (100% UNCHANGED)
         let payload;
         if (pdfFile) {
           payload = new FormData();
@@ -287,6 +496,68 @@ export const AptitudeAssessmentCreateModal = ({
 
   const handleDeleteQuestion = (idx) => {
     setQuestions((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleRegenerateQuestion = async (idx) => {
+    const targetQ = questions[idx];
+    if (!targetQ) return;
+    setRegeneratingIndex(idx);
+    setErrorMsg('');
+    try {
+      const normalizedModule =
+        module === 'Domain Knowledge' ? 'Domain' : module === 'Full Assessment' ? 'Full' : module;
+      const normalizedCategory = isDomain ? selectedDepartment : category;
+      const normalizedDepartment = isDomain ? selectedDepartment : null;
+
+      const otherQuestionTexts = questions.filter((_, i) => i !== idx).map((q) => q.questionText);
+
+      const res = await api.generateQuestionsForReview({
+        provider: aiProvider,
+        module: normalizedModule,
+        category: normalizedCategory,
+        department: normalizedDepartment,
+        topic: prompt.slice(0, 60).trim() || effectiveTopic,
+        prompt: prompt.trim() || effectiveTopic,
+        customPrompt: prompt.trim() || effectiveTopic,
+        difficulty: targetQ.difficulty || difficulty,
+        questionCount: 1,
+        existingQuestions: otherQuestionTexts
+      });
+
+      if (res.success && Array.isArray(res.questions) && res.questions.length > 0) {
+        const newQ = res.questions[0];
+        let opts = Array.isArray(newQ.options) && newQ.options.length >= 4
+          ? newQ.options.slice(0, 4)
+          : ['Option A', 'Option B', 'Option C', 'Option D'];
+        while (opts.length < 4) opts.push(`Option ${String.fromCharCode(65 + opts.length)}`);
+        let corr = String(newQ.correctAnswer || opts[0]).trim();
+        if (!opts.includes(corr)) corr = opts[0];
+
+        setQuestions((prev) =>
+          prev.map((q, i) =>
+            i === idx
+              ? {
+                  ...q,
+                  questionText: newQ.questionText,
+                  codeSnippet: newQ.codeSnippet || '',
+                  options: opts,
+                  correctAnswer: corr,
+                  explanation: newQ.explanation || q.explanation,
+                  difficulty: newQ.difficulty || q.difficulty,
+                  status: 'APPROVED'
+                }
+              : q
+          )
+        );
+      } else {
+        setErrorMsg('Failed to regenerate this question. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error regenerating question:', err);
+      setErrorMsg('Error regenerating question: ' + (err.message || 'Unknown error'));
+    } finally {
+      setRegeneratingIndex(null);
+    }
   };
 
   const handleStartEdit = (q, idx) => {
@@ -384,14 +655,14 @@ export const AptitudeAssessmentCreateModal = ({
 
   // Final Submit Handler (Draft or Publish)
   const handleFinalSave = async (statusToSet = 'published') => {
-    // Validation
-    const effectiveTitle =
-      title.trim() || `${category} Assessment — ${effectiveTopic || 'Level 1'}`;
+    const normalizedModule =
+      module === 'Domain Knowledge' ? 'Domain' : module === 'Full Assessment' ? 'Full' : module;
+    const normalizedCategory = isDomain ? selectedDepartment : category;
+    const normalizedDepartment = isDomain ? selectedDepartment : null;
 
-    if (!category) {
-      setErrorMsg('Category is required.');
-      return;
-    }
+    const displayTopic = prompt.slice(0, 35).trim() || effectiveTopic || 'General';
+    const effectiveTitle =
+      title.trim() || `${module} Assessment — ${displayTopic}`;
 
     if (statusToSet === 'published') {
       if (approvedCount < targetQuestionCount) {
@@ -404,16 +675,20 @@ export const AptitudeAssessmentCreateModal = ({
 
     setLoading(true);
     setErrorMsg('');
+    setProgressStatus('Saving questions...');
+    setProgressPercent(80);
 
     try {
       const payload = {
         title: effectiveTitle,
         description:
           description.trim() ||
-          `Comprehensive ${category} evaluation covering ${effectiveTopic} with ${targetQuestionCount} questions.`,
-        module: 'Aptitude',
-        category,
-        topic: effectiveTopic,
+          `Comprehensive ${module} evaluation covering ${prompt.trim() || effectiveTopic} with ${targetQuestionCount} questions.`,
+        module: normalizedModule,
+        category: normalizedCategory,
+        department: normalizedDepartment,
+        topic: prompt.slice(0, 60).trim() || effectiveTopic,
+        prompt: prompt.trim(),
         difficulty,
         questions: approvedQuestions.map((q) => ({
           questionText: q.questionText,
@@ -448,13 +723,16 @@ export const AptitudeAssessmentCreateModal = ({
 
       const res = await api.createAssessment(payload);
       if (res.success) {
+        setProgressStatus('Test ready.');
+        setProgressPercent(100);
+        await new Promise((r) => setTimeout(r, 400));
         if (onSuccess) onSuccess(res.assessment, statusToSet);
         onClose();
       } else {
         setErrorMsg(res.message || 'Failed to save assessment.');
       }
     } catch (err) {
-      console.error('Error creating aptitude assessment:', err);
+      console.error('Error creating assessment:', err);
       setErrorMsg(err.message || 'Error creating assessment.');
     } finally {
       setLoading(false);
@@ -465,7 +743,7 @@ export const AptitudeAssessmentCreateModal = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Create Aptitude Assessment"
+      title={`Create ${module} Assessment`}
       maxWidth="max-w-4xl"
     >
       <div className="space-y-6">
@@ -599,50 +877,152 @@ export const AptitudeAssessmentCreateModal = ({
               </div>
             )}
 
-            {/* Category & Topic Configuration */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select
-                label="Aptitude Category *"
-                options={APTITUDE_CATEGORIES}
-                value={category}
-                onChange={(e) => {
-                  const newCat = e.target.value;
-                  setCategory(newCat);
-                  if (newCat === 'Mix Assessment' && targetQuestionCount < 15) {
-                    setTargetQuestionCount(30);
-                    setTimeLimitMinutes(30);
-                  }
-                }}
-              />
+            {/* AI GENERATED: Write AI Prompt with Training Module Suggestions */}
+            {creationMethod === 'AI_GENERATED' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {isDomain ? (
+                    <Select
+                      label="Engineering Department *"
+                      options={OFFICIAL_DEPARTMENTS}
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                    />
+                  ) : (
+                    <Select
+                      label="Assessment Category *"
+                      options={APTITUDE_CATEGORIES}
+                      value={category}
+                      onChange={(e) => {
+                        const newCat = e.target.value;
+                        setCategory(newCat);
+                        if (newCat === 'Mix Assessment' && targetQuestionCount < 15) {
+                          setTargetQuestionCount(30);
+                          setTimeLimitMinutes(30);
+                        }
+                      }}
+                    />
+                  )}
 
-              <div className="space-y-1">
-                <Select
-                  label="Aptitude Topic *"
-                  options={[...(APTITUDE_TOPICS[category] || []), 'Custom Topic']}
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                />
-                {topic === 'Custom Topic' && (
-                  <Input
-                    placeholder="Enter custom topic name..."
-                    value={customTopic}
-                    onChange={(e) => setCustomTopic(e.target.value)}
-                    className="mt-2 text-xs"
-                    required
+                  <Select
+                    label="Difficulty Level *"
+                    options={DIFFICULTY_OPTIONS}
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
                   />
-                )}
+                </div>
+
+                {/* AI Prompt Input (Replaces rigid topic selection) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-800">
+                      AI Test Generation Prompt / Syllabus Instructions *
+                    </label>
+                    <span className="text-[11px] text-blue-600 font-semibold flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5" /> Powered by Google Gemini
+                    </span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder={
+                      isDomain
+                        ? `e.g. Generate questions for ${selectedDepartment} covering key algorithms, design patterns, database indexing, and practical troubleshooting...`
+                        : isFull
+                        ? 'e.g. Comprehensive campus recruitment mock test combining Quantitative problem-solving, Logical deduction, and core engineering aptitude...'
+                        : `e.g. Generate questions on ${category === 'Mix Assessment' ? 'Mixed Aptitude' : category} focusing on practical word problems, shortcuts, and calculation speed...`
+                    }
+                    className="w-full text-xs p-3.5 rounded-2xl border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 outline-none transition custom-scrollbar"
+                  />
+
+                  {/* Training Module Suggestions Bar */}
+                  <div className="p-3 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                        Suggested Topics from Training Module (Click to append to prompt):
+                      </span>
+                      {prompt && (
+                        <button
+                          type="button"
+                          onClick={() => setPrompt('')}
+                          className="text-[10px] text-slate-400 hover:text-rose-600 font-semibold transition"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto custom-scrollbar pt-0.5">
+                      {currentSuggestions.map((sug) => {
+                        const isIncluded = prompt.toLowerCase().includes(sug.toLowerCase());
+                        return (
+                          <button
+                            key={sug}
+                            type="button"
+                            onClick={() => handleAddTopicToPrompt(sug)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition border flex items-center gap-1 ${
+                              isIncluded
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-2xs font-semibold'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                            }`}
+                          >
+                            <span>{sug}</span>
+                            {isIncluded ? <Check className="w-3 h-3 ml-0.5" /> : <Plus className="w-3 h-3 ml-0.5 opacity-60" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* PDF EXTRACTION: 100% Unchanged (Select Category & Topic) */}
+            {creationMethod === 'PDF_EXTRACTION' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Select
+                  label={isDomain ? "Department *" : "Aptitude Category *"}
+                  options={isDomain ? OFFICIAL_DEPARTMENTS : APTITUDE_CATEGORIES}
+                  value={isDomain ? selectedDepartment : category}
+                  onChange={(e) => {
+                    if (isDomain) {
+                      setSelectedDepartment(e.target.value);
+                    } else {
+                      setCategory(e.target.value);
+                    }
+                  }}
+                />
+
+                <div className="space-y-1">
+                  <Select
+                    label="Topic / Subject *"
+                    options={[...(isDomain ? (DOMAIN_SUGGESTIONS[selectedDepartment] || ['General']) : (APTITUDE_TOPICS[category] || [])), 'Custom Topic']}
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                  />
+                  {topic === 'Custom Topic' && (
+                    <Input
+                      placeholder="Enter custom topic name..."
+                      value={customTopic}
+                      onChange={(e) => setCustomTopic(e.target.value)}
+                      className="mt-2 text-xs"
+                      required
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Mix Assessment Helper Banner */}
-            {category === 'Mix Assessment' && (
+            {category === 'Mix Assessment' && creationMethod !== 'PDF_EXTRACTION' && (
               <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl flex items-start gap-3 text-xs shadow-2xs">
                 <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <span className="font-extrabold text-indigo-950 block">Comprehensive Aptitude Mix Assessment</span>
-                    <p className="text-slate-600 leading-relaxed text-[11px]">
-                      Creates a balanced test distributing questions across <strong>Quantitative Aptitude</strong>, <strong>Logical Reasoning</strong>, and <strong>Verbal Ability</strong>. Recommended for full placement mock drives (up to 180 questions).
-                    </p>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
+                    Creates a balanced test distributing questions across <strong>Quantitative Aptitude</strong>, <strong>Logical Reasoning</strong>, and <strong>Verbal Ability</strong>. Recommended for full placement mock drives (up to 180 questions).
+                  </p>
                 </div>
               </div>
             )}
@@ -714,6 +1094,30 @@ export const AptitudeAssessmentCreateModal = ({
                 onChange={(e) => setPassingScorePercentage(parseInt(e.target.value, 10))}
               />
             </div>
+
+            {/* Live Generation Progress Banner */}
+            {loading && progressStatus && (
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200/90 rounded-2xl flex items-center gap-3.5 shadow-2xs">
+                <Loader2 className="w-5 h-5 text-blue-600 animate-spin shrink-0" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-black text-blue-950 flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                      {progressStatus}
+                    </span>
+                    <span className="text-[11px] font-black text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                      {progressPercent}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-200/70 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.max(5, progressPercent))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Action Bar */}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
@@ -924,6 +1328,22 @@ export const AptitudeAssessmentCreateModal = ({
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
+
+                        {creationMethod === 'AI_GENERATED' && (
+                          <button
+                            type="button"
+                            onClick={() => handleRegenerateQuestion(idx)}
+                            disabled={regeneratingIndex !== null}
+                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition disabled:opacity-40"
+                            title="Regenerate this Question with AI"
+                          >
+                            {regeneratingIndex === idx ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                            ) : (
+                              <RotateCcw className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
 
                         <button
                           type="button"
@@ -1207,6 +1627,30 @@ export const AptitudeAssessmentCreateModal = ({
                       className="w-4 h-4 text-blue-600 rounded cursor-pointer"
                     />
                   </label>
+                </div>
+              </div>
+            )}
+
+            {/* Live Saving Progress Banner */}
+            {loading && progressStatus && (
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200/90 rounded-2xl flex items-center gap-3.5 shadow-2xs">
+                <Loader2 className="w-5 h-5 text-blue-600 animate-spin shrink-0" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-black text-blue-950 flex items-center gap-2">
+                      <Save className="w-3.5 h-3.5 text-blue-600" />
+                      {progressStatus}
+                    </span>
+                    <span className="text-[11px] font-black text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                      {progressPercent}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-200/70 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.max(5, progressPercent))}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             )}

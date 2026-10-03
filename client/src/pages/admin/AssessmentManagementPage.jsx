@@ -18,7 +18,6 @@ import Toast from '../../components/Toast';
 import AptitudeAssessmentCreateModal from '../../components/assessments/AptitudeAssessmentCreateModal';
 import AssessmentPreviewModal from '../../components/assessments/AssessmentPreviewModal';
 import {
-  TRAINING_MODULES,
   MODULE_CATEGORIES,
   ASSESSMENT_MODULE_CATEGORIES,
   normalizeModuleName
@@ -101,7 +100,8 @@ export const AssessmentManagementPage = () => {
 
   // Modules including Full Assessment
   const assessmentModules = [
-    ...TRAINING_MODULES,
+    { id: 'Aptitude', label: 'Aptitude' },
+    { id: 'Domain', label: 'Domain Knowledge' },
     { id: 'Full', label: 'Full Assessment' }
   ];
 
@@ -227,36 +227,14 @@ export const AssessmentManagementPage = () => {
         ]}
         actions={
           <div className="flex items-center gap-3">
-            {isAptitudeModule ? (
-              <Button
-                variant="primary"
-                icon={Sparkles}
-                onClick={() => setIsAptitudeModalOpen(true)}
-                className="bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-500/20"
-              >
-                Create Assessment
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                icon={Sparkles}
-                onClick={() => {
-                  setAiForm((prev) => ({
-                    ...prev,
-                    module: currentModule,
-                    category: availableCategories[0]?.id || 'General',
-                    department: isDomainModule ? 'CSE' : null,
-                    title: '',
-                    topic: ''
-                  }));
-                  setAiError('');
-                  setIsAIModalOpen(true);
-                }}
-                className="bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-              >
-                AI Assessment Generator
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              icon={Sparkles}
+              onClick={() => setIsAptitudeModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-500/20"
+            >
+              Create Assessment
+            </Button>
           </div>
         }
       />
@@ -467,23 +445,8 @@ export const AssessmentManagementPage = () => {
           description={`No assessment evaluations have been published for ${
             activeCategory !== 'All' ? activeCategory : currentModule
           } yet.`}
-          actionText={isAptitudeModule ? 'Create Aptitude Assessment' : 'Generate AI Assessment'}
-          onAction={() => {
-            if (isAptitudeModule) {
-              setIsAptitudeModalOpen(true);
-            } else {
-              setAiForm((prev) => ({
-                ...prev,
-                module: currentModule,
-                category: availableCategories[0]?.id || 'General',
-                department: isDomainModule ? 'CSE' : null,
-                title: '',
-                topic: ''
-              }));
-              setAiError('');
-              setIsAIModalOpen(true);
-            }
-          }}
+          actionText="Create Assessment"
+          onAction={() => setIsAptitudeModalOpen(true)}
         />
       )}
 
@@ -516,13 +479,19 @@ export const AssessmentManagementPage = () => {
             />
           </div>
 
-          <Input
-            label="Topic / Exam Subject *"
-            placeholder="e.g. Quantitative Profit & Loss / Database Indexing / Active Listening"
-            value={aiForm.topic}
-            onChange={(e) => setAiForm({ ...aiForm, topic: e.target.value })}
-            required
-          />
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              AI Generation Prompt / Test Syllabus *
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Describe test requirements or specific focus concepts (e.g. '10 questions on Percentage and Profit & Loss with word problems on discounts')..."
+              value={aiForm.topic}
+              onChange={(e) => setAiForm({ ...aiForm, topic: e.target.value })}
+              className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 outline-none transition custom-scrollbar"
+              required
+            />
+          </div>
 
           <Input
             label="Assessment Title (Optional auto-naming)"
@@ -582,10 +551,15 @@ export const AssessmentManagementPage = () => {
         </form>
       </Modal>
 
-      {/* MODAL: Aptitude Assessment Wizard (AI & PDF Extraction & Review) */}
+      {/* MODAL: Assessment Wizard (AI Prompt & PDF Extraction & Review) */}
       <AptitudeAssessmentCreateModal
         isOpen={isAptitudeModalOpen}
         onClose={() => setIsAptitudeModalOpen(false)}
+        module={currentModule}
+        initialCategory={
+          activeCategory !== 'All' ? activeCategory : (isDomainModule ? 'CSE' : 'Quantitative Aptitude')
+        }
+        initialDepartment={isDomainModule ? (activeCategory !== 'All' ? activeCategory : 'CSE') : 'CSE'}
         onSuccess={(newAssessment, status) => {
           queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
           setIsAptitudeModalOpen(false);
@@ -598,7 +572,6 @@ export const AssessmentManagementPage = () => {
               : `Assessment "${newAssessment?.title || 'Test'}" has been published successfully.`
           });
         }}
-        initialCategory={activeCategory !== 'All' ? activeCategory : 'Quantitative Aptitude'}
       />
 
       {/* MODAL: Assessment Preview & Review */}

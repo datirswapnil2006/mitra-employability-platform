@@ -40,6 +40,12 @@ const studentProfileSchema = new mongoose.Schema({
   passwordResetRequestedAt: { type: Date, default: null },
   passwordResetApprovedAt: { type: Date, default: null },
   passwordResetCompletedAt: { type: Date, default: null },
+  psychometricStatus: {
+    completed: { type: Boolean, default: false },
+    overallScore: { type: Number, default: 0 },
+    lastEvaluatedAt: { type: Date, default: null },
+    attemptId: { type: mongoose.Schema.Types.ObjectId, ref: 'PsychometricAttempt', default: null }
+  },
   updatedAt: { type: Date, default: Date.now }
 });
 

@@ -9,7 +9,7 @@ import Input from '../../components/Input';
 import LoadingState from '../../components/LoadingState';
 import EmptyState from '../../components/EmptyState';
 import {
-  TRAINING_MODULES,
+  STUDENT_ASSESSMENT_MODULES,
   MODULE_CATEGORIES,
   ASSESSMENT_MODULE_CATEGORIES,
   normalizeModuleName
@@ -26,16 +26,20 @@ import {
   BookOpen,
   ShieldAlert,
   Search,
-  Tag,
   Layers
 } from 'lucide-react';
+import { enterFullscreen } from '../../utils/fullscreen';
 
 export const StudentAssessmentsPage = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const rawModule = searchParams.get('type') || searchParams.get('category') || 'Aptitude';
+  const queryType = searchParams.get('type') || searchParams.get('category') || 'Aptitude';
+  // Disallow Resume or Interview in assessments, fallback to Aptitude
+  const rawModule = (queryType === 'Resume' || queryType === 'Interview' || queryType === 'Interview Preparation')
+    ? 'Aptitude'
+    : queryType;
   const currentModule = normalizeModuleName(rawModule);
   const isAptitudeModule = currentModule === 'Aptitude';
   const isDomainModule = currentModule === 'Domain Knowledge';
@@ -59,10 +63,7 @@ export const StudentAssessmentsPage = () => {
         ...availableCategories
       ];
 
-  const assessmentModules = [
-    ...TRAINING_MODULES,
-    { id: 'Full', label: 'Full Assessment' }
-  ];
+  const assessmentModules = STUDENT_ASSESSMENT_MODULES;
 
   useEffect(() => {
     if (isAptitudeModule) {
@@ -219,42 +220,6 @@ export const StudentAssessmentsPage = () => {
             </div>
           </div>
 
-          {/* Topic Filter Chips (Identical to Training Section) */}
-          {isAptitudeModule && currentCategoryTopics.length > 0 && (
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2 overflow-x-auto custom-scrollbar">
-              <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0 flex items-center gap-1 mr-1">
-                <Tag className="w-3.5 h-3.5 text-slate-400" /> Topics:
-              </span>
-
-              <button
-                type="button"
-                onClick={() => setSelectedTopic('All')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${
-                  selectedTopic === 'All'
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                All Topics
-              </button>
-
-              {currentCategoryTopics.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setSelectedTopic(t)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${
-                    selectedTopic === t
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs shadow-blue-500/20'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Assessment Cards Grid */}
           {loading ? (
             <LoadingState message={`Fetching published ${currentModule} assessments...`} />
@@ -342,7 +307,12 @@ export const StudentAssessmentsPage = () => {
                         size="md"
                         variant="primary"
                         icon={Play}
-                        onClick={() => navigate(`/student/take-assessment/${item._id}`)}
+                        onClick={async () => {
+                          try {
+                            await enterFullscreen();
+                          } catch (_) {}
+                          navigate(`/student/take-assessment/${item._id}`);
+                        }}
                         className="w-full justify-center shadow-xs"
                       >
                         Start Assessment

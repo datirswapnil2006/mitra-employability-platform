@@ -25,8 +25,12 @@ import {
   ArrowLeft,
   HelpCircle,
   TrendingUp,
-  Target
+  Target,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
+import { useFullscreen } from '../../utils/fullscreen';
+import { useAssessmentSession } from '../../context/AssessmentSessionContext';
 
 export const TopicPracticeRunnerPage = () => {
   const { id } = useParams();
@@ -39,6 +43,12 @@ export const TopicPracticeRunnerPage = () => {
   const [loading, setLoading] = useState(true);
   const [assessment, setAssessment] = useState(null);
   const [error, setError] = useState('');
+
+  // Fullscreen option controller
+  const { isFullscreen, toggleFullscreen, enterFullscreen: triggerFullscreen, exitFullscreen: leaveFullscreen } = useFullscreen();
+
+  // Active assessment session controller (auto-closes sidebar & protects navigation)
+  const { startSession, endSession } = useAssessmentSession();
 
   // Test Running State
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -69,6 +79,33 @@ export const TopicPracticeRunnerPage = () => {
         setAssessment(res.assessment);
         const durationMins = res.assessment.timeLimitMinutes || (res.assessment.questions?.length || 10);
         setTimeLeft(durationMins * 60);
+
+        // Auto-request fullscreen by default for practice assessment
+        try {
+          await triggerFullscreen();
+        } catch (_) {}
+
+        // Register session to auto-close sidebar and protect navigation
+        const isOfficial = !res.assessment.isPracticeTest;
+        startSession({
+          assessmentId: res.assessment._id,
+          assessmentTitle: res.assessment.title || 'Topic Practice',
+          isPractice: !isOfficial,
+          requires24hLock: isOfficial,
+          onSubmit: async () => {
+            await handleSubmitTest(false);
+          },
+          onAbandon: async () => {
+            if (isOfficial) {
+              try {
+                await api.abandonAssessment({
+                  assessmentId: res.assessment._id,
+                  submissionReason: 'Candidate navigated away from topic baseline test (24h lockout enforced)'
+                });
+              } catch (_) {}
+            }
+          }
+        });
       } else {
         setError(res?.message || 'Failed to load practice test.');
       }
@@ -132,8 +169,13 @@ export const TopicPracticeRunnerPage = () => {
       });
 
       if (submitRes?.success) {
+        endSession();
         setResultData(submitRes);
         setIsCompleted(true);
+
+        try {
+          await leaveFullscreen();
+        } catch (_) {}
 
         if (submitRes.attempt || submitRes.result) {
           setFullAttempt(submitRes.attempt || submitRes.result);
@@ -173,7 +215,11 @@ export const TopicPracticeRunnerPage = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleReturnToTraining = () => {
+  const handleReturnToTraining = async () => {
+    endSession();
+    try {
+      await leaveFullscreen();
+    } catch (_) {}
     navigate('/student/training');
   };
 
@@ -452,6 +498,30 @@ export const TopicPracticeRunnerPage = () => {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Fullscreen Option Toggle */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition shadow-2xs ${
+                isFullscreen
+                  ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                  : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+              }`}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enable Fullscreen'}
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="hidden sm:inline">Exit Fullscreen</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="hidden sm:inline">Fullscreen</span>
+                </>
+              )}
+            </button>
+
             {/* Live Countdown Timer Badge - Always pinned and visible! */}
             <div
               className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-black shadow-xs transition-colors ${

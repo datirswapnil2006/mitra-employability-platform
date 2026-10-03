@@ -506,34 +506,34 @@ export const AIAssessmentGenPage = () => {
       )}
 
       {/* Top Macro Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
-            <Users className="w-6 h-6" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
+            <Users className="w-5 h-5" />
           </div>
           <div>
             <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Candidate Evaluations</span>
-            <span className="text-2xl font-black text-slate-900">{summaryData.totalEvaluated}</span>
+            <span className="text-xl sm:text-2xl font-black text-slate-900">{summaryData.totalEvaluated}</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0">
-            <Award className="w-6 h-6" />
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+            <Award className="w-5 h-5" />
           </div>
           <div>
             <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Cohort Avg Readiness</span>
-            <span className="text-2xl font-black text-emerald-600">{summaryData.avgReadiness}%</span>
+            <span className="text-xl sm:text-2xl font-black text-emerald-600">{summaryData.avgReadiness}%</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
-            <BrainCircuit className="w-6 h-6" />
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+            <BrainCircuit className="w-5 h-5" />
           </div>
           <div>
             <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Active Assessments</span>
-            <span className="text-2xl font-black text-indigo-700">{tests.filter(t => t.isActive).length} Active</span>
+            <span className="text-xl sm:text-2xl font-black text-indigo-700">{tests.filter(t => t.isActive).length} Active</span>
           </div>
         </div>
       </div>
@@ -576,10 +576,10 @@ export const AIAssessmentGenPage = () => {
       {/* ========================================== */}
       {activeTab === 'library' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-indigo-600" />
                 Published Psychometric Assessments ({tests.length})
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -595,7 +595,7 @@ export const AIAssessmentGenPage = () => {
                 setWizardStep(1);
                 setActiveTab('builder');
               }}
-              className="bg-indigo-600 hover:bg-indigo-700 shrink-0 font-bold"
+              className="bg-indigo-600 hover:bg-indigo-700 shrink-0 font-bold text-xs"
             >
               Create New Assessment
             </Button>
@@ -604,18 +604,18 @@ export const AIAssessmentGenPage = () => {
           {loading ? (
             <LoadingState message="Loading psychometric tests..." />
           ) : tests.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
               {tests.map((t) => (
                 <div
                   key={t._id}
-                  className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 flex flex-col justify-between space-y-4 hover:border-indigo-200 transition-colors"
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-xs p-4 sm:p-4.5 flex flex-col justify-between gap-3.5 hover:border-indigo-300 transition-all duration-200"
                 >
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
                         {t.category}
                       </span>
-                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 ${
                         t.isActive
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                           : 'bg-slate-100 text-slate-600 border border-slate-200'
@@ -626,37 +626,37 @@ export const AIAssessmentGenPage = () => {
                     </div>
 
                     <div>
-                      <h4 className="text-base font-black text-slate-900 tracking-tight">{t.title}</h4>
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
-                        {t.description || '50-item calibrated psychological assessment evaluating 10 workplace competencies.'}
+                      <h4 className="text-sm font-bold text-slate-900 tracking-tight line-clamp-1">{t.title}</h4>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed min-h-[32px]">
+                        {t.description || 'Calibrated psychological assessment evaluating core workplace competencies.'}
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 py-2 bg-slate-50 rounded-2xl p-3 text-center border border-slate-100 text-xs">
+                    <div className="grid grid-cols-3 gap-1.5 py-1.5 bg-slate-50/80 rounded-xl p-2 text-center border border-slate-100 text-xs">
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Questions</span>
-                        <span className="font-mono font-black text-slate-900">{t.questions?.length || t.questionsCount || 50} Items</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Questions</span>
+                        <span className="font-mono text-xs font-bold text-slate-900">{t.questions?.length || t.questionsCount || 50} Items</span>
                       </div>
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Duration</span>
-                        <span className="font-mono font-black text-slate-900">{t.durationMinutes || 20} Mins</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Duration</span>
+                        <span className="font-mono text-xs font-bold text-slate-900">{t.durationMinutes || 20} Mins</span>
                       </div>
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Attempts</span>
-                        <span className="font-mono font-black text-indigo-700">{t.attemptsCount || 0}</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Attempts</span>
+                        <span className="font-mono text-xs font-bold text-indigo-700">{t.attemptsCount || 0}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Card Actions */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 gap-2">
+                  <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 gap-2">
                     <div className="flex items-center gap-1.5">
                       <Button
                         size="sm"
                         variant="outline"
                         icon={Eye}
                         onClick={() => setPreviewTest(t)}
-                        className="text-xs py-1.5"
+                        className="text-xs py-1 px-2.5"
                       >
                         Preview
                       </Button>
@@ -665,7 +665,7 @@ export const AIAssessmentGenPage = () => {
                         variant="outline"
                         icon={t.isActive ? ToggleRight : ToggleLeft}
                         onClick={() => handleToggleTest(t._id)}
-                        className={`text-xs py-1.5 ${t.isActive ? 'text-emerald-700 bg-emerald-50/50' : 'text-slate-600'}`}
+                        className={`text-xs py-1 px-2.5 ${t.isActive ? 'text-emerald-700 bg-emerald-50/50' : 'text-slate-600'}`}
                       >
                         {t.isActive ? 'Deactivate' : 'Activate'}
                       </Button>
@@ -674,10 +674,10 @@ export const AIAssessmentGenPage = () => {
                     <button
                       type="button"
                       onClick={() => handleDeleteTest(t._id)}
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                       title="Delete assessment"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

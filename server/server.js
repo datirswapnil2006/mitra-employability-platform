@@ -87,11 +87,15 @@ const PORT = process.env.PORT || 5000;
 // Start Server & Connect Database
 const startServer = async () => {
   await connectDB();
-  await seedData();
 
   app.listen(PORT, () => {
     console.log(`MITRA EMPLOYABILITY PORTAL API SERVER RUNNING ON PORT ${PORT}`);
     console.log(`Health Check: http://localhost:${PORT}/api/health`);
+  });
+
+  // Verify and seed initial data in background without delaying server startup
+  seedData().catch((err) => {
+    console.error('[System Init Error]:', err.message);
   });
 };
 
