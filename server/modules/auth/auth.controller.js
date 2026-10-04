@@ -146,11 +146,8 @@ exports.register = async (req, res) => {
       }
     }
 
-    const { accessToken } = await createSession(user, req, res);
-
     res.status(201).json({
       success: true,
-      token: accessToken,
       user: {
         id: user._id,
         name: user.name,

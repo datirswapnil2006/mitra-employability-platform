@@ -197,22 +197,6 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     const res = await api.register(userData);
-    if (res.success && res.token) {
-      const now = Date.now();
-      localStorage.setItem('mitra_token', res.token);
-      localStorage.setItem('mitra_last_activity', String(now));
-      lastActivityRef.current = now;
-      setToken(res.token);
-      setUser(res.user);
-      setInactivityNotice(false);
-      if (res.user?.profileCompletion !== undefined) {
-        setProfileCompletion(res.user.profileCompletion);
-      } else if (res.studentProfile?.profileCompletionPercentage !== undefined) {
-        setProfileCompletion(res.studentProfile.profileCompletionPercentage);
-      } else {
-        setProfileCompletion(res.user?.role === 'admin' ? 100 : 25);
-      }
-    }
     return res;
   };
 
