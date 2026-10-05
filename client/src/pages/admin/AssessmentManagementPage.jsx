@@ -16,6 +16,7 @@ import EmptyState from '../../components/EmptyState';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import AptitudeAssessmentCreateModal from '../../components/assessments/AptitudeAssessmentCreateModal';
+import FullAssessmentCreateModal from '../../components/assessments/FullAssessmentCreateModal';
 import AssessmentPreviewModal from '../../components/assessments/AssessmentPreviewModal';
 import {
   MODULE_CATEGORIES,
@@ -41,7 +42,8 @@ import {
   ShieldCheck,
   FileUp,
   FileText,
-  BookOpen
+  BookOpen,
+  Layers
 } from 'lucide-react';
 
 export const AssessmentManagementPage = () => {
@@ -54,6 +56,11 @@ export const AssessmentManagementPage = () => {
   const currentModule = normalizeModuleName(rawModule);
   const isAptitudeModule = currentModule === 'Aptitude';
   const isDomainModule = currentModule === 'Domain Knowledge';
+  const isFullModule =
+    rawModule === 'Full' ||
+    rawModule === 'Full Assessment' ||
+    currentModule === 'Full' ||
+    currentModule === 'Full Assessment';
 
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,6 +68,8 @@ export const AssessmentManagementPage = () => {
 
   // Modals state
   const [isAptitudeModalOpen, setIsAptitudeModalOpen] = useState(false);
+  const [isFullModalOpen, setIsFullModalOpen] = useState(false);
+  const [fullAssessmentToEdit, setFullAssessmentToEdit] = useState(null);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [previewAssessment, setPreviewAssessment] = useState(null);
@@ -93,10 +102,16 @@ export const AssessmentManagementPage = () => {
     ASSESSMENT_MODULE_CATEGORIES[rawModule] ||
     [];
 
-  const filterTabs = [
-    { id: 'All', label: isDomainModule ? 'All Departments' : 'All Categories' },
-    ...availableCategories
-  ];
+  const filterTabs = isFullModule
+    ? [
+        { id: 'All', label: 'All Statuses' },
+        { id: 'published', label: 'Published' },
+        { id: 'draft', label: 'Draft' }
+      ]
+    : [
+        { id: 'All', label: isDomainModule ? 'All Departments' : 'All Categories' },
+        ...availableCategories
+      ];
 
   // Modules including Full Assessment
   const assessmentModules = [
@@ -106,16 +121,22 @@ export const AssessmentManagementPage = () => {
   ];
 
   const params = useMemo(() => {
-    const p = { module: currentModule, isPracticeTest: false, isDefaultTopicAssessment: false };
+    const p = {
+      module: isFullModule ? 'Full' : currentModule,
+      isPracticeTest: false,
+      isDefaultTopicAssessment: false
+    };
     if (activeCategory !== 'All') {
-      if (isDomainModule) {
+      if (isFullModule) {
+        p.status = activeCategory;
+      } else if (isDomainModule) {
         p.department = activeCategory;
       } else {
         p.category = activeCategory;
       }
     }
     return p;
-  }, [currentModule, activeCategory, isDomainModule]);
+  }, [currentModule, activeCategory, isDomainModule, isFullModule]);
 
   const { data: assessmentsRes, isLoading: loading } = useAssessments(params);
   const assessments = assessmentsRes?.assessments || [];
@@ -218,22 +239,33 @@ export const AssessmentManagementPage = () => {
       )}
 
       <PageHeader
-        title={`${currentModule} Assessment Management`}
-        subtitle="Manage evaluations, generate tests with Google Gemini, and review candidate grading."
+        title={isFullModule ? 'Full Assessment Management' : `${currentModule} Assessment Management`}
+        subtitle={
+          isFullModule
+            ? 'Create and manage comprehensive, department-aware assessments with Aptitude and Domain Knowledge sections.'
+            : 'Manage evaluations, generate tests with Google Gemini, and review candidate grading.'
+        }
         breadcrumbs={[
           { label: 'Admin', link: '/admin/dashboard' },
           { label: 'Assessments' },
-          { label: currentModule }
+          { label: isFullModule ? 'Full Assessment' : currentModule }
         ]}
         actions={
           <div className="flex items-center gap-3">
             <Button
               variant="primary"
-              icon={Sparkles}
-              onClick={() => setIsAptitudeModalOpen(true)}
+              icon={isFullModule ? Layers : Sparkles}
+              onClick={() => {
+                if (isFullModule) {
+                  setFullAssessmentToEdit(null);
+                  setIsFullModalOpen(true);
+                } else {
+                  setIsAptitudeModalOpen(true);
+                }
+              }}
               className="bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-500/20"
             >
-              Create Assessment
+              {isFullModule ? 'Create Full Assessment' : 'Create Assessment'}
             </Button>
           </div>
         }
@@ -245,7 +277,8 @@ export const AssessmentManagementPage = () => {
           const isActive =
             rawModule === m.id ||
             currentModule === m.label ||
-            (m.id === 'Domain' && isDomainModule);
+            (m.id === 'Domain' && isDomainModule) ||
+            (m.id === 'Full' && isFullModule);
           return (
             <button
               key={m.id}
@@ -296,15 +329,31 @@ export const AssessmentManagementPage = () => {
                 {/* Header Tags */}
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <div className="flex flex-wrap items-center gap-1.5">
+                    {(item.module === 'Full' || item.module === 'Full Assessment') && (
+                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 flex items-center gap-1">
+                        <Layers className="w-3 h-3" /> Full Assessment
+                      </span>
+                    )}
+                    {(item.module === 'Full' || item.module === 'Full Assessment' || (item.questions && item.questions.some(q => q.department))) && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 flex items-center gap-1">
+                        <Building2 className="w-3 h-3" /> Department-Aware
+                      </span>
+                    )}
                     {item.department && (
                       <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/60 flex items-center gap-1">
                         <Building2 className="w-3 h-3" />
                         {item.department}
                       </span>
                     )}
-                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
-                      {item.category || currentModule}
-                    </span>
+                    {item.category && String(item.category).trim().toLowerCase() !== String(item.department || '').trim().toLowerCase() ? (
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
+                        {item.category}
+                      </span>
+                    ) : !item.department && (
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
+                        {currentModule}
+                      </span>
+                    )}
                     {item.topic && (
                       <span className="text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded border border-violet-200/60 flex items-center gap-1">
                         <BookOpen className="w-3 h-3 text-violet-500" />
@@ -424,6 +473,20 @@ export const AssessmentManagementPage = () => {
                   Simulate View
                 </Button>
 
+                {(item.module === 'Full' || item.module === 'Full Assessment') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFullAssessmentToEdit(item);
+                      setIsFullModalOpen(true);
+                    }}
+                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition cursor-pointer"
+                    title="Edit Full Assessment"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -441,12 +504,27 @@ export const AssessmentManagementPage = () => {
         </div>
       ) : (
         <EmptyState
-          title={`No ${activeCategory === 'All' ? currentModule : activeCategory} Assessments`}
-          description={`No assessment evaluations have been published for ${
-            activeCategory !== 'All' ? activeCategory : currentModule
-          } yet.`}
-          actionText="Create Assessment"
-          onAction={() => setIsAptitudeModalOpen(true)}
+          title={
+            isFullModule
+              ? 'No Full Assessments Found'
+              : `No ${activeCategory === 'All' ? currentModule : activeCategory} Assessments`
+          }
+          description={
+            isFullModule
+              ? 'Create a comprehensive, department-aware evaluation combining common Aptitude and department-specific Domain Knowledge.'
+              : `No assessment evaluations have been published for ${
+                  activeCategory !== 'All' ? activeCategory : currentModule
+                } yet.`
+          }
+          actionText={isFullModule ? 'Create Full Assessment' : 'Create Assessment'}
+          onAction={() => {
+            if (isFullModule) {
+              setFullAssessmentToEdit(null);
+              setIsFullModalOpen(true);
+            } else {
+              setIsAptitudeModalOpen(true);
+            }
+          }}
         />
       )}
 
@@ -570,6 +648,29 @@ export const AssessmentManagementPage = () => {
             message: isDraft
               ? `Assessment "${newAssessment?.title || 'Test'}" has been saved as draft successfully.`
               : `Assessment "${newAssessment?.title || 'Test'}" has been published successfully.`
+          });
+        }}
+      />
+
+      {/* MODAL: Full Assessment Creator & Department-Aware Manager */}
+      <FullAssessmentCreateModal
+        isOpen={isFullModalOpen}
+        onClose={() => {
+          setIsFullModalOpen(false);
+          setFullAssessmentToEdit(null);
+        }}
+        assessmentToEdit={fullAssessmentToEdit}
+        onSuccess={(savedAssessment, savedStatus) => {
+          queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
+          setIsFullModalOpen(false);
+          setFullAssessmentToEdit(null);
+          const isDraft = savedStatus === 'draft' || savedAssessment?.status === 'draft';
+          setToast({
+            type: 'success',
+            title: isDraft ? 'Draft Saved' : 'Full Assessment Published',
+            message: isDraft
+              ? `Full Assessment "${savedAssessment?.title || 'Test'}" has been saved as draft successfully.`
+              : `Full Assessment "${savedAssessment?.title || 'Test'}" has been published successfully.`
           });
         }}
       />

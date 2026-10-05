@@ -240,9 +240,15 @@ export const StudentAssessmentsPage = () => {
                             {item.department}
                           </span>
                         )}
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-200/60">
-                          {item.category || currentModule}
-                        </span>
+                        {item.category && String(item.category).trim().toLowerCase() !== String(item.department || '').trim().toLowerCase() ? (
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-200/60">
+                            {item.category}
+                          </span>
+                        ) : !item.department && (
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-200/60">
+                            {currentModule}
+                          </span>
+                        )}
                         {item.topic && (
                           <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50/80 px-2.5 py-0.5 rounded-lg border border-indigo-200/60">
                             {item.topic}

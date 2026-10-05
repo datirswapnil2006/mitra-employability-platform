@@ -74,10 +74,13 @@ export function getAssessmentSections(questions = [], assessment = {}) {
     ) {
       verbalIndices.push(idx);
     } else if (
+      rawText.includes('[domain') ||
+      rawText.includes('domain knowledge') ||
       rawText.includes('[technical') ||
       rawText.includes('coding') ||
       rawText.includes('algorithm') ||
-      rawText.includes('data structure')
+      rawText.includes('data structure') ||
+      Boolean(q.department)
     ) {
       technicalIndices.push(idx);
     } else {
@@ -93,6 +96,10 @@ export function getAssessmentSections(questions = [], assessment = {}) {
 
   // If question content clearly distributes across >= 2 sections with minimal other:
   if (distinctSectionsFound >= 2 && otherIndices.length < questions.length * 0.4) {
+    const isFullAssessment =
+      assessment?.module === 'Full' ||
+      assessment?.module === 'Full Assessment';
+
     const list = [];
     if (quantitativeIndices.length > 0) {
       list.push({
@@ -134,8 +141,8 @@ export function getAssessmentSections(questions = [], assessment = {}) {
       list.push({
         id: 'sec-tech',
         type: 'technical',
-        name: 'Technical / Core',
-        shortName: 'Technical',
+        name: isFullAssessment ? 'Domain Knowledge' : 'Technical / Core',
+        shortName: isFullAssessment ? 'Domain Knowledge' : 'Technical',
         iconName: 'Code',
         theme: 'indigo',
         questionIndices: technicalIndices,

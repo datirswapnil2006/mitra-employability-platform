@@ -82,6 +82,20 @@ exports.getAssessments = async (req, res) => {
 
       const enriched = assessments.map((a) => {
         const obj = a.toObject();
+        // For student, compute student-specific question count on department-aware/full assessments
+        const isFullOrDeptAware =
+          obj.module === 'Full Assessment' ||
+          obj.module === 'Full' ||
+          (obj.questions && obj.questions.some((q) => q.department));
+        if (isFullOrDeptAware && req.user && req.user.department) {
+          const sDept = String(req.user.department).trim().toLowerCase();
+          const applicableQs = (obj.questions || []).filter((q) => {
+            if (!q.department || q.department === 'All' || q.department === 'Common') return true;
+            return String(q.department).trim().toLowerCase() === sDept;
+          });
+          obj.studentQuestionCount = applicableQs.length;
+        }
+
         const recent = attemptMap[a._id.toString()];
         if (recent) {
           const unlockTime = new Date(new Date(recent.attemptedAt).getTime() + 24 * 60 * 60 * 1000);
@@ -146,10 +160,26 @@ exports.getAssessmentById = async (req, res) => {
     // Prepare response data (hide answers from students while test is active)
     const responseData = assessment.toObject();
     if (user && user.role === 'student') {
+      const isFullOrDeptAware =
+        assessment.module === 'Full Assessment' ||
+        assessment.module === 'Full' ||
+        (assessment.questions && assessment.questions.some((q) => q.department));
+
+      if (isFullOrDeptAware) {
+        const sDept = String(user.department || '').trim().toLowerCase();
+        responseData.questions = (responseData.questions || []).filter((q) => {
+          if (!q.department || q.department === 'All' || q.department === 'Common') {
+            return true;
+          }
+          return String(q.department).trim().toLowerCase() === sDept;
+        });
+      }
+
       responseData.questions = responseData.questions.map((q) => {
         const { correctAnswer, explanation, ...rest } = q;
         return rest;
       });
+      responseData.totalMarks = responseData.questions.reduce((acc, q) => acc + (q.marks || 1), 0);
     }
 
     res.json({ success: true, assessment: responseData });
@@ -258,7 +288,23 @@ exports.submitAssessment = async (req, res) => {
       coding: { total: 0, correct: 0 }
     };
 
-    const gradedAnswers = assessment.questions.map((question) => {
+    const isFullOrDeptAware =
+      assessment.module === 'Full Assessment' ||
+      assessment.module === 'Full' ||
+      (assessment.questions && assessment.questions.some((q) => q.department));
+
+    let applicableQuestions = assessment.questions;
+    if (isFullOrDeptAware && req.user && req.user.department) {
+      const sDept = String(req.user.department).trim().toLowerCase();
+      applicableQuestions = assessment.questions.filter((q) => {
+        if (!q.department || q.department === 'All' || q.department === 'Common') {
+          return true;
+        }
+        return String(q.department).trim().toLowerCase() === sDept;
+      });
+    }
+
+    const gradedAnswers = applicableQuestions.map((question) => {
       const qId = question._id.toString();
       const studentAnsObj = (answers || []).find((a) => a.questionId === qId);
       const studentVal = studentAnsObj ? String(studentAnsObj.studentAnswer || '').trim() : '';
@@ -606,8 +652,8 @@ exports.createAssessment = async (req, res) => {
     if (req.user) data.createdBy = req.user._id;
 
     if (data.questions && Array.isArray(data.questions)) {
-      if (data.questions.length > 180) {
-        data.questions = data.questions.slice(0, 180);
+      if (data.questions.length > 350) {
+        data.questions = data.questions.slice(0, 350);
       }
       data.totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 1), 0);
     }
@@ -623,8 +669,8 @@ exports.updateAssessment = async (req, res) => {
   try {
     const data = { ...req.body, updatedAt: Date.now() };
     if (data.questions && Array.isArray(data.questions)) {
-      if (data.questions.length > 180) {
-        data.questions = data.questions.slice(0, 180);
+      if (data.questions.length > 350) {
+        data.questions = data.questions.slice(0, 350);
       }
       data.totalMarks = data.questions.reduce((acc, q) => acc + (q.marks || 1), 0);
     }

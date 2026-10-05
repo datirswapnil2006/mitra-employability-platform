@@ -18,12 +18,18 @@ const questionSchema = new mongoose.Schema({
   schemaSql: { type: String, default: '' },
   referenceQuery: { type: String, default: '' },
   // Coding evaluation template
-  codeTemplate: { type: String, default: '' }
+  codeTemplate: { type: String, default: '' },
+  // Section and department awareness for full assessments
+  section: { type: String, default: '' },
+  department: { type: String, default: null },
+  category: { type: String, default: '' }
 });
 
 const assessmentSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   description: { type: String, default: '' },
+  instructions: { type: String, default: '' },
+  sectionsConfig: { type: mongoose.Schema.Types.Mixed, default: null },
   module: {
     type: String,
     enum: ['Aptitude', 'Domain Knowledge', 'Domain', 'Communication', 'Resume', 'Interview', 'Interview Preparation', 'Full Assessment', 'Full', 'Technical', 'General'],
@@ -82,10 +88,10 @@ const assessmentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Enforce system-wide limit: maximum 180 questions per test
+// Enforce system-wide limit: maximum 350 questions per test
 assessmentSchema.pre('save', function () {
-  if (this.questions && this.questions.length > 180) {
-    this.questions = this.questions.slice(0, 180);
+  if (this.questions && this.questions.length > 350) {
+    this.questions = this.questions.slice(0, 350);
   }
 });
 

@@ -540,6 +540,17 @@ export const AssessmentPreviewModal = ({
                     >
                       {currentQ.difficulty || 'Medium'}
                     </span>
+                    {currentQ.section && (
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
+                        {currentQ.section}
+                      </span>
+                    )}
+                    {currentQ.department && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/60 flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />
+                        {currentQ.department}
+                      </span>
+                    )}
                   </div>
 
                   <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">

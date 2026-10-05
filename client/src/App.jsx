@@ -105,6 +105,8 @@ export function App() {
                 <Route path="questions" element={<QuestionBankManagementPage />} />
                 <Route path="question-bank" element={<QuestionBankManagementPage />} />
                 <Route path="assessments" element={<AssessmentManagementPage />} />
+                <Route path="assessments/full" element={<Navigate to="/admin/assessments?type=Full" replace />} />
+                <Route path="full-assessment" element={<Navigate to="/admin/assessments?type=Full" replace />} />
                 <Route path="results" element={<ResultsManagementPage />} />
                 <Route path="ai-gen" element={<AIAssessmentGenPage />} />
                 <Route path="psychometric" element={<AIAssessmentGenPage />} />
