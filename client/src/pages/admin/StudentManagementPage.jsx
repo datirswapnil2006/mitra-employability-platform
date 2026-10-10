@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { getMediaUrl } from '../../services/api';
+import { api, getMediaUrl } from '../../services/api';
 import { useAdminStudents } from '../../hooks/queries/useAdminQueries';
 import { useAdminResetStudentPassword } from '../../hooks/mutations/useAdminMutations';
 import { useQueryClient } from '@tanstack/react-query';
@@ -38,6 +38,24 @@ export const StudentManagementPage = () => {
   const [confirmStudent, setConfirmStudent] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [actionMsg, setActionMsg] = useState('');
+  const [downloading, setDownloading] = useState(null);
+
+  const handleQuickDownload = async (format = 'xlsx') => {
+    setDownloading(format);
+    try {
+      await api.downloadStudentReport(
+        {
+          department: department !== 'All' ? department : 'All',
+          year: year !== 'All' ? year : 'All',
+        },
+        format
+      );
+    } catch (err) {
+      alert(err.message || 'Failed to download student directory report.');
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   const departments = ['All', ...OFFICIAL_DEPARTMENTS];
   const years = ['All', ...ACADEMIC_YEARS];
@@ -108,7 +126,11 @@ export const StudentManagementPage = () => {
           )}
           <div className="min-w-0">
             <p className="font-bold text-slate-900 whitespace-nowrap">{row.user?.name}</p>
-            <p className="text-[11px] text-slate-500 whitespace-nowrap">{row.user?.email} • {row.hometown || row.gender || 'Male'}</p>
+            <p className="text-[11px] text-slate-500 whitespace-nowrap">
+              {row.user?.email}
+              {row.hometown ? ` • ${row.hometown}` : ''}
+              {row.gender ? ` • ${row.gender}` : ''}
+            </p>
             {row.aadhaarNumber && <p className="text-[10px] text-slate-400 font-mono whitespace-nowrap">Aadhaar: {row.aadhaarNumber}</p>}
           </div>
         </div>
@@ -268,8 +290,28 @@ export const StudentManagementPage = () => {
           </p>
         </div>
 
-        {/* Action Button to Open Export Sub-Module */}
-        <div className="flex items-center gap-2.5">
+        {/* Action Buttons: Direct Download + Open Export Sub-Module */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleQuickDownload('xlsx')}
+            disabled={downloading !== null}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition hover:scale-[1.02] cursor-pointer disabled:opacity-50"
+            title="Download student directory as Excel (.xlsx)"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{downloading === 'xlsx' ? 'Exporting...' : 'Export Excel'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleQuickDownload('csv')}
+            disabled={downloading !== null}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition hover:scale-[1.02] cursor-pointer disabled:opacity-50"
+            title="Download student directory as CSV (.csv)"
+          >
+            <Download className="w-3.5 h-3.5 text-blue-600" />
+            <span>{downloading === 'csv' ? 'Exporting...' : 'Export CSV'}</span>
+          </button>
           <Link
             to="/admin/students/export"
             className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm transition hover:scale-[1.02]"

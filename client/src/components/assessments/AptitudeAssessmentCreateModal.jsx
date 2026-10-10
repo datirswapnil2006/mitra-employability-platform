@@ -454,6 +454,8 @@ export const AptitudeAssessmentCreateModal = ({
           const formatted = res.questions.map((q, idx) => ({
             id: q.id || `pdf-${Date.now()}-${idx}`,
             questionText: q.questionText || '',
+            passage: q.passage || '',
+            passageTitle: q.passageTitle || '',
             options: q.options || ['', '', '', ''],
             correctAnswer: q.correctAnswer || q.options?.[0] || '',
             explanation: q.explanation || '',
@@ -1267,6 +1269,16 @@ export const AptitudeAssessmentCreateModal = ({
                           {idx + 1}
                         </span>
                         <div>
+                          {q.passage && (
+                            <div className="mb-2 p-2 bg-amber-50/90 border border-amber-200/90 rounded-xl text-xs space-y-0.5">
+                              <span className="text-[10px] font-black uppercase text-amber-900 block">
+                                {q.passageTitle || 'Shared Context / Directions'}
+                              </span>
+                              <p className="text-slate-800 text-[11px] leading-relaxed whitespace-pre-wrap max-h-24 overflow-y-auto font-medium">
+                                {q.passage}
+                              </p>
+                            </div>
+                          )}
                           <p className="text-xs font-extrabold text-slate-900 leading-relaxed">
                             {q.questionText}
                           </p>

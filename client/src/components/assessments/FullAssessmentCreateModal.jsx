@@ -486,6 +486,14 @@ export const FullAssessmentCreateModal = ({
             category: department || sectionName,
             questionText: q.questionText || '',
             codeSnippet: q.codeSnippet || '',
+            passage: q.passage || '',
+            passageTitle: q.passageTitle || '',
+            imageUrl: q.imageUrl || '',
+            tableData: q.tableData || '',
+            questionNumber: q.questionNumber || idx + 1,
+            pageNumber: q.pageNumber || 1,
+            warnings: q.warnings || [],
+            confidence: q.confidence || 'HIGH',
             options: q.options || ['Option A', 'Option B', 'Option C', 'Option D'],
             correctAnswer: q.correctAnswer || q.options?.[0] || 'Option A',
             explanation: q.explanation || '',
@@ -1372,6 +1380,12 @@ export const FullAssessmentCreateModal = ({
                                 #{originalIndex + 1}
                               </span>
 
+                              {q.pageNumber && (
+                                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                  Page {q.pageNumber}
+                                </span>
+                              )}
+
                               <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
                                 {q.section}
                               </span>
@@ -1391,12 +1405,30 @@ export const FullAssessmentCreateModal = ({
                                 {q.difficulty || 'Medium'}
                               </span>
 
+                              {q.confidence === 'REVIEW_REQUIRED' && (
+                                <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                  Needs Review
+                                </span>
+                              )}
+
                               {isExcluded && (
                                 <span className="text-[10px] font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
                                   Excluded from Test
                                 </span>
                               )}
                             </div>
+
+                            {/* Shared Passage / Case Study Context */}
+                            {q.passage && (
+                              <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl text-xs space-y-1">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">
+                                  📖 {q.passageTitle || 'Shared Context / Directions'}
+                                </span>
+                                <p className="text-slate-800 leading-relaxed whitespace-pre-wrap text-[11px] font-medium max-h-36 overflow-y-auto">
+                                  {q.passage}
+                                </p>
+                              </div>
+                            )}
 
                             <p className="text-xs font-bold text-slate-900 leading-snug">
                               {q.questionText}
@@ -1406,6 +1438,16 @@ export const FullAssessmentCreateModal = ({
                               <pre className="text-[11px] p-2.5 bg-slate-900 text-slate-100 rounded-xl font-mono overflow-x-auto">
                                 {q.codeSnippet}
                               </pre>
+                            )}
+
+                            {Array.isArray(q.warnings) && q.warnings.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {q.warnings.map((w, wIdx) => (
+                                  <span key={wIdx} className="text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
+                                    ⚠ {w}
+                                  </span>
+                                ))}
+                              </div>
                             )}
 
                             {/* 4 Options */}

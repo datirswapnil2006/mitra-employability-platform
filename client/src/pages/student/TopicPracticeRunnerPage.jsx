@@ -4,7 +4,7 @@ import { api } from '../../services/api';
 import Button from '../../components/Button';
 import LoadingState from '../../components/LoadingState';
 import Modal from '../../components/Modal';
-import { cleanMathExpression } from '../../utils/formatQuestion';
+import { cleanMathExpression, cleanExplanation, cleanAnswer } from '../../utils/formatQuestion';
 import {
   Clock,
   Send,
@@ -86,7 +86,7 @@ export const TopicPracticeRunnerPage = () => {
         } catch (_) {}
 
         // Register session to auto-close sidebar and protect navigation
-        const isOfficial = !res.assessment.isPracticeTest;
+        const isOfficial = !res.assessment.isPracticeTest && !res.assessment.isDefaultTopicAssessment;
         startSession({
           assessmentId: res.assessment._id,
           assessmentTitle: res.assessment.title || 'Topic Practice',
@@ -441,7 +441,7 @@ export const TopicPracticeRunnerPage = () => {
 
                     <div className="p-2.5 rounded-xl border bg-slate-50 border-slate-200 text-slate-800">
                       <span className="font-bold">Correct Answer: </span>
-                      <span className="text-emerald-700 font-bold">{ans.correctAnswer}</span>
+                      <span className="text-emerald-700 font-bold">{cleanAnswer(ans.correctAnswer)}</span>
                     </div>
                   </div>
 
@@ -451,7 +451,7 @@ export const TopicPracticeRunnerPage = () => {
                         <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
                         Explanation:
                       </span>
-                      {cleanMathExpression(ans.explanation)}
+                      {cleanExplanation(ans.explanation)}
                     </div>
                   )}
                 </div>
@@ -501,7 +501,7 @@ export const TopicPracticeRunnerPage = () => {
             {/* Fullscreen Option Toggle */}
             <button
               type="button"
-              onClick={toggleFullscreen}
+              onClick={() => toggleFullscreen()}
               className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition shadow-2xs ${
                 isFullscreen
                   ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'

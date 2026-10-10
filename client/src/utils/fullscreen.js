@@ -19,7 +19,8 @@ export const isFullscreenActive = () => {
  */
 export const enterFullscreen = async (element = null) => {
   if (typeof document === 'undefined') return false;
-  const target = element || document.documentElement;
+  const isDomElement = element && typeof element === 'object' && ('requestFullscreen' in element || (typeof Element !== 'undefined' && element instanceof Element));
+  const target = isDomElement ? element : document.documentElement;
   try {
     if (isFullscreenActive()) return true;
 
@@ -67,10 +68,12 @@ export const exitFullscreen = async () => {
  * Toggles fullscreen mode on or off.
  */
 export const toggleFullscreen = async (element = null) => {
+  const isDomElement = element && typeof element === 'object' && ('requestFullscreen' in element || (typeof Element !== 'undefined' && element instanceof Element));
+  const target = isDomElement ? element : null;
   if (isFullscreenActive()) {
     return await exitFullscreen();
   } else {
-    return await enterFullscreen(element);
+    return await enterFullscreen(target);
   }
 };
 
@@ -102,7 +105,8 @@ export const useFullscreen = () => {
   }, []);
 
   const handleEnter = useCallback(async (el) => {
-    const res = await enterFullscreen(el);
+    const isDomElement = el && typeof el === 'object' && ('requestFullscreen' in el || (typeof Element !== 'undefined' && el instanceof Element));
+    const res = await enterFullscreen(isDomElement ? el : null);
     setIsFullscreen(isFullscreenActive());
     return res;
   }, []);
@@ -114,7 +118,8 @@ export const useFullscreen = () => {
   }, []);
 
   const handleToggle = useCallback(async (el) => {
-    const res = await toggleFullscreen(el);
+    const isDomElement = el && typeof el === 'object' && ('requestFullscreen' in el || (typeof Element !== 'undefined' && el instanceof Element));
+    const res = await toggleFullscreen(isDomElement ? el : null);
     setIsFullscreen(isFullscreenActive());
     return res;
   }, []);

@@ -10,6 +10,20 @@ client/.env
 *.env
 *.pem
 *.key
+.gsd
+.agent/
+.agents/
+.gemini/
+adapters/
+scripts/
+GSD-STYLE.md
+Model_capabilities.yaml
+PROJECT_RULES.md
+VERSION
+
+
+
+
 
 # Build outputs
 dist/

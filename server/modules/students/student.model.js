@@ -103,11 +103,12 @@ studentProfileSchema.methods.calculateCompletion = function (userObj = null) {
   }
 
   // --- Section 3: Contact Details & Identity (20%) ---
-  const phone = (this.phone || '').trim();
-  if (phone) score += 7;
+  const cleanPhone = (this.phone || '').replace(/\D/g, '').trim();
+  const phone10 = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+  if (phone10.length === 10) score += 7;
 
-  const aadhaar = (this.aadhaarNumber || '').trim();
-  if (aadhaar) score += 7;
+  const cleanAadhaar = (this.aadhaarNumber || '').replace(/\D/g, '').trim();
+  if (cleanAadhaar.length === 12) score += 7;
 
   const hometown = (this.hometown || '').trim();
   if (hometown) score += 6;

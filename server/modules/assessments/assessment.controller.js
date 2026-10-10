@@ -96,7 +96,14 @@ exports.getAssessments = async (req, res) => {
           obj.studentQuestionCount = applicableQs.length;
         }
 
-        const recent = attemptMap[a._id.toString()];
+        const isPracticeOrTopicTest =
+          a.isPracticeTest === true ||
+          a.isDefaultTopicAssessment === true ||
+          a.module === 'Practice' ||
+          Boolean(a.topicId) ||
+          Boolean(a.submoduleId);
+
+        const recent = !isPracticeOrTopicTest ? attemptMap[a._id.toString()] : null;
         if (recent) {
           const unlockTime = new Date(new Date(recent.attemptedAt).getTime() + 24 * 60 * 60 * 1000);
           const remainingMs = unlockTime.getTime() - Date.now();
@@ -131,8 +138,15 @@ exports.getAssessmentById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Assessment not found' });
     }
 
-    // Check 24-hour retake cooldown for students (institutional assessments only, NOT self practice tests)
-    if (user && user.role === 'student' && !assessment.isPracticeTest) {
+    // Check 24-hour retake cooldown for students (institutional assessments only, NOT self practice tests or training module practice assessments)
+    const isPracticeOrTopicAssessment =
+      assessment.isPracticeTest === true ||
+      assessment.isDefaultTopicAssessment === true ||
+      assessment.module === 'Practice' ||
+      Boolean(assessment.topicId) ||
+      Boolean(assessment.submoduleId);
+
+    if (user && user.role === 'student' && !isPracticeOrTopicAssessment) {
       const lastAttempt = await AssessmentAttempt.findOne({
         user: user._id || user.id,
         assessmentId: id,
@@ -528,6 +542,8 @@ exports.extractPdfQuestions = async (req, res) => {
       totalDetected: extractionResult.totalDetected,
       pageCount: extractionResult.pageCount,
       questions: extractionResult.questions,
+      validationSummary: extractionResult.validationSummary || null,
+      documentTitle: extractionResult.documentTitle || null,
       category: extractionResult.category,
       topic: extractionResult.topic,
       difficulty: extractionResult.difficulty
@@ -704,7 +720,7 @@ exports.getAllAttemptsAdmin = async (req, res) => {
 
     const attempts = await AssessmentAttempt.find(filter)
       .populate('user', 'name email department year phone')
-      .populate('assessmentId', 'title module category topic passingScorePercentage timeLimitMinutes difficulty assessmentMode isPracticeTest')
+      .populate('assessmentId', 'title module category topic passingScorePercentage timeLimitMinutes difficulty assessmentMode isPracticeTest isDefaultTopicAssessment')
       .sort({ attemptedAt: -1 });
 
     const userIds = attempts.map((a) => a.user?._id).filter(Boolean);

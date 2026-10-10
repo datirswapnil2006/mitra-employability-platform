@@ -22,7 +22,16 @@ const questionSchema = new mongoose.Schema({
   // Section and department awareness for full assessments
   section: { type: String, default: '' },
   department: { type: String, default: null },
-  category: { type: String, default: '' }
+  category: { type: String, default: '' },
+  // Shared context, passage, visual asset & PDF layout tracking
+  passage: { type: String, default: '' },
+  passageTitle: { type: String, default: '' },
+  imageUrl: { type: String, default: '' },
+  tableData: { type: String, default: '' },
+  questionNumber: { type: Number, default: null },
+  pageNumber: { type: mongoose.Schema.Types.Mixed, default: null },
+  validationWarnings: [{ type: String }],
+  confidence: { type: String, default: 'HIGH' }
 });
 
 const assessmentSchema = new mongoose.Schema({

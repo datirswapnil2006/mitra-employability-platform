@@ -89,11 +89,12 @@ export const calculateProfileCompletion = (profileData = {}, user = {}) => {
   }
 
   // --- 3. Section 3: Contact Details & Identity (20%) ---
-  const phone = (profileData?.phone || user?.phone || '').trim();
-  if (phone) score += PROFILE_FIELD_WEIGHTS.phone;
+  const rawPhone = (profileData?.phone || user?.phone || '').replace(/\D/g, '').trim();
+  const phone10 = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone;
+  if (phone10.length === 10) score += PROFILE_FIELD_WEIGHTS.phone;
 
-  const aadhaar = (profileData?.aadhaarNumber || '').trim();
-  if (aadhaar) score += PROFILE_FIELD_WEIGHTS.aadhaarNumber;
+  const rawAadhaar = (profileData?.aadhaarNumber || '').replace(/\D/g, '').trim();
+  if (rawAadhaar.length === 12) score += PROFILE_FIELD_WEIGHTS.aadhaarNumber;
 
   const hometown = (profileData?.hometown || '').trim();
   if (hometown) score += PROFILE_FIELD_WEIGHTS.hometown;
@@ -127,8 +128,9 @@ export const getProfileRequirements = (profileData = {}, user = {}) => {
   const cgpa = profileData?.cgpa;
   const hasCgpa = cgpa !== null && cgpa !== undefined && cgpa !== '' && !isNaN(cgpa) && Number(cgpa) > 0;
 
-  const phone = (profileData?.phone || user?.phone || '').trim();
-  const aadhaar = (profileData?.aadhaarNumber || '').trim();
+  const cleanPhone = (profileData?.phone || user?.phone || '').replace(/\D/g, '').trim();
+  const phoneTen = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+  const cleanAadhaar = (profileData?.aadhaarNumber || '').replace(/\D/g, '').trim();
   const hometown = (profileData?.hometown || '').trim();
 
   const resume = (profileData?.resumeUrl || '').trim();
@@ -145,8 +147,8 @@ export const getProfileRequirements = (profileData = {}, user = {}) => {
     { id: 'tenthPercentage', label: '10th Standard %', completed: hasTenth, weight: 10, section: 'Academics', tip: 'Enter SSC percentage > 0' },
     { id: 'twelfthOrDiploma', label: '12th Standard % or Diploma %', completed: hasTwelfthOrDiploma, weight: 10, section: 'Academics', tip: 'Enter 12th or Diploma percentage > 0' },
     { id: 'cgpa', label: 'Degree CGPA', completed: hasCgpa, weight: 10, section: 'Academics', tip: 'Enter cumulative CGPA > 0' },
-    { id: 'phone', label: 'Contact Phone Number', completed: !!phone, weight: 7, section: 'Contact', tip: 'Enter 10-digit mobile number' },
-    { id: 'aadhaarNumber', label: 'Aadhaar Card Number', completed: !!aadhaar, weight: 7, section: 'Contact', tip: 'Enter 12-digit Aadhaar number' },
+    { id: 'phone', label: 'Contact Phone Number', completed: phoneTen.length === 10, weight: 7, section: 'Contact', tip: 'Enter 10-digit mobile number (digits only)' },
+    { id: 'aadhaarNumber', label: 'Aadhaar Card Number', completed: cleanAadhaar.length === 12, weight: 7, section: 'Contact', tip: 'Enter 12-digit Aadhaar number (digits only)' },
     { id: 'hometown', label: 'Hometown / City', completed: !!hometown, weight: 6, section: 'Contact', tip: 'City and State of residence' },
     { id: 'resumeUrl', label: 'Resume Document URL', completed: !!resume, weight: 20, section: 'Career', tip: 'Link to updated PDF resume' }
   ];

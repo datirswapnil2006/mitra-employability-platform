@@ -560,6 +560,23 @@ export const AssessmentPreviewModal = ({
 
                 {/* Question Prompt */}
                 <div className="space-y-2">
+                  {currentQ.passage && (
+                    <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl text-xs space-y-1">
+                      <span className="text-[10px] font-black uppercase text-amber-900 block">
+                        📖 {currentQ.passageTitle || 'Context / Passage'}
+                      </span>
+                      <p className="text-slate-800 whitespace-pre-wrap leading-relaxed text-xs">
+                        {currentQ.passage}
+                      </p>
+                    </div>
+                  )}
+
+                  {currentQ.imageUrl && (
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center justify-center">
+                      <img src={currentQ.imageUrl} alt="Question Asset" className="max-h-48 rounded-lg object-contain" />
+                    </div>
+                  )}
+
                   <p className="text-sm font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">
                     {currentQ.questionText}
                   </p>

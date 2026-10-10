@@ -4,125 +4,131 @@ const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
 const { Category, Topic } = require('../training/training.models');
 const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
 
+// Helper to construct exact MongoDB question filter from query/body parameters
+const buildQuestionFilterFromQuery = async (params = {}) => {
+  const {
+    module: moduleName,
+    category,
+    categoryId,
+    department,
+    topic,
+    topicId,
+    difficulty,
+    search
+  } = params;
+
+  const filter = {};
+  const andConditions = [];
+
+  if (moduleName && moduleName !== 'All') {
+    if (moduleName === 'Domain' || moduleName === 'Domain Knowledge') {
+      filter.module = { $in: ['Domain', 'Domain Knowledge'] };
+    } else {
+      filter.module = moduleName;
+    }
+  }
+
+  if (category && category !== 'All') {
+    if (/^[0-9a-fA-F]{24}$/.test(category)) {
+      const catDoc = await Category.findById(category).lean();
+      if (catDoc) {
+        const escapedTitle = catDoc.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        andConditions.push({
+          $or: [
+            { categoryId: catDoc._id },
+            { category: { $regex: new RegExp(`^${escapedTitle}$`, 'i') } }
+          ]
+        });
+      } else {
+        andConditions.push({ categoryId: new mongoose.Types.ObjectId(category) });
+      }
+    } else {
+      let catPattern;
+      if (/Reasoning/i.test(category)) {
+        catPattern = '(?:Logical\\s+)?Reasoning';
+      } else if (/Quantitative|Quant/i.test(category)) {
+        catPattern = 'Quantitative(?:\\s+Aptitude)?';
+      } else if (/Verbal/i.test(category)) {
+        catPattern = 'Verbal(?:\\s+Ability)?';
+      } else {
+        const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
+        catPattern = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      const catConditions = [
+        { category: { $regex: new RegExp(catPattern, 'i') } }
+      ];
+      if (categoryId && categoryId !== 'All' && /^[0-9a-fA-F]{24}$/.test(categoryId)) {
+        catConditions.push({ categoryId: new mongoose.Types.ObjectId(categoryId) });
+      }
+      andConditions.push({ $or: catConditions });
+    }
+  } else if (categoryId && categoryId !== 'All' && /^[0-9a-fA-F]{24}$/.test(categoryId)) {
+    andConditions.push({ categoryId: new mongoose.Types.ObjectId(categoryId) });
+  }
+
+  if (department && department !== 'All') {
+    andConditions.push({
+      $or: [{ department }, { category: department }]
+    });
+  }
+
+  if (topicId && topicId !== 'All' && topic && topic !== 'All') {
+    const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const topicOr = [{ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } }];
+    if (/^[0-9a-fA-F]{24}$/.test(topicId)) {
+      topicOr.push({ topicId: new mongoose.Types.ObjectId(topicId) });
+    }
+    andConditions.push({ $or: topicOr });
+  } else if (topicId && topicId !== 'All') {
+    if (/^[0-9a-fA-F]{24}$/.test(topicId)) {
+      const topDoc = await Topic.findById(topicId).lean();
+      if (topDoc) {
+        const escapedTitle = topDoc.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        andConditions.push({
+          $or: [
+            { topicId: topDoc._id },
+            { topic: { $regex: new RegExp(`^${escapedTitle}$`, 'i') } }
+          ]
+        });
+      } else {
+        andConditions.push({ topicId: new mongoose.Types.ObjectId(topicId) });
+      }
+    } else {
+      const escapedTopic = String(topicId).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      andConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
+    }
+  } else if (topic && topic !== 'All') {
+    const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    andConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
+  }
+
+  if (difficulty && difficulty !== 'All') {
+    andConditions.push({ difficulty });
+  }
+
+  if (search && search.trim()) {
+    const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    andConditions.push({
+      $or: [
+        { questionText: { $regex: escapedSearch, $options: 'i' } },
+        { topic: { $regex: escapedSearch, $options: 'i' } },
+        { category: { $regex: escapedSearch, $options: 'i' } }
+      ]
+    });
+  }
+
+  if (andConditions.length > 0) {
+    filter.$and = andConditions;
+  }
+
+  return filter;
+};
+
 // Get Questions with filtering & search
 exports.getQuestions = async (req, res) => {
   try {
-    const {
-      module: moduleName,
-      category,
-      categoryId,
-      department,
-      topic,
-      topicId,
-      difficulty,
-      search,
-      page = 1,
-      limit = 50
-    } = req.query;
-    const filter = {};
-
-    const andConditions = [];
-
-    if (moduleName && moduleName !== 'All') {
-      if (moduleName === 'Domain' || moduleName === 'Domain Knowledge') {
-        filter.module = { $in: ['Domain', 'Domain Knowledge'] };
-      } else {
-        filter.module = moduleName;
-      }
-    }
-    if (category && category !== 'All') {
-      if (/^[0-9a-fA-F]{24}$/.test(category)) {
-        // If an ObjectId was passed directly as category
-        const catDoc = await Category.findById(category).lean();
-        if (catDoc) {
-          const escapedTitle = catDoc.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          andConditions.push({
-            $or: [
-              { categoryId: catDoc._id },
-              { category: { $regex: new RegExp(`^${escapedTitle}$`, 'i') } }
-            ]
-          });
-        } else {
-          andConditions.push({ categoryId: new mongoose.Types.ObjectId(category) });
-        }
-      } else {
-        let catPattern;
-        if (/Reasoning/i.test(category)) {
-          catPattern = '(?:Logical\\s+)?Reasoning';
-        } else if (/Quantitative|Quant/i.test(category)) {
-          catPattern = 'Quantitative(?:\\s+Aptitude)?';
-        } else if (/Verbal/i.test(category)) {
-          catPattern = 'Verbal(?:\\s+Ability)?';
-        } else {
-          const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
-          catPattern = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        }
-        const catConditions = [
-          { category: { $regex: new RegExp(catPattern, 'i') } }
-        ];
-        if (categoryId && categoryId !== 'All' && /^[0-9a-fA-F]{24}$/.test(categoryId)) {
-          catConditions.push({ categoryId: new mongoose.Types.ObjectId(categoryId) });
-        }
-        andConditions.push({ $or: catConditions });
-      }
-    } else if (categoryId && categoryId !== 'All' && /^[0-9a-fA-F]{24}$/.test(categoryId)) {
-      andConditions.push({ categoryId: new mongoose.Types.ObjectId(categoryId) });
-    }
-
-    if (department && department !== 'All') {
-      andConditions.push({
-        $or: [{ department }, { category: department }]
-      });
-    }
-
-    if (topicId && topicId !== 'All' && topic && topic !== 'All') {
-      const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const topicOr = [{ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } }];
-      if (/^[0-9a-fA-F]{24}$/.test(topicId)) {
-        topicOr.push({ topicId: new mongoose.Types.ObjectId(topicId) });
-      }
-      andConditions.push({ $or: topicOr });
-    } else if (topicId && topicId !== 'All') {
-      if (/^[0-9a-fA-F]{24}$/.test(topicId)) {
-        const topDoc = await Topic.findById(topicId).lean();
-        if (topDoc) {
-          const escapedTitle = topDoc.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          andConditions.push({
-            $or: [
-              { topicId: topDoc._id },
-              { topic: { $regex: new RegExp(`^${escapedTitle}$`, 'i') } }
-            ]
-          });
-        } else {
-          andConditions.push({ topicId: new mongoose.Types.ObjectId(topicId) });
-        }
-      } else {
-        const escapedTopic = String(topicId).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        andConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
-      }
-    } else if (topic && topic !== 'All') {
-      const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      andConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
-    }
-
-    if (difficulty && difficulty !== 'All') {
-      andConditions.push({ difficulty });
-    }
-
-    if (search && search.trim()) {
-      const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      andConditions.push({
-        $or: [
-          { questionText: { $regex: escapedSearch, $options: 'i' } },
-          { topic: { $regex: escapedSearch, $options: 'i' } },
-          { category: { $regex: escapedSearch, $options: 'i' } }
-        ]
-      });
-    }
-
-    if (andConditions.length > 0) {
-      filter.$and = andConditions;
-    }
+    const { page = 1, limit = 50 } = req.query;
+    const filter = await buildQuestionFilterFromQuery(req.query);
 
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const total = await Question.countDocuments(filter);
@@ -136,7 +142,7 @@ exports.getQuestions = async (req, res) => {
       count: questions.length,
       total,
       page: parseInt(page, 10),
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / parseInt(limit, 10)),
       questions
     });
   } catch (err) {
@@ -255,6 +261,10 @@ const normalizeQuestionPayload = (q) => {
   let mod = q.module || 'Aptitude';
   if (mod === 'Domain Knowledge') mod = 'Domain';
 
+  const warnings = Array.isArray(q.validationWarnings)
+    ? q.validationWarnings
+    : (Array.isArray(q.warnings) ? q.warnings : []);
+
   return {
     ...q,
     module: mod,
@@ -264,7 +274,15 @@ const normalizeQuestionPayload = (q) => {
     moduleId: sanitizeId(q.moduleId),
     options: normalizedOptions,
     correctAnswer: finalAns,
-    difficulty: diff
+    difficulty: diff,
+    passage: typeof q.passage === 'string' ? q.passage : '',
+    passageTitle: typeof q.passageTitle === 'string' ? q.passageTitle : '',
+    imageUrl: typeof q.imageUrl === 'string' ? q.imageUrl : '',
+    tableData: typeof q.tableData === 'string' ? q.tableData : '',
+    questionNumber: Number.isInteger(q.questionNumber) ? q.questionNumber : null,
+    pageNumber: q.pageNumber !== undefined ? q.pageNumber : null,
+    validationWarnings: warnings,
+    confidence: q.confidence || 'HIGH'
   };
 };
 
@@ -338,64 +356,48 @@ exports.deleteQuestion = async (req, res) => {
   }
 };
 
-// Bulk Delete Questions (by ID array or by topic filter)
+// Bulk Delete Questions (by ID array or by active filter criteria)
 exports.bulkDeleteQuestions = async (req, res) => {
   try {
-    const { ids, topic, topicId, module: moduleName, category } = req.body;
+    const { ids, deleteAllFiltered, deleteAll, filters } = req.body;
 
     let query = {};
     if (Array.isArray(ids) && ids.length > 0) {
       query._id = { $in: ids };
-    } else if (topic || topicId) {
-      const topicConditions = [];
-      if (topicId && topicId !== 'All') {
-        topicConditions.push({ topicId: topicId });
-        if (mongoose.Types.ObjectId.isValid(topicId)) {
-          topicConditions.push({ topicId: new mongoose.Types.ObjectId(topicId) });
-        }
-      }
-      if (topic && topic !== 'All') {
-        const escapedTopic = topic.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        topicConditions.push({ topic: { $regex: new RegExp(`^${escapedTopic}$`, 'i') } });
-      }
+    } else if (
+      deleteAllFiltered ||
+      deleteAll ||
+      filters ||
+      req.body.topic ||
+      req.body.topicId ||
+      req.body.category ||
+      req.body.categoryId ||
+      req.body.module ||
+      req.body.department ||
+      req.body.difficulty ||
+      req.body.search
+    ) {
+      const combinedParams = {
+        ...(filters || {}),
+        ...req.body
+      };
+      delete combinedParams.ids;
+      delete combinedParams.deleteAllFiltered;
+      delete combinedParams.deleteAll;
+      delete combinedParams.filters;
 
-      if (topicConditions.length > 0) {
-        query.$or = topicConditions;
-      }
-
-      if (moduleName && moduleName !== 'All') {
-        if (moduleName === 'Domain' || moduleName === 'Domain Knowledge') {
-          query.module = { $in: ['Domain', 'Domain Knowledge'] };
-        } else {
-          query.module = moduleName;
-        }
-      }
-
-      if (category && category !== 'All') {
-        let catPattern;
-        if (/Reasoning/i.test(category)) {
-          catPattern = '(?:Logical\\s+)?Reasoning';
-        } else if (/Quantitative|Quant/i.test(category)) {
-          catPattern = 'Quantitative(?:\\s+Aptitude)?';
-        } else if (/Verbal/i.test(category)) {
-          catPattern = 'Verbal(?:\\s+Ability)?';
-        } else {
-          const cleanCat = category.replace(/ Aptitude| Reasoning| Ability/i, '').trim();
-          catPattern = cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        }
-        query.category = { $regex: new RegExp(catPattern, 'i') };
-      }
+      query = await buildQuestionFilterFromQuery(combinedParams);
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Must provide either an array of question IDs or a topic to delete.'
+        message: 'Must provide either an array of question IDs or active filters to delete.'
       });
     }
 
     const result = await Question.deleteMany(query);
     res.json({
       success: true,
-      message: `Successfully deleted ${result.deletedCount} question(s).`,
+      message: `Successfully deleted ${result.deletedCount} question(s) from database.`,
       deletedCount: result.deletedCount
     });
   } catch (err) {

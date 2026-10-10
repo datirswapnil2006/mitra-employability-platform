@@ -61,16 +61,52 @@ export function cleanMathExpression(rawText) {
   // Normalize minus signs
   text = text.replace(/−/g, '-');
 
-  // Normalize spaces around operators
-  text = text.replace(/\s*([+\-×÷=])\s*/g, ' $1 ');
+  // Normalize spaces around operators (preserve hyphens in words like Brother-in-law)
+  text = text.replace(/\s*([+×÷=])\s*/g, ' $1 ');
+  text = text.replace(/(\d)\s*-\s*(\d)/g, '$1 - $2');
   text = text.replace(/\s+/g, ' ').trim();
 
-  // Ensure ending = ?
+  // Strip accidental trailing += or + = artifacts
+  text = text.replace(/\s*\+\s*=\s*\??$/g, '').trim();
+
+  // Ensure ending = ? only if expression already ends with an equals sign
   if (!text.endsWith('?') && text.endsWith('=')) {
     text += ' ?';
-  } else if (!text.endsWith('?') && !text.includes('=')) {
-    text += ' = ?';
   }
 
+  return text;
+}
+
+/**
+ * Safely format explanations without turning normal prose into math equations.
+ * Removes any stray +=, + =, or = ? artifacts and formats inline LaTeX cleanly.
+ */
+export function cleanExplanation(rawText) {
+  if (!rawText || typeof rawText !== 'string') return rawText || '';
+  let text = rawText.trim();
+
+  // Strip accidental trailing +=, + =, or = ? artifacts
+  text = text.replace(/\s*\+\s*=\s*\??$/g, '').replace(/\s*=\s*\?$/g, '').trim();
+
+  // Clean basic LaTeX tokens if present in math explanations
+  text = text.replace(/\\times/g, ' × ');
+  text = text.replace(/\\div/g, ' ÷ ');
+  text = text.replace(/\\%/g, '%');
+  text = text.replace(/\\sqrt\{([^}]+)\}/g, '√$1');
+  text = text.replace(/\^([0-9]+)/g, (match, p1) => toSuperscript(p1));
+  text = text.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)');
+  text = text.replace(/−/g, '-');
+  text = text.replace(/\s+/g, ' ').trim();
+
+  return text;
+}
+
+/**
+ * Safely clean answer options/correct answers to ensure no stray += or = ? artifacts.
+ */
+export function cleanAnswer(rawText) {
+  if (!rawText || typeof rawText !== 'string') return rawText || '';
+  let text = String(rawText).trim();
+  text = text.replace(/\s*\+\s*=\s*\??$/g, '').replace(/\s*=\s*\?$/g, '').trim();
   return text;
 }

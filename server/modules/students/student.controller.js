@@ -190,9 +190,36 @@ exports.updateStudentProfile = async (req, res) => {
     }
     if (year !== undefined) profile.year = year;
     if (batch !== undefined) profile.batch = batch;
-    if (phone !== undefined) profile.phone = phone;
+    if (phone !== undefined) {
+      const cleanPhone = String(phone || '').replace(/\D/g, '');
+      if (cleanPhone) {
+        const normalizedPhone = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+        if (normalizedPhone.length !== 10) {
+          return res.status(400).json({
+            success: false,
+            message: 'Contact Phone Number must be exactly 10 digits (digits only).'
+          });
+        }
+        profile.phone = normalizedPhone;
+      } else {
+        profile.phone = '';
+      }
+    }
     if (hometown !== undefined) profile.hometown = hometown;
-    if (aadhaarNumber !== undefined) profile.aadhaarNumber = aadhaarNumber;
+    if (aadhaarNumber !== undefined) {
+      const cleanAadhaar = String(aadhaarNumber || '').replace(/\D/g, '');
+      if (cleanAadhaar) {
+        if (cleanAadhaar.length !== 12) {
+          return res.status(400).json({
+            success: false,
+            message: 'Aadhaar Card Number must be exactly 12 digits (digits only).'
+          });
+        }
+        profile.aadhaarNumber = cleanAadhaar;
+      } else {
+        profile.aadhaarNumber = '';
+      }
+    }
     if (educationGap !== undefined) profile.educationGap = educationGap;
     if (hasBacklogs !== undefined) profile.hasBacklogs = hasBacklogs;
     if (bio !== undefined) profile.bio = bio;

@@ -62,15 +62,14 @@ function cleanMathExpression(rawText) {
   // Normalize minus signs
   text = text.replace(/−/g, '-');
 
-  // Normalize spaces around operators
-  text = text.replace(/\s*([+\-×÷=])\s*/g, ' $1 ');
+  // Normalize spaces around operators (preserve hyphens in words like South-East or Brother-in-law)
+  text = text.replace(/\s*([+×÷=])\s*/g, ' $1 ');
+  text = text.replace(/(\d)\s*-\s*(\d)/g, '$1 - $2');
   text = text.replace(/\s+/g, ' ').trim();
 
-  // Ensure ending = ?
+  // Ensure ending = ? only if expression ends with an equals sign
   if (!text.endsWith('?') && text.endsWith('=')) {
     text += ' ?';
-  } else if (!text.endsWith('?') && !text.includes('=')) {
-    text += ' = ?';
   }
 
   return text;

@@ -19,7 +19,9 @@ import {
   ChevronDown,
   FileText,
   Check,
-  X
+  X,
+  AlertTriangle,
+  Edit2
 } from 'lucide-react';
 import { api } from '../../services/api';
 import PageHeader from '../../components/PageHeader';
@@ -268,9 +270,16 @@ export const QuestionBankManagementPage = () => {
   const [pdfTargetTopicTitle, setPdfTargetTopicTitle] = useState('Percentage');
   const [pdfAvailableTopics, setPdfAvailableTopics] = useState([]);
   const [extractedQuestions, setExtractedQuestions] = useState([]);
+  const [pdfValidationSummary, setPdfValidationSummary] = useState(null);
+  const [pdfDocumentTitle, setPdfDocumentTitle] = useState(null);
+  const [pdfPreviewFilter, setPdfPreviewFilter] = useState('all');
+  const [editingExtractedIdx, setEditingExtractedIdx] = useState(null);
+  const [editingExtractedData, setEditingExtractedData] = useState(null);
 
   // Batch Selection State
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
+  const [isDeleteFilteredModalOpen, setIsDeleteFilteredModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   // Manual Add Single Question State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -451,52 +460,58 @@ export const QuestionBankManagementPage = () => {
     loadQuestions();
   }, [selectedModule, selectedDept, selectedCategoryId, selectedTopicId, difficultyFilter, searchQuery, page]);
 
+  // Compute exact active filter query parameters
+  const getActiveQuestionFilterParams = () => {
+    const params = {};
+    if (selectedModule && selectedModule !== 'All') {
+      params.module = selectedModule;
+    }
+    if (selectedDept && selectedDept !== 'All') {
+      params.department = selectedDept;
+    }
+    if (selectedCategoryId && selectedCategoryId !== 'All') {
+      const catObj = categories.find(c => String(c._id) === String(selectedCategoryId) || String(c.name) === String(selectedCategoryId) || String(c.title) === String(selectedCategoryId));
+      if (catObj) {
+        params.category = catObj.name || catObj.title;
+        if (/^[0-9a-fA-F]{24}$/.test(catObj._id)) {
+          params.categoryId = catObj._id;
+        }
+      } else if (/^[0-9a-fA-F]{24}$/.test(selectedCategoryId)) {
+        params.categoryId = selectedCategoryId;
+      } else {
+        params.category = selectedCategoryId;
+      }
+    }
+    if (selectedTopicId && selectedTopicId !== 'All') {
+      const activeTopic = topics.find(t => String(t._id) === String(selectedTopicId) || t.title === selectedTopicId);
+      if (activeTopic) {
+        params.topic = activeTopic.title;
+        if (/^[0-9a-fA-F]{24}$/.test(activeTopic._id)) {
+          params.topicId = activeTopic._id;
+        }
+      } else if (/^[0-9a-fA-F]{24}$/.test(selectedTopicId)) {
+        params.topicId = selectedTopicId;
+      } else {
+        params.topic = selectedTopicId;
+      }
+    }
+    if (difficultyFilter && difficultyFilter !== 'All') {
+      params.difficulty = difficultyFilter;
+    }
+    if (searchQuery && searchQuery.trim()) {
+      params.search = searchQuery.trim();
+    }
+    return params;
+  };
+
   const loadQuestions = async () => {
     setLoadingQuestions(true);
     try {
       const params = {
         page,
-        limit
+        limit,
+        ...getActiveQuestionFilterParams()
       };
-
-      if (selectedModule && selectedModule !== 'All') {
-        params.module = selectedModule;
-      }
-      if (selectedDept && selectedDept !== 'All') {
-        params.department = selectedDept;
-      }
-      if (selectedCategoryId && selectedCategoryId !== 'All') {
-        const catObj = categories.find(c => String(c._id) === String(selectedCategoryId) || String(c.name) === String(selectedCategoryId) || String(c.title) === String(selectedCategoryId));
-        if (catObj) {
-          params.category = catObj.name || catObj.title;
-          if (/^[0-9a-fA-F]{24}$/.test(catObj._id)) {
-            params.categoryId = catObj._id;
-          }
-        } else if (/^[0-9a-fA-F]{24}$/.test(selectedCategoryId)) {
-          params.categoryId = selectedCategoryId;
-        } else {
-          params.category = selectedCategoryId;
-        }
-      }
-      if (selectedTopicId && selectedTopicId !== 'All') {
-        const activeTopic = topics.find(t => String(t._id) === String(selectedTopicId) || t.title === selectedTopicId);
-        if (activeTopic) {
-          params.topic = activeTopic.title;
-          if (/^[0-9a-fA-F]{24}$/.test(activeTopic._id)) {
-            params.topicId = activeTopic._id;
-          }
-        } else if (/^[0-9a-fA-F]{24}$/.test(selectedTopicId)) {
-          params.topicId = selectedTopicId;
-        } else {
-          params.topic = selectedTopicId;
-        }
-      }
-      if (difficultyFilter && difficultyFilter !== 'All') {
-        params.difficulty = difficultyFilter;
-      }
-      if (searchQuery && searchQuery.trim()) {
-        params.search = searchQuery.trim();
-      }
 
       const res = await api.getQuestions(params);
       if (res?.success) {
@@ -573,6 +588,9 @@ export const QuestionBankManagementPage = () => {
             tempId: idx
           }))
         );
+        setPdfValidationSummary(res.validationSummary || null);
+        setPdfDocumentTitle(res.documentTitle || null);
+        setPdfPreviewFilter('all');
       } else {
         alert(res?.message || 'No multiple-choice questions could be detected in this PDF. Please verify that the PDF has readable text.');
       }
@@ -580,6 +598,51 @@ export const QuestionBankManagementPage = () => {
       alert(err.message || 'Error extracting questions from PDF.');
     } finally {
       setPdfExtracting(false);
+    }
+  };
+
+  const handleStartEditExtracted = (idx) => {
+    const q = extractedQuestions[idx];
+    if (!q) return;
+    setEditingExtractedIdx(idx);
+    setEditingExtractedData({
+      questionText: q.questionText || q.text || '',
+      passage: q.passage || '',
+      passageTitle: q.passageTitle || '',
+      codeSnippet: q.codeSnippet || '',
+      options: Array.isArray(q.options) && q.options.length >= 4 ? [...q.options] : [q.options?.[0] || '', q.options?.[1] || '', q.options?.[2] || '', q.options?.[3] || ''],
+      correctAnswer: q.correctAnswer || '',
+      explanation: q.explanation || '',
+      difficulty: q.difficulty || 'Medium'
+    });
+  };
+
+  const handleSaveEditExtracted = () => {
+    if (editingExtractedIdx === null || !editingExtractedData) return;
+    const updated = [...extractedQuestions];
+    const current = updated[editingExtractedIdx];
+    updated[editingExtractedIdx] = {
+      ...current,
+      ...editingExtractedData,
+      answerDetected: true,
+      warnings: (current.warnings || []).filter((w) => !w.includes('Correct answer key not detected')),
+      confidence: 'HIGH'
+    };
+    setExtractedQuestions(updated);
+    setEditingExtractedIdx(null);
+    setEditingExtractedData(null);
+  };
+
+  const handleCancelEditExtracted = () => {
+    setEditingExtractedIdx(null);
+    setEditingExtractedData(null);
+  };
+
+  const handleDeleteExtracted = (idx) => {
+    setExtractedQuestions(extractedQuestions.filter((_, i) => i !== idx));
+    if (editingExtractedIdx === idx) {
+      setEditingExtractedIdx(null);
+      setEditingExtractedData(null);
     }
   };
 
@@ -623,7 +686,16 @@ export const QuestionBankManagementPage = () => {
           category: finalCategory,
           topic: finalTopicTitle,
           topicId: finalTopicId,
-          department: pdfTargetDept !== 'All' ? pdfTargetDept : null
+          department: pdfTargetDept !== 'All' ? pdfTargetDept : null,
+          passage: q.passage || '',
+          passageTitle: q.passageTitle || '',
+          codeSnippet: q.codeSnippet || '',
+          imageUrl: q.imageUrl || '',
+          tableData: q.tableData || '',
+          questionNumber: q.questionNumber || null,
+          pageNumber: q.pageNumber || null,
+          validationWarnings: q.warnings || q.validationWarnings || [],
+          confidence: q.confidence || 'HIGH'
         };
       });
 
@@ -644,6 +716,8 @@ export const QuestionBankManagementPage = () => {
         setIsPdfModalOpen(false);
         setPdfFile(null);
         setExtractedQuestions([]);
+        setPdfValidationSummary(null);
+        setPdfDocumentTitle(null);
 
         if (finalModule) setSelectedModule(finalModule);
         if (finalTopicId) setSelectedTopicId(finalTopicId);
@@ -720,30 +794,31 @@ export const QuestionBankManagementPage = () => {
     }
   };
 
-  const handleClearTopicQuestions = async () => {
-    const topicName = activeTopic?.title || activeTopic?.name || (topics.find(t => t._id === selectedTopicId)?.title) || 'this topic';
-    if (!window.confirm(`⚠️ CAUTION: Are you sure you want to delete ALL questions for topic "${topicName}" (${totalCount} total questions)?\n\nThis will permanently delete all questions in this topic from the database Question Bank.`)) {
-      return;
-    }
+  const handleDeleteAllFiltered = async () => {
+    if (totalCount === 0) return;
     setSubmitting(true);
     try {
+      const filterParams = getActiveQuestionFilterParams();
       const res = await api.bulkDeleteQuestions({
-        topic: activeTopic?.title || activeTopic?.name || topicName,
-        topicId: selectedTopicId !== 'All' ? selectedTopicId : undefined,
-        module: selectedModule !== 'All' ? selectedModule : undefined
+        deleteAllFiltered: true,
+        filters: filterParams,
+        ...filterParams
       });
       if (res?.success) {
         setFeedback({
           type: 'success',
-          message: res.message || `All questions for topic "${topicName}" were deleted successfully.`
+          message: res.message || `Deleted all ${res.deletedCount || totalCount} questions matching the filter successfully from database.`
         });
         setSelectedQuestionIds([]);
+        setIsDeleteFilteredModalOpen(false);
+        setDeleteConfirmText('');
+        setPage(1);
         loadQuestions();
       } else {
-        alert(res?.message || 'Failed to clear topic questions.');
+        alert(res?.message || 'Failed to delete filtered questions.');
       }
     } catch (err) {
-      alert(err.message || 'Error clearing topic questions.');
+      alert(err.message || 'Error deleting filtered questions.');
     } finally {
       setSubmitting(false);
     }
@@ -805,6 +880,8 @@ export const QuestionBankManagementPage = () => {
     setPdfTargetTopicTitle(activeTopic?.title || (topics.length > 0 ? topics[0].title : 'Percentage'));
     setPdfFile(null);
     setExtractedQuestions([]);
+    setPdfValidationSummary(null);
+    setPdfDocumentTitle(null);
     setIsPdfModalOpen(true);
   };
 
@@ -1028,7 +1105,7 @@ export const QuestionBankManagementPage = () => {
               icon={Plus}
               onClick={openAddModal}
             >
-              + Add Question
+              Add Question
             </Button>
             <Button
               variant="primary"
@@ -1218,16 +1295,19 @@ export const QuestionBankManagementPage = () => {
             <div className="text-[10px] font-bold text-blue-200 uppercase tracking-wider">Total Questions</div>
           </div>
           <div className="flex items-center gap-2">
-            {selectedTopicId !== 'All' && totalCount > 0 && (
+            {totalCount > 0 && (
               <button
                 type="button"
-                onClick={handleClearTopicQuestions}
+                onClick={() => {
+                  setDeleteConfirmText('');
+                  setIsDeleteFilteredModalOpen(true);
+                }}
                 disabled={submitting}
                 className="px-3.5 py-2.5 rounded-xl text-xs font-black bg-rose-600/90 hover:bg-rose-600 text-white shadow-md flex items-center gap-1.5 transition cursor-pointer border border-rose-400/40 disabled:opacity-50"
-                title={`Delete all ${totalCount} questions for this topic`}
+                title={`Delete all ${totalCount} questions matching current filter from database`}
               >
                 <Trash2 className="w-4 h-4" />
-                Clear Topic Questions
+                Delete All Filtered ({totalCount})
               </button>
             )}
             <button
@@ -1312,9 +1392,22 @@ export const QuestionBankManagementPage = () => {
                 className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Delete Selected ({selectedQuestionIds.length})
+                Delete Selected on Page ({selectedQuestionIds.length})
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteConfirmText('');
+                setIsDeleteFilteredModalOpen(true);
+              }}
+              disabled={submitting || totalCount === 0}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 hover:bg-rose-600 hover:text-white transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              title="Delete all questions matching this filter from database"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              Delete All Filtered ({totalCount})
+            </button>
           </div>
         </div>
       )}
@@ -1648,6 +1741,8 @@ export const QuestionBankManagementPage = () => {
                   if (file) {
                     setPdfFile(file);
                     setExtractedQuestions([]);
+                    setPdfValidationSummary(null);
+                    setPdfDocumentTitle(null);
                   }
                 }}
               />
@@ -1681,78 +1776,529 @@ export const QuestionBankManagementPage = () => {
           {/* 3. Extracted Questions Preview */}
           {extractedQuestions.length > 0 && (
             <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  3. Extracted Questions ({extractedQuestions.filter((q) => q.selected !== false).length} of {extractedQuestions.length} selected)
-                </span>
-                <div className="flex items-center gap-3">
+              {/* Extraction Metrics Bar */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>{extractedQuestions.length} Questions Extracted</span>
+                  </div>
+                  {pdfDocumentTitle && (
+                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-md border border-indigo-200">
+                      📑 Document: {pdfDocumentTitle}
+                    </span>
+                  )}
+                  {pdfValidationSummary?.totalPages && (
+                    <span className="text-[11px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                      📄 {pdfValidationSummary.totalPages} Page{pdfValidationSummary.totalPages > 1 ? 's' : ''} Scanned
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                    ✓ {extractedQuestions.filter((q) => q.confidence === 'HIGH').length} Verified
+                  </span>
+                  {extractedQuestions.some((q) => q.confidence === 'REVIEW_REQUIRED' || (q.warnings && q.warnings.length > 0)) && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full">
+                      <AlertTriangle className="w-3 h-3 text-amber-700" />
+                      {extractedQuestions.filter((q) => q.confidence === 'REVIEW_REQUIRED' || (q.warnings && q.warnings.length > 0)).length} Review Required
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Filter Tabs & Quick Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => setPdfPreviewFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                      pdfPreviewFilter === 'all'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    All ({extractedQuestions.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPdfPreviewFilter('review')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                      pdfPreviewFilter === 'review'
+                        ? 'bg-amber-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Needs Review ({extractedQuestions.filter((q) => q.confidence === 'REVIEW_REQUIRED' || (q.warnings && q.warnings.length > 0)).length})
+                  </button>
+                  {extractedQuestions.some((q) => q.passage) && (
+                    <button
+                      type="button"
+                      onClick={() => setPdfPreviewFilter('passages')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                        pdfPreviewFilter === 'passages'
+                          ? 'bg-purple-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      With Passages ({extractedQuestions.filter((q) => q.passage).length})
+                    </button>
+                  )}
+                  {extractedQuestions.some((q) => q.codeSnippet || q.imageUrl) && (
+                    <button
+                      type="button"
+                      onClick={() => setPdfPreviewFilter('code')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                        pdfPreviewFilter === 'code'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      With Code / Visuals ({extractedQuestions.filter((q) => q.codeSnippet || q.imageUrl).length})
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 text-xs shrink-0">
                   <button
                     type="button"
                     onClick={() => {
                       const allSelected = extractedQuestions.every((q) => q.selected !== false);
                       setExtractedQuestions(extractedQuestions.map((q) => ({ ...q, selected: !allSelected })));
                     }}
-                    className="text-xs font-bold text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                    className="font-bold text-blue-600 hover:text-blue-800 underline cursor-pointer"
                   >
                     {extractedQuestions.every((q) => q.selected !== false) ? 'Deselect All' : 'Select All'}
                   </button>
-                  <span className="text-[11px] text-slate-400 font-semibold">
-                    Destination: {pdfTargetTopicTitle}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtractedQuestions(
+                        extractedQuestions.map((q) => ({
+                          ...q,
+                          selected: q.confidence === 'HIGH' && (!q.warnings || q.warnings.length === 0)
+                        }))
+                      );
+                    }}
+                    className="font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+                  >
+                    Select Verified Only
+                  </button>
                 </div>
               </div>
 
-              <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
-                {extractedQuestions.map((q, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
-                        <input
-                          type="checkbox"
-                          checked={q.selected !== false}
-                          onChange={(e) => {
-                            const updated = [...extractedQuestions];
-                            updated[idx].selected = e.target.checked;
-                            setExtractedQuestions(updated);
-                          }}
-                          className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <p className="font-bold text-slate-900 leading-snug">
-                          {idx + 1}. {q.questionText || q.text}
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded shrink-0">
-                        Ans: {q.correctAnswer}
-                      </span>
-                    </div>
+              {/* Questions List */}
+              <div className="max-h-96 overflow-y-auto space-y-3 pr-1">
+                {(() => {
+                  const filteredQuestions = extractedQuestions
+                    .map((q, originalIdx) => ({ ...q, originalIdx }))
+                    .filter((q) => {
+                      if (pdfPreviewFilter === 'review') {
+                        return q.confidence === 'REVIEW_REQUIRED' || (q.warnings && q.warnings.length > 0);
+                      }
+                      if (pdfPreviewFilter === 'passages') return !!q.passage;
+                      if (pdfPreviewFilter === 'code') return !!q.codeSnippet || !!q.imageUrl;
+                      return true;
+                    });
 
-                    <div className="grid grid-cols-2 gap-1.5 pl-6 text-[11px] text-slate-600">
-                      {q.options?.map((opt, oIdx) => (
-                        <div key={oIdx} className="truncate">
-                          <span className="font-bold">{String.fromCharCode(65 + oIdx)}.</span> {typeof opt === 'object' ? (opt.text || opt.title) : opt}
+                  if (filteredQuestions.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        No questions match the current filter.
+                      </div>
+                    );
+                  }
+
+                  // Group consecutive questions sharing the same non-empty passage
+                  const questionGroups = [];
+                  let curGroup = null;
+
+                  for (const q of filteredQuestions) {
+                    const normPassage = (q.passage || '').trim();
+                    if (normPassage) {
+                      if (curGroup && curGroup.isPassageGroup && curGroup.passage === normPassage) {
+                        curGroup.questions.push(q);
+                      } else {
+                        curGroup = {
+                          isPassageGroup: true,
+                          passage: normPassage,
+                          passageTitle: q.passageTitle || 'Shared Context / Directions',
+                          questions: [q]
+                        };
+                        questionGroups.push(curGroup);
+                      }
+                    } else {
+                      curGroup = null;
+                      questionGroups.push({
+                        isPassageGroup: false,
+                        questions: [q]
+                      });
+                    }
+                  }
+
+                  const renderSingleQuestion = (q, showPassageInside) => {
+                    const idx = q.originalIdx;
+                    const isEditing = editingExtractedIdx === idx;
+
+                    if (isEditing && editingExtractedData) {
+                      return (
+                        <div
+                          key={`edit-${idx}`}
+                          className="bg-white p-4 rounded-2xl border-2 border-blue-500 shadow-md text-xs space-y-3"
+                        >
+                          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                            <span className="font-extrabold text-blue-900 text-xs">
+                              Editing Question #{q.questionNumber || idx + 1}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              Page {q.pageNumber || 1}
+                            </span>
+                          </div>
+
+                          {/* Passage input */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase text-slate-500">
+                              Shared Passage / Directions (optional)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={editingExtractedData.passage}
+                              onChange={(e) =>
+                                setEditingExtractedData({ ...editingExtractedData, passage: e.target.value })
+                              }
+                              placeholder="Shared passage or case study text..."
+                              className="w-full text-xs p-2 rounded-xl border border-slate-200 focus:border-blue-600 outline-none"
+                            />
+                          </div>
+
+                          {/* Code Snippet input */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase text-slate-500">
+                              Code Snippet (optional)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={editingExtractedData.codeSnippet}
+                              onChange={(e) =>
+                                setEditingExtractedData({ ...editingExtractedData, codeSnippet: e.target.value })
+                              }
+                              placeholder="Code snippet for technical question..."
+                              className="w-full text-xs font-mono p-2 rounded-xl border border-slate-200 focus:border-blue-600 outline-none bg-slate-900 text-emerald-400"
+                            />
+                          </div>
+
+                          {/* Question Text */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase text-slate-500">
+                              Question Statement *
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={editingExtractedData.questionText}
+                              onChange={(e) =>
+                                setEditingExtractedData({ ...editingExtractedData, questionText: e.target.value })
+                              }
+                              className="w-full text-xs p-2 rounded-xl border border-slate-200 focus:border-blue-600 outline-none font-bold"
+                            />
+                          </div>
+
+                          {/* 4 Options */}
+                          <div className="grid grid-cols-2 gap-2">
+                            {['A', 'B', 'C', 'D'].map((letter, oIdx) => (
+                              <div key={letter} className="space-y-0.5">
+                                <label className="text-[10px] font-bold text-slate-600">
+                                  Option {letter}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editingExtractedData.options[oIdx] || ''}
+                                  onChange={(e) => {
+                                    const opts = [...editingExtractedData.options];
+                                    opts[oIdx] = e.target.value;
+                                    setEditingExtractedData({ ...editingExtractedData, options: opts });
+                                  }}
+                                  className="w-full text-xs p-1.5 rounded-lg border border-slate-200 focus:border-blue-600 outline-none"
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Correct Answer and Explanation */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold uppercase text-slate-500">
+                                Correct Answer *
+                              </label>
+                              <select
+                                value={editingExtractedData.correctAnswer}
+                                onChange={(e) =>
+                                  setEditingExtractedData({ ...editingExtractedData, correctAnswer: e.target.value })
+                                }
+                                className="w-full text-xs p-1.5 rounded-lg border border-slate-200 focus:border-blue-600 outline-none font-bold"
+                              >
+                                {editingExtractedData.options.map((opt, oIdx) => (
+                                  <option key={oIdx} value={opt}>
+                                    Option {String.fromCharCode(65 + oIdx)}: {opt.slice(0, 30)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold uppercase text-slate-500">
+                                Explanation
+                              </label>
+                              <input
+                                type="text"
+                                value={editingExtractedData.explanation}
+                                onChange={(e) =>
+                                  setEditingExtractedData({ ...editingExtractedData, explanation: e.target.value })
+                                }
+                                className="w-full text-xs p-1.5 rounded-lg border border-slate-200 focus:border-blue-600 outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                            <Button size="sm" variant="outline" onClick={handleCancelEditExtracted}>
+                              Cancel
+                            </Button>
+                            <Button size="sm" variant="primary" icon={Check} onClick={handleSaveEditExtracted}>
+                              Save Changes
+                            </Button>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    }
 
-                    {q.explanation && (
-                      <div className="pl-6 pt-1 text-[11px] text-slate-500 bg-slate-100/60 p-2 rounded-lg border border-slate-200/60">
-                        <span className="font-bold text-slate-700">Explanation: </span>
-                        {q.explanation}
+                    return (
+                      <div
+                        key={`q-${idx}`}
+                        className={`bg-white p-3.5 rounded-2xl border transition-all text-xs space-y-2.5 ${
+                          q.confidence === 'REVIEW_REQUIRED'
+                            ? 'border-amber-300 bg-amber-50/20'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Header Badges & Actions */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              checked={q.selected !== false}
+                              onChange={(e) => {
+                                const updated = [...extractedQuestions];
+                                updated[idx].selected = e.target.checked;
+                                setExtractedQuestions(updated);
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span className="text-[10px] font-black text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Page {q.pageNumber || 1} • Q.{q.questionNumber || idx + 1}
+                            </span>
+                            {q.section && (
+                              <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded border border-blue-200">
+                                {q.section}
+                              </span>
+                            )}
+                            {q.type && (
+                              <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100/60 px-2 py-0.5 rounded uppercase">
+                                {q.type}
+                              </span>
+                            )}
+                            {q.confidence === 'HIGH' ? (
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3 text-emerald-700" /> Verified
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-extrabold text-amber-900 bg-amber-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 text-amber-700" /> Needs Review
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditExtracted(idx)}
+                              title="Edit Question"
+                              className="p-1 text-slate-500 hover:text-blue-600 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-200 transition cursor-pointer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteExtracted(idx)}
+                              title="Remove Question"
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-200 transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-[10px] font-bold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
+                              Ans: {q.correctAnswer}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Shared Context / Passage Box (Only if standalone, not in passage group) */}
+                        {showPassageInside && q.passage && (
+                          <div className="bg-amber-50/90 border border-amber-200/90 p-2.5 rounded-xl text-xs space-y-1">
+                            <div className="flex items-center gap-1 text-[10px] font-black uppercase text-amber-900">
+                              <BookOpen className="w-3 h-3" />
+                              {q.passageTitle || 'Shared Context / Directions'}
+                            </div>
+                            <p className="text-slate-800 text-[11px] leading-relaxed whitespace-pre-wrap max-h-24 overflow-y-auto">
+                              {q.passage}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Technical Code Snippet */}
+                        {q.codeSnippet && (
+                          <div className="bg-slate-900 text-emerald-400 p-2.5 rounded-xl font-mono text-[11px] overflow-x-auto border border-slate-800">
+                            <pre>{q.codeSnippet}</pre>
+                          </div>
+                        )}
+
+                        {/* Visual Asset / Diagram Preview */}
+                        {q.imageUrl && (
+                          <div className="bg-slate-100 p-2 rounded-xl border border-slate-200 flex items-center justify-center">
+                            <img src={q.imageUrl} alt="Question Asset" className="max-h-36 rounded object-contain" />
+                          </div>
+                        )}
+
+                        {/* Question Statement */}
+                        <p className="font-bold text-slate-900 leading-snug pl-0.5 text-xs">
+                          {q.questionText || q.text}
+                        </p>
+
+                        {/* Options Grid */}
+                        <div className="grid grid-cols-2 gap-1.5 pl-0.5 text-[11px] text-slate-700">
+                          {q.options?.map((opt, oIdx) => {
+                            const optText = typeof opt === 'object' ? (opt.text || opt.title) : opt;
+                            const isCorrect = String(optText || '').trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase();
+                            return (
+                              <div
+                                key={oIdx}
+                                className={`px-2 py-1 rounded-lg border truncate ${
+                                  isCorrect
+                                    ? 'bg-emerald-50 border-emerald-300 font-bold text-emerald-900'
+                                    : 'bg-white border-slate-200'
+                                }`}
+                              >
+                                <span className="font-bold mr-1">{String.fromCharCode(65 + oIdx)}.</span> {optText}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Explanation */}
+                        {q.explanation && (
+                          <div className="text-[11px] text-slate-600 bg-slate-100/70 p-2 rounded-xl border border-slate-200/60">
+                            <span className="font-bold text-slate-700">Explanation: </span>
+                            {q.explanation}
+                          </div>
+                        )}
+
+                        {/* Extraction Warnings */}
+                        {Array.isArray(q.warnings) && q.warnings.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {q.warnings.map((w, wIdx) => (
+                              <span
+                                key={wIdx}
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full"
+                              >
+                                <AlertTriangle className="w-2.5 h-2.5 text-amber-700" />
+                                {w}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    );
+                  };
+
+                  return questionGroups.map((group, gIdx) => {
+                    if (group.isPassageGroup) {
+                      const firstQ = group.questions[0];
+                      const lastQ = group.questions[group.questions.length - 1];
+                      const startNum = firstQ.questionNumber || (firstQ.originalIdx + 1);
+                      const endNum = lastQ.questionNumber || (lastQ.originalIdx + 1);
+                      const rangeLabel = startNum === endNum ? `Q${startNum}` : `Q${startNum}–Q${endNum}`;
+                      const countLabel = `${group.questions.length} Question${group.questions.length > 1 ? 's' : ''} Linked`;
+
+                      return (
+                        <div
+                          key={`passage-group-${gIdx}-${firstQ.originalIdx}`}
+                          className="bg-gradient-to-br from-amber-50/70 via-orange-50/30 to-amber-50/50 border border-amber-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs"
+                        >
+                          {/* Shared Passage Header Banner */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="p-1.5 bg-amber-100 text-amber-900 rounded-lg shrink-0">
+                                <BookOpen className="w-4 h-4" />
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-amber-950 text-xs">
+                                  {group.passageTitle || 'Shared Context / Directions'}
+                                </span>
+                                <span className="text-[10px] font-black bg-amber-200/90 text-amber-900 px-2.5 py-0.5 rounded-full border border-amber-300">
+                                  {rangeLabel} • {countLabel}
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const allSelected = group.questions.every((item) => item.selected !== false);
+                                const updated = [...extractedQuestions];
+                                group.questions.forEach((item) => {
+                                  updated[item.originalIdx] = {
+                                    ...updated[item.originalIdx],
+                                    selected: !allSelected
+                                  };
+                                });
+                                setExtractedQuestions(updated);
+                              }}
+                              className="text-[11px] font-bold text-amber-900 hover:text-amber-950 underline cursor-pointer self-end sm:self-auto"
+                            >
+                              {group.questions.every((item) => item.selected !== false) ? 'Deselect Group' : 'Select Group'}
+                            </button>
+                          </div>
+
+                          {/* Shared Passage Body - Rendered ONCE */}
+                          <div className="bg-white/80 border border-amber-200/60 rounded-xl p-3 max-h-36 overflow-y-auto">
+                            <p className="text-slate-800 text-[11px] leading-relaxed whitespace-pre-wrap font-medium">
+                              {group.passage}
+                            </p>
+                          </div>
+
+                          {/* Related Questions Listed Directly Below */}
+                          <div className="space-y-2.5 pt-1">
+                            {group.questions.map((q) => renderSingleQuestion(q, false))}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return renderSingleQuestion(group.questions[0], true);
+                  });
+                })()}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              {/* Bottom Actions */}
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setExtractedQuestions([])}
+                  onClick={() => {
+                    setExtractedQuestions([]);
+                    setPdfValidationSummary(null);
+                    setPdfDocumentTitle(null);
+                  }}
                 >
                   Clear & Re-upload
                 </Button>
@@ -1763,7 +2309,9 @@ export const QuestionBankManagementPage = () => {
                   loading={submitting}
                   onClick={handleSavePdfQuestions}
                 >
-                  {submitting ? 'Importing...' : `Save ${extractedQuestions.filter((q) => q.selected !== false).length} Questions to Bank`}
+                  {submitting
+                    ? 'Importing...'
+                    : `Save ${extractedQuestions.filter((q) => q.selected !== false).length} Questions to Bank`}
                 </Button>
               </div>
             </div>
@@ -1983,6 +2531,108 @@ export const QuestionBankManagementPage = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete All Filtered Questions Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteFilteredModalOpen}
+        onClose={() => {
+          if (!submitting) {
+            setIsDeleteFilteredModalOpen(false);
+            setDeleteConfirmText('');
+          }
+        }}
+        title="Delete All Questions (Matching Filter)"
+        maxWidth="max-w-xl"
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl flex items-start gap-3">
+            <AlertTriangle className="w-6 h-6 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="text-sm font-black text-rose-900 dark:text-rose-200">
+                Permanent Database Deletion
+              </h4>
+              <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
+                This operation will permanently delete <strong>{totalCount}</strong> question(s) matching your active filter criteria directly from the MongoDB database. <strong>This action cannot be undone.</strong>
+              </p>
+            </div>
+          </div>
+
+          {/* Active Filter Criteria Summary */}
+          <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+            <div className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[11px] mb-2 flex items-center justify-between">
+              <span>Active Scope Breakdown</span>
+              <Badge variant="danger" className="font-mono font-bold">{totalCount} Questions Targeted</Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-slate-600 dark:text-slate-400">
+              <div>
+                <span className="font-medium text-slate-500">Module: </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{selectedModule === 'All' ? 'All Modules' : selectedModule}</span>
+              </div>
+              <div>
+                <span className="font-medium text-slate-500">Department: </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{selectedDept === 'All' ? 'All Departments' : selectedDept}</span>
+              </div>
+              <div>
+                <span className="font-medium text-slate-500">Submodule: </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {selectedCategoryId === 'All' ? 'All Submodules' : (categories.find(c => String(c._id) === String(selectedCategoryId) || c.name === selectedCategoryId || c.title === selectedCategoryId)?.title || selectedCategoryId)}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium text-slate-500">Topic: </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {selectedTopicId === 'All' ? 'All Topics' : (activeTopic?.title || 'Selected Topic')}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium text-slate-500">Difficulty: </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{difficultyFilter === 'All' ? 'All Difficulties' : difficultyFilter}</span>
+              </div>
+              {searchQuery && (
+                <div>
+                  <span className="font-medium text-slate-500">Search Query: </span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">"{searchQuery}"</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              Type <span className="font-mono text-rose-600 font-black">DELETE</span> to confirm permanent deletion:
+            </label>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="Type DELETE to confirm"
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteFilteredModalOpen(false);
+                setDeleteConfirmText('');
+              }}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <button
+              type="button"
+              onClick={handleDeleteAllFiltered}
+              disabled={submitting || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+              className="px-4 py-2 text-xs font-black rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>{submitting ? 'Deleting from DB...' : `Permanently Delete ${totalCount} Questions`}</span>
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -1068,7 +1068,7 @@ export const TakeAssessmentPage = () => {
             </div>
             <button
               type="button"
-              onClick={toggleFullscreen}
+              onClick={() => toggleFullscreen()}
               className="px-2.5 py-1 text-[11px] font-bold bg-white hover:bg-slate-50 border border-blue-200 text-blue-700 rounded-lg shadow-2xs transition shrink-0 ml-2"
             >
               {isFullscreen ? 'Exit Fullscreen' : 'Enable Fullscreen'}
@@ -1141,7 +1141,7 @@ export const TakeAssessmentPage = () => {
             {/* Fullscreen Option Toggle */}
             <button
               type="button"
-              onClick={toggleFullscreen}
+              onClick={() => toggleFullscreen()}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold transition-all shadow-inner ${
                 isFullscreen
                   ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700'
@@ -1324,6 +1324,25 @@ export const TakeAssessmentPage = () => {
                     <span>{markedForReview[currentQ._id] ? 'Marked for Review' : 'Mark for Review'}</span>
                   </button>
                 </div>
+
+                {/* Shared Passage / Case Study Context */}
+                {currentQ.passage && (
+                  <div className="bg-amber-50/80 border border-amber-200/80 p-4 rounded-2xl text-xs space-y-1.5 shadow-2xs">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">
+                      📖 {currentQ.passageTitle || 'Context / Passage'}
+                    </span>
+                    <p className="text-slate-800 leading-relaxed whitespace-pre-wrap text-xs sm:text-sm font-medium">
+                      {currentQ.passage}
+                    </p>
+                  </div>
+                )}
+
+                {/* Visual Asset / Diagram if present */}
+                {currentQ.imageUrl && (
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center justify-center">
+                    <img src={currentQ.imageUrl} alt="Question Asset" className="max-h-64 rounded-xl object-contain" />
+                  </div>
+                )}
 
                 {/* Question Text */}
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">

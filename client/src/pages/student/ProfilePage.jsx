@@ -89,9 +89,9 @@ export const ProfilePage = () => {
             department: p.department || user?.department || 'CSE',
             year: p.year || 'Third Year',
             batch: p.batch || '2026',
-            phone: p.phone || '',
+            phone: p.phone ? p.phone.replace(/\D/g, '').slice(-10) : '',
             hometown: p.hometown || '',
-            aadhaarNumber: p.aadhaarNumber || '',
+            aadhaarNumber: p.aadhaarNumber ? p.aadhaarNumber.replace(/\D/g, '').slice(0, 12) : '',
             educationGap: p.educationGap || 'No',
             hasBacklogs: p.hasBacklogs || 'No',
             bio: p.bio || '',
@@ -121,9 +121,19 @@ export const ProfilePage = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    let sanitizedValue = value;
+
+    if (name === 'phone') {
+      // Only digits allowed, maximum 10 digits
+      sanitizedValue = value.replace(/\D/g, '').slice(0, 10);
+    } else if (name === 'aadhaarNumber') {
+      // Only digits allowed, maximum 12 digits
+      sanitizedValue = value.replace(/\D/g, '').slice(0, 12);
+    }
+
     setProfileData(prev => {
-      const next = { ...prev, [name]: value };
-      if (name === 'erpNumber') next.rollNo = value;
+      const next = { ...prev, [name]: sanitizedValue };
+      if (name === 'erpNumber') next.rollNo = sanitizedValue;
       return {
         ...next,
         profileCompletionPercentage: calculateProfileCompletion(next, user)
@@ -133,9 +143,23 @@ export const ProfilePage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
     setMessage('');
     setError('');
+
+    // Strict validation for Phone (10 digits only) and Aadhaar (12 digits only)
+    const cleanPhone = (profileData.phone || '').replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setError(`Contact Phone Number is required and must be exactly 10 digits (${cleanPhone.length}/10 entered).`);
+      return;
+    }
+
+    const cleanAadhaar = (profileData.aadhaarNumber || '').replace(/\D/g, '');
+    if (!cleanAadhaar || cleanAadhaar.length !== 12) {
+      setError(`Aadhaar Card Number is required and must be exactly 12 digits (${cleanAadhaar.length}/12 entered).`);
+      return;
+    }
+
+    setSaving(true);
     try {
       const res = await api.updateProfile({
         ...profileData,
@@ -415,22 +439,37 @@ export const ProfilePage = () => {
             <Input
               label="Contact Phone Number *"
               name="phone"
-              type="tel"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{10}"
+              maxLength={10}
               icon={Phone}
-              placeholder="+91 98765 43210"
+              placeholder="e.g. 9876543210 (10 digits)"
               value={profileData.phone}
               onChange={handleChange}
+              helperText={
+                profileData.phone && profileData.phone.length < 10
+                  ? `Enter remaining ${10 - profileData.phone.length} digit${10 - profileData.phone.length > 1 ? 's' : ''}`
+                  : '10-digit mobile number (digits only)'
+              }
               required
             />
             <Input
               label="Aadhaar Card Number *"
               name="aadhaarNumber"
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]{12}"
+              maxLength={12}
               icon={CreditCard}
-              placeholder="e.g. 1234 5678 9012"
+              placeholder="e.g. 123456789012 (12 digits)"
               value={profileData.aadhaarNumber}
               onChange={handleChange}
-              helperText="12-digit Government Aadhaar identification number"
+              helperText={
+                profileData.aadhaarNumber && profileData.aadhaarNumber.length < 12
+                  ? `Enter remaining ${12 - profileData.aadhaarNumber.length} digit${12 - profileData.aadhaarNumber.length > 1 ? 's' : ''}`
+                  : '12-digit Government Aadhaar identification number (digits only)'
+              }
               required
             />
             <Input

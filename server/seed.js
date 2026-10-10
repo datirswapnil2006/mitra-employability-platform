@@ -32,40 +32,6 @@ const seedData = async () => {
       }
     }
 
-    // Default test student - only seed on initial fresh installation if 0 students exist
-    const totalStudents = await User.countDocuments({ role: 'student' });
-    let studentUser = await User.findOne({ email: 'student@mitra.edu' });
-    if (!studentUser && totalStudents === 0) {
-      const { StudentProfile } = require('./modules/students/student.model');
-      studentUser = await User.create({
-        name: 'Aarav Patel (Student)',
-        email: 'student@mitra.edu',
-        password: 'studentpassword123',
-        role: 'student',
-        department: 'CSE'
-      });
-
-      const profile = new StudentProfile({
-        user: studentUser._id,
-        erpNumber: 'CSE2026001',
-        rollNo: 'CSE2026001',
-        department: 'CSE',
-        year: 'Third Year',
-        batch: '2026',
-        phone: '9876543210',
-        hometown: 'Pune',
-        aadhaarNumber: '123456789012',
-        educationGap: 'No',
-        hasBacklogs: 'No',
-        resumeUrl: 'https://mitra.edu/resumes/aarav.pdf',
-        tenthPercentage: 92,
-        twelfthPercentage: 89,
-        cgpa: 9.1
-      });
-      profile.profileCompletionPercentage = 100;
-      await profile.save();
-      console.log('[System Init]: Verified student account initialized (student@mitra.edu).');
-    }
 
     // Initialize default Aptitude topics if none exist
     const topicCount = await Topic.countDocuments({ module: 'Aptitude' });

@@ -77,6 +77,38 @@ const questionSchema = new mongoose.Schema({
   tags: [{
     type: String
   }],
+  // Shared context, passage, visual asset & PDF layout tracking
+  passage: {
+    type: String,
+    default: ''
+  },
+  passageTitle: {
+    type: String,
+    default: ''
+  },
+  imageUrl: {
+    type: String,
+    default: ''
+  },
+  tableData: {
+    type: String,
+    default: ''
+  },
+  questionNumber: {
+    type: Number,
+    default: null
+  },
+  pageNumber: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  validationWarnings: [{
+    type: String
+  }],
+  confidence: {
+    type: String,
+    default: 'HIGH'
+  },
   aiGenerated: {
     type: Boolean,
     default: false
