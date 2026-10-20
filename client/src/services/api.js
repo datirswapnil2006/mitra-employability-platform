@@ -270,8 +270,49 @@ export const api = {
     return res.json();
   },
 
+  // Department Overview Stats
+  getDepartmentOverviewStats: async () => {
+    const res = await fetch(`${API_BASE}/training/departments/overview-stats`, { headers: getHeaders() });
+    return res.json();
+  },
+
+  // Playlists (Domain Knowledge YouTube Playlists)
+  getPlaylists: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/training/playlists?${query}`, { headers: getHeaders() });
+    return res.json();
+  },
+  getPlaylistById: async (id) => {
+    const res = await fetch(`${API_BASE}/training/playlists/${id}`, { headers: getHeaders() });
+    return res.json();
+  },
+  createPlaylist: async (data) => {
+    const res = await fetch(`${API_BASE}/training/playlists`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  updatePlaylist: async (id, data) => {
+    const res = await fetch(`${API_BASE}/training/playlists/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  deletePlaylist: async (id) => {
+    const res = await fetch(`${API_BASE}/training/playlists/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+
   // Companies (Data-Driven Company Preparation)
   getCompanies: async (params = {}) => {
+
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE}/training/companies?${query}`, { headers: getHeaders() });
     return res.json();
@@ -508,6 +549,19 @@ export const api = {
     });
     return res.json();
   },
+  getGenerationJob: async (jobId) => {
+    const res = await fetch(`${API_BASE}/assessments/admin/generation-jobs/${jobId}`, {
+      headers: getHeaders()
+    });
+    return res.json();
+  },
+  resumeGenerationJob: async (jobId) => {
+    const res = await fetch(`${API_BASE}/assessments/admin/generation-jobs/${jobId}/resume`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return res.json();
+  },
   generateQuestionsForReview: async (data) => {
     const res = await fetch(`${API_BASE}/assessments/admin/generate-questions`, {
       method: 'POST',
@@ -566,8 +620,15 @@ export const api = {
     const res = await fetch(`${API_BASE}/questions?${query}`, { headers: getHeaders() });
     return res.json();
   },
-  getTopicQuestionStats: async (topicId, topic = '') => {
-    const res = await fetch(`${API_BASE}/questions/stats/${topicId}?topic=${encodeURIComponent(topic)}`, {
+  getTopicQuestionStats: async (topicId, topic = '', extra = {}) => {
+    let url = `${API_BASE}/questions/stats/${topicId}?topic=${encodeURIComponent(topic)}`;
+    if (extra && typeof extra === 'object') {
+      if (extra.category) url += `&category=${encodeURIComponent(extra.category)}`;
+      if (extra.categoryId) url += `&categoryId=${encodeURIComponent(extra.categoryId)}`;
+      if (extra.department) url += `&department=${encodeURIComponent(extra.department)}`;
+      if (extra.module) url += `&module=${encodeURIComponent(extra.module)}`;
+    }
+    const res = await fetch(url, {
       headers: getHeaders()
     });
     return res.json();

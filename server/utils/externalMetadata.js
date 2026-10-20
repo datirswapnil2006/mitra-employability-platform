@@ -52,8 +52,37 @@ const isSafePublicUrl = (targetUrl) => {
 };
 
 /**
+ * Extracts a YouTube playlist ID from various YouTube URL formats.
+ * e.g.,
+ * https://www.youtube.com/playlist?list=PLBlnK6fEyqRhqJPDXcvYlLfXPh37L89g3
+ * https://www.youtube.com/watch?v=xxx&list=PLBlnK6fEyqRhqJPDXcvYlLfXPh37L89g3
+ * https://youtu.be/xxx?list=PLBlnK6fEyqRhqJPDXcvYlLfXPh37L89g3
+ */
+const extractPlaylistId = (url) => {
+  if (!url || typeof url !== 'string') return null;
+  const clean = url.trim();
+
+  try {
+    const parsed = new URL(clean);
+    const listParam = parsed.searchParams.get('list');
+    if (listParam && listParam.length >= 2) {
+      return listParam;
+    }
+  } catch (e) {
+    // Fallback regex
+  }
+
+  const match = clean.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+
+  return null;
+};
+
+/**
  * Extract Video and Web Resource Metadata with SSRF protection.
- * Supports YouTube, Vimeo, and standard public web links.
+ * Supports YouTube Playlists, YouTube Videos, Vimeo, and standard public web links.
  */
 const extractUrlMetadata = async (resourceUrl) => {
   if (!resourceUrl || typeof resourceUrl !== 'string') {
@@ -66,7 +95,107 @@ const extractUrlMetadata = async (resourceUrl) => {
     throw new Error('Unsafe or invalid URL provided. Internal and private network URLs are blocked for security.');
   }
 
-  // 1. YouTube Detection (supports watch?v=, youtu.be/, /live/, /shorts/, /embed/, etc.)
+  // 1. YouTube Playlist Detection
+  const playlistId = extractPlaylistId(cleanUrl);
+  if (playlistId) {
+    let title = '';
+    let description = '';
+    let channelTitle = '';
+    let thumbnailUrl = '';
+    let videos = [];
+
+    // Try fetching YouTube Atom RSS feed (Official public endpoint, no API key required)
+    try {
+      const feedRes = await axios.get(
+        `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`,
+        {
+          timeout: 5000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        }
+      );
+
+      if (feedRes.data && typeof feedRes.data === 'string') {
+        const xml = feedRes.data;
+        const feedTitleMatch = xml.match(/<feed[^>]*>[\s\S]*?<title>([^<]+)<\/title>/);
+        if (feedTitleMatch) title = feedTitleMatch[1].trim();
+
+        const authorMatch = xml.match(/<author>[\s\S]*?<name>([^<]+)<\/name>/);
+        if (authorMatch) channelTitle = authorMatch[1].trim();
+
+        const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+        let entryMatch;
+        while ((entryMatch = entryRegex.exec(xml)) !== null) {
+          const entryXml = entryMatch[1];
+          const vIdMatch = entryXml.match(/<yt:videoId>([^<]+)<\/yt:videoId>/);
+          const vTitleMatch = entryXml.match(/<title>([^<]+)<\/title>/);
+          const vThumbMatch = entryXml.match(/<media:thumbnail[^>]+url="([^"]+)"/);
+
+          if (vIdMatch && vIdMatch[1]) {
+            const vId = vIdMatch[1];
+            const vTitle = vTitleMatch ? vTitleMatch[1] : `Lecture ${videos.length + 1}`;
+            const vThumb = vThumbMatch ? vThumbMatch[1] : `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
+            videos.push({
+              videoId: vId,
+              title: vTitle,
+              thumbnailUrl: vThumb,
+              watchUrl: `https://www.youtube.com/watch?v=${vId}&list=${playlistId}`
+            });
+          }
+        }
+
+        if (videos.length > 0) {
+          thumbnailUrl = videos[0].thumbnailUrl;
+        }
+      }
+    } catch (feedErr) {
+      // Feed query failed or playlist has 0 public items, fallback to oEmbed
+    }
+
+    // Fallback: oEmbed for playlist title & channel if RSS didn't supply them
+    if (!title || !thumbnailUrl) {
+      try {
+        const oembedRes = await axios.get(
+          `https://www.youtube.com/oembed?url=https://www.youtube.com/playlist?list=${playlistId}&format=json`,
+          { timeout: 4000, headers: { 'User-Agent': 'MITRA-Portal/2.0' } }
+        );
+        if (oembedRes.data) {
+          if (!title && oembedRes.data.title) title = oembedRes.data.title;
+          if (!channelTitle && oembedRes.data.author_name) channelTitle = oembedRes.data.author_name;
+          if (!thumbnailUrl && oembedRes.data.thumbnail_url) thumbnailUrl = oembedRes.data.thumbnail_url;
+        }
+      } catch (oembedErr) {
+        // Continue to final fallback
+      }
+    }
+
+    if (!title) {
+      title = `YouTube Playlist (${playlistId})`;
+    }
+    if (!thumbnailUrl) {
+      thumbnailUrl = videos.length > 0 && videos[0].videoId
+        ? `https://i.ytimg.com/vi/${videos[0].videoId}/hqdefault.jpg`
+        : 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&auto=format&fit=crop&q=80';
+    }
+    description = `Complete YouTube Playlist • ${channelTitle || 'Curated Domain Lectures'}`;
+
+    return {
+      title,
+      description,
+      thumbnailUrl,
+      resourceType: 'playlist',
+      provider: 'youtube',
+      playlistId,
+      playlistUrl: `https://www.youtube.com/playlist?list=${playlistId}`,
+      embedUrl: `https://www.youtube.com/embed/videoseries?list=${playlistId}`,
+      channelTitle: channelTitle || 'YouTube Channel',
+      videoCount: videos.length,
+      videos
+    };
+  }
+
+  // 2. Individual YouTube Video Detection
   let ytVideoId = null;
   try {
     const parsed = new URL(cleanUrl);
@@ -114,7 +243,7 @@ const extractUrlMetadata = async (resourceUrl) => {
         if (oembedRes.data.author_name) authorName = oembedRes.data.author_name;
       }
     } catch (oembedErr) {
-      // Fallback: we still have the valid videoId and high quality thumbnail URL
+      // Fallback
     }
 
     return {
@@ -128,7 +257,7 @@ const extractUrlMetadata = async (resourceUrl) => {
     };
   }
 
-  // 2. Vimeo Detection
+  // 3. Vimeo Detection
   const vimeoRegex = /vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|)(\d+)/;
   const vimeoMatch = cleanUrl.match(vimeoRegex);
 
@@ -161,7 +290,7 @@ const extractUrlMetadata = async (resourceUrl) => {
     }
   }
 
-  // 3. General Public Web Link / PDF
+  // 4. General Public Web Link / PDF
   let resourceType = 'link';
   let title = 'External Study Material';
 
@@ -183,4 +312,4 @@ const extractUrlMetadata = async (resourceUrl) => {
   };
 };
 
-module.exports = { isSafePublicUrl, extractUrlMetadata };
+module.exports = { isSafePublicUrl, extractPlaylistId, extractUrlMetadata };

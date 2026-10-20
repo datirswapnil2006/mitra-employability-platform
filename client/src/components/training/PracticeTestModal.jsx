@@ -19,9 +19,16 @@ export const PracticeTestModal = ({ isOpen, onClose, topic, availableQuestionsCo
   useEffect(() => {
     if (propCount !== undefined) {
       setBankCount(propCount);
-    } else if (isOpen && topic?._id) {
+    } else if (isOpen && (topic?._id || topic?.categoryId || topic?.category || topic?.title)) {
       setCheckingCount(true);
-      api.getTopicQuestionStats(topic._id, topic.title)
+      const targetId = topic._id || topic.categoryId || 'category';
+      const targetTitle = topic.title || topic.category || '';
+      api.getTopicQuestionStats(targetId, targetTitle, {
+        category: topic.category,
+        categoryId: topic.categoryId,
+        department: topic.department,
+        module: topic.module
+      })
         .then((res) => {
           if (res.success && res.stats) {
             setBankCount(res.stats.total || 0);
@@ -38,7 +45,7 @@ export const PracticeTestModal = ({ isOpen, onClose, topic, availableQuestionsCo
     } else if (!isOpen) {
       setError('');
     }
-  }, [isOpen, topic?._id, propCount]);
+  }, [isOpen, topic?._id, topic?.categoryId, topic?.category, topic?.title, propCount]);
 
   const effectiveQuestionsCount = bankCount !== null ? bankCount : (propCount !== undefined ? propCount : null);
   const isBankEmpty = effectiveQuestionsCount === 0 && !checkingCount;
@@ -73,7 +80,12 @@ export const PracticeTestModal = ({ isOpen, onClose, topic, availableQuestionsCo
 
       const res = await api.createPracticeTest({
         topicId: topic._id,
-        topic: topic.title,
+        topic: topic.title || topic.category,
+        categoryId: topic.categoryId || topic._id,
+        category: topic.category || topic.title,
+        department: topic.department,
+        departmentId: topic.departmentId,
+        module: topic.module || 'Domain',
         questionCount: cappedCount,
         difficulty
       });

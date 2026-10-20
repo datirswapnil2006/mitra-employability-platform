@@ -1,6 +1,6 @@
 const { Assessment, AssessmentAttempt } = require('./assessment.models');
 const Question = require('./question.model');
-const { Topic } = require('../training/training.models');
+const { Topic, Category } = require('../training/training.models');
 const { StudentProfile } = require('../students/student.model');
 const StudentProgress = require('../progress/progress.model');
 const { awardActivityXP } = require('../gamification/gamification.service');
@@ -9,6 +9,8 @@ const { generateQuestionsAI } = require('../../utils/aiQuestionGenerator');
 const { extractQuestionsFromPdfText } = require('../../utils/pdfQuestionExtractor');
 const { extractQuestionsWithPatterns } = require('../../utils/patternPdfParser');
 const { cleanMathExpression } = require('../../utils/mathCleaner');
+const AssessmentGenerationJob = require('./generationJob.model');
+const { createGenerationJob, runGenerationJob, resumeGenerationJob } = require('../../utils/assessmentBatchEngine');
 
 // Get assessments list with module/department filtering
 exports.getAssessments = async (req, res) => {
@@ -557,7 +559,7 @@ exports.extractPdfQuestions = async (req, res) => {
   }
 };
 
-// Generate Assessment via AI (Google Gemini)
+// Generate Assessment via AI (Google Gemini with Batching, Job Tracking & Zod Validation)
 exports.generateAIAssessment = async (req, res) => {
   try {
     const {
@@ -576,47 +578,35 @@ exports.generateAIAssessment = async (req, res) => {
       assessmentMode = 'NORMAL',
       creationMethod = 'AI_GENERATED',
       proctoringSettings,
-      status = 'published'
+      status = 'published',
+      sections = null,
+      batchSize = 5
     } = req.body;
 
     const effectivePrompt = (prompt || customPrompt || topic || '').trim();
 
-    if (!effectivePrompt) {
-      return res.status(400).json({ success: false, message: 'Test generation prompt or topic is required.' });
+    if (!effectivePrompt && (!sections || !Array.isArray(sections) || sections.length === 0)) {
+      return res.status(400).json({ success: false, message: 'Test generation prompt, topic, or sections configuration is required.' });
     }
 
     const finalQuestionCount = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 180);
 
-    const generatedQuestions = await generateQuestionsAI({
-      provider: 'gemini',
-      module: moduleName,
-      category,
-      department: moduleName === 'Domain' ? (department || category) : null,
-      topic: (topic && topic.trim()) || effectivePrompt.slice(0, 60),
-      prompt: effectivePrompt,
-      customPrompt: effectivePrompt,
-      difficulty,
-      count: finalQuestionCount
-    });
-
-    const cappedQuestions = (generatedQuestions || []).slice(0, 180);
-    const totalMarks = cappedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0);
-
+    // Create the assessment initially in 'draft' status. It is only marked 'published' once completely generated and validated.
     const assessment = await Assessment.create({
-      title: title || `${moduleName} Assessment — ${(topic && topic.trim()) || effectivePrompt.slice(0, 40)}`,
-      description: description || `AI-generated assessment covering ${effectivePrompt.slice(0, 100)} (${category}) concepts.`,
+      title: title || `${moduleName} Assessment — ${(topic && topic.trim()) || effectivePrompt.slice(0, 40) || 'Custom Evaluation'}`,
+      description: description || `AI-generated assessment covering ${effectivePrompt.slice(0, 100) || category} concepts.`,
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
       topic: (topic && topic.trim()) || effectivePrompt.slice(0, 60),
       prompt: effectivePrompt,
       difficulty,
-      questions: cappedQuestions,
+      questions: [],
       passingScorePercentage: parseInt(passingScorePercentage, 10) || 70,
       timeLimitMinutes: parseInt(timeLimitMinutes, 10) || 20,
-      totalMarks,
+      totalMarks: 0,
       isAIGenerated: true,
-      aiProvider: generatedQuestions[0]?.aiProvider || provider,
+      aiProvider: 'gemini',
       assessmentMode: assessmentMode || 'NORMAL',
       creationMethod: creationMethod || 'AI_GENERATED',
       proctoringSettings: proctoringSettings || {
@@ -628,15 +618,92 @@ exports.generateAIAssessment = async (req, res) => {
         secondPerson: true,
         mobileDetection: true
       },
-      status: status || 'published',
+      status: 'draft',
       createdBy: req.user ? req.user._id : undefined
     });
 
+    // Create and execute generation job through batch engine (5-10 questions per batch)
+    const job = await createGenerationJob({
+      title: assessment.title,
+      description: assessment.description,
+      module: moduleName,
+      category,
+      department: moduleName === 'Domain' ? (department || category) : null,
+      difficulty,
+      timeLimitMinutes: parseInt(timeLimitMinutes, 10) || 20,
+      passingScorePercentage: parseInt(passingScorePercentage, 10) || 70,
+      sections,
+      batchSize: Math.max(5, Math.min(10, parseInt(batchSize, 10) || 5)),
+      assessmentId: assessment._id,
+      userId: req.user ? req.user._id : undefined
+    });
+
+    // Run batch generation with retries, validation and deduplication
+    const completedJob = await runGenerationJob(job.jobId);
+
+    const isComplete = completedJob.status === 'completed' && completedJob.acceptedCount >= completedJob.requestedCount;
+    const finalAssessmentStatus = isComplete ? (status || 'published') : 'draft';
+
+    const updatedAssessment = await Assessment.findByIdAndUpdate(
+      assessment._id,
+      {
+        questions: completedJob.acceptedQuestions,
+        totalMarks: completedJob.acceptedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0),
+        status: finalAssessmentStatus,
+        sectionsConfig: completedJob.config.sections
+      },
+      { new: true }
+    );
+
     res.status(201).json({
       success: true,
-      assessment
+      jobId: completedJob.jobId,
+      jobStatus: completedJob.status,
+      assessmentStatus: finalAssessmentStatus,
+      isComplete,
+      requestedCount: completedJob.requestedCount,
+      acceptedCount: completedJob.acceptedCount,
+      failedCount: completedJob.failedCount,
+      tokenUsage: completedJob.tokenUsage,
+      sectionsProgress: completedJob.sectionsProgress,
+      errorDetails: completedJob.errorDetails,
+      assessment: updatedAssessment
     });
   } catch (err) {
+    console.error('[Generate AI Assessment Controller Error]:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Check Status of an AI Generation Job
+exports.getGenerationJobStatus = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = await AssessmentGenerationJob.findOne({ jobId });
+    if (!job) {
+      return res.status(404).json({ success: false, message: `Generation job '${jobId}' not found.` });
+    }
+    res.json({
+      success: true,
+      job
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Resume an Interrupted or Partial AI Generation Job (generates ONLY missing questions)
+exports.resumeGenerationJobController = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = await resumeGenerationJob(jobId);
+    res.json({
+      success: true,
+      job,
+      message: `Job resumed. Accepted ${job.acceptedCount}/${job.requestedCount} questions. Status: ${job.status}`
+    });
+  } catch (err) {
+    console.error('[Resume Generation Job Controller Error]:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -814,77 +881,191 @@ exports.getAllAttemptsAdmin = async (req, res) => {
 // ==========================================
 exports.createPracticeTest = async (req, res) => {
   try {
-    const { topicId, topic, questionCount = 10, difficulty = 'All' } = req.body;
+    const {
+      topicId,
+      topic,
+      categoryId,
+      category,
+      department,
+      departmentId,
+      module: requestedModule,
+      questionCount = 10,
+      difficulty = 'All'
+    } = req.body;
     const userId = req.user._id || req.user.id;
 
     // Hard cap at 30 questions system-wide
     const finalCount = Math.min(Math.max(parseInt(questionCount, 10) || 10, 1), 30);
 
     let topicDoc = null;
-    if (topicId && topicId !== 'undefined') {
+    if (topicId && topicId !== 'undefined' && topicId !== 'category') {
       topicDoc = await Topic.findById(topicId);
     }
     if (!topicDoc && topic) {
       topicDoc = await Topic.findOne({ title: topic.trim() });
     }
 
-    const topicTitle = topicDoc ? topicDoc.title : (topic || 'General');
-    const topicModule = topicDoc ? topicDoc.module : 'Aptitude';
-    const topicCategory = topicDoc ? topicDoc.category : 'Quantitative';
-    const topicDept = topicDoc ? topicDoc.department : null;
+    let categoryDoc = null;
+    if (categoryId && categoryId !== 'undefined') {
+      categoryDoc = await Category.findById(categoryId);
+    }
+    if (!categoryDoc && (category || topic)) {
+      categoryDoc = await Category.findOne({
+        title: (category || topic).trim(),
+        module: { $in: ['Domain', 'Domain Knowledge'] }
+      });
+    }
 
-    const effectiveModule = topicModule === 'Domain Knowledge' ? 'Domain' : (topicModule || 'Aptitude');
+    const effectiveCategory = category || categoryDoc?.title || topicDoc?.category || topic || 'General';
+    const effectiveDept = department || topicDoc?.department || categoryDoc?.department || null;
+    let effectiveModule = requestedModule || topicDoc?.module || categoryDoc?.module || (effectiveDept ? 'Domain' : 'Aptitude');
+    if (effectiveModule === 'Domain Knowledge') effectiveModule = 'Domain';
 
-    // Build question query - STRICT TO THE SPECIFIED MODULE
-    const qFilter = {
-      status: 'active',
-      module: effectiveModule
-    };
-    if (topicDoc) {
-      qFilter.$or = [
-        { topicId: topicDoc._id },
-        { topic: topicDoc.title }
-      ];
+    const topicTitle = topicDoc ? topicDoc.title : (categoryDoc ? categoryDoc.title : (topic || effectiveCategory));
+    const topicCategory = effectiveCategory;
+    const topicDept = effectiveDept;
+    const topicModule = effectiveModule;
+
+    let candidateQuestions = [];
+
+    if (effectiveModule === 'Domain') {
+      const qFilter = {
+        status: 'active',
+        module: { $in: ['Domain', 'Domain Knowledge'] }
+      };
+
+      const orCriteria = [];
+      if (topicDoc) {
+        orCriteria.push({ topicId: topicDoc._id }, { topic: topicDoc.title });
+      }
+      if (categoryId || categoryDoc) {
+        orCriteria.push({ categoryId: categoryId || categoryDoc._id });
+      }
+      if (effectiveCategory && effectiveCategory !== 'General') {
+        orCriteria.push(
+          { category: effectiveCategory },
+          { category: { $regex: new RegExp(`^${effectiveCategory}$`, 'i') } },
+          { topic: effectiveCategory },
+          { topic: { $regex: new RegExp(`^${effectiveCategory}$`, 'i') } }
+        );
+      }
+      if (topicTitle && topicTitle !== 'General') {
+        orCriteria.push({ topic: topicTitle }, { topic: { $regex: new RegExp(`^${topicTitle}$`, 'i') } });
+      }
+
+      if (orCriteria.length > 0) {
+        qFilter.$or = orCriteria;
+      }
+      if (effectiveDept && effectiveDept !== 'All') {
+        qFilter.$and = [
+          {
+            $or: [
+              { department: effectiveDept },
+              { departments: effectiveDept },
+              { department: 'All' },
+              { departments: 'All' },
+              { department: null }
+            ]
+          }
+        ];
+      }
+
+      if (difficulty && difficulty !== 'All') {
+        qFilter.difficulty = difficulty;
+      }
+
+      candidateQuestions = await Question.find(qFilter);
+
+      // Relax difficulty filter if empty
+      if (candidateQuestions.length === 0 && difficulty && difficulty !== 'All') {
+        delete qFilter.difficulty;
+        candidateQuestions = await Question.find(qFilter);
+      }
+
+      // If still empty, check questions by category across departments
+      if (candidateQuestions.length === 0 && effectiveCategory && effectiveCategory !== 'General') {
+        candidateQuestions = await Question.find({
+          status: 'active',
+          module: { $in: ['Domain', 'Domain Knowledge'] },
+          $or: [
+            { category: effectiveCategory },
+            { category: { $regex: new RegExp(`^${effectiveCategory}$`, 'i') } },
+            { topic: effectiveCategory },
+            { topic: { $regex: new RegExp(`^${effectiveCategory}$`, 'i') } }
+          ]
+        });
+      }
+
+      // If still empty, check questions by department
+      if (candidateQuestions.length === 0 && effectiveDept) {
+        candidateQuestions = await Question.find({
+          status: 'active',
+          module: { $in: ['Domain', 'Domain Knowledge'] },
+          $or: [
+            { department: effectiveDept },
+            { departments: effectiveDept },
+            { department: 'All' },
+            { departments: 'All' }
+          ]
+        });
+      }
+
+      // Global domain pool fallback
+      if (candidateQuestions.length === 0) {
+        candidateQuestions = await Question.find({
+          status: 'active',
+          module: { $in: ['Domain', 'Domain Knowledge'] }
+        });
+      }
     } else {
-      qFilter.topic = topicTitle;
-    }
-
-    if (difficulty && difficulty !== 'All') {
-      qFilter.difficulty = difficulty;
-    }
-
-    let candidateQuestions = await Question.find(qFilter);
-
-    // If candidate questions are empty with a strict difficulty filter, fallback to all difficulties for this topic in same module
-    if (candidateQuestions.length === 0 && difficulty && difficulty !== 'All') {
-      const relaxedFilter = {
+      // Standard Aptitude / Communication / other module flow
+      const qFilter = {
         status: 'active',
         module: effectiveModule
       };
       if (topicDoc) {
-        relaxedFilter.$or = [{ topicId: topicDoc._id }, { topic: topicDoc.title }];
+        qFilter.$or = [
+          { topicId: topicDoc._id },
+          { topic: topicDoc.title }
+        ];
       } else {
-        relaxedFilter.topic = topicTitle;
+        qFilter.topic = topicTitle;
       }
-      candidateQuestions = await Question.find(relaxedFilter);
-    }
 
-    // Fallback if candidate questions are empty:
-    // Try smart topic aliases ONLY within the same Aptitude module
-    if (candidateQuestions.length === 0 && effectiveModule === 'Aptitude') {
-      const aliasMap = {
-        'Simplification': ['Number System', 'HCF and LCM', 'Average'],
-        'Ratio & Proportion': ['Allegation and Proportion'],
-        'Number & Letter Series': ['Number Series'],
-        'Number/Alphabet Series': ['Number Series']
-      };
-      const aliases = aliasMap[topicTitle];
-      if (aliases && aliases.length > 0) {
-        candidateQuestions = await Question.find({
-          module: 'Aptitude',
-          topic: { $in: aliases },
-          status: 'active'
-        });
+      if (difficulty && difficulty !== 'All') {
+        qFilter.difficulty = difficulty;
+      }
+
+      candidateQuestions = await Question.find(qFilter);
+
+      if (candidateQuestions.length === 0 && difficulty && difficulty !== 'All') {
+        const relaxedFilter = {
+          status: 'active',
+          module: effectiveModule
+        };
+        if (topicDoc) {
+          relaxedFilter.$or = [{ topicId: topicDoc._id }, { topic: topicDoc.title }];
+        } else {
+          relaxedFilter.topic = topicTitle;
+        }
+        candidateQuestions = await Question.find(relaxedFilter);
+      }
+
+      if (candidateQuestions.length === 0 && effectiveModule === 'Aptitude') {
+        const aliasMap = {
+          'Simplification': ['Number System', 'HCF and LCM', 'Average'],
+          'Ratio & Proportion': ['Allegation and Proportion'],
+          'Number & Letter Series': ['Number Series'],
+          'Number/Alphabet Series': ['Number Series']
+        };
+        const aliases = aliasMap[topicTitle];
+        if (aliases && aliases.length > 0) {
+          candidateQuestions = await Question.find({
+            module: 'Aptitude',
+            topic: { $in: aliases },
+            status: 'active'
+          });
+        }
       }
     }
 
@@ -1026,7 +1207,9 @@ exports.createPracticeTest = async (req, res) => {
       description: `Student self-practice evaluation covering ${topicTitle}. Questions selected from database Question Bank.`,
       module: topicModule,
       category: topicCategory,
+      categoryId: categoryId || categoryDoc?._id || topicDoc?.categoryId || null,
       department: topicDept,
+      departmentId: departmentId || categoryDoc?.departmentId || null,
       topic: topicTitle,
       topicId: topicDoc?._id || null,
       difficulty: difficulty === 'All' ? 'Mixed' : difficulty,

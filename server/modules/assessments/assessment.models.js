@@ -148,4 +148,4 @@ const assessmentAttemptSchema = new mongoose.Schema({
 const Assessment = mongoose.model('Assessment', assessmentSchema);
 const AssessmentAttempt = mongoose.model('AssessmentAttempt', assessmentAttemptSchema);
 
-module.exports = { Assessment, AssessmentAttempt };
+module.exports = { Assessment, AssessmentAttempt, questionSchema };

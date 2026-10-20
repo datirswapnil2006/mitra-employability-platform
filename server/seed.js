@@ -307,6 +307,15 @@ const seedData = async () => {
       console.log('[System Init]: Official Domain categories and topics verified.');
     }
 
+    // Ensure all 9 departments have comprehensive placement topics populated
+    const domainTopicCount = await Topic.countDocuments({ module: { $in: ['Domain', 'Domain Knowledge'] } });
+    if (domainTopicCount < 200 || forceSeed) {
+      console.log('[System Init]: Bootstrapping comprehensive placement topics across all 9 departments...');
+      const seedAllDomainTopics = require('./seedAllDomainTopics');
+      await seedAllDomainTopics();
+    }
+
+
     // ==========================================
     // Bootstrapping Communication Categories & Default Topics
     // ==========================================

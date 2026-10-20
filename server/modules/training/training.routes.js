@@ -28,14 +28,30 @@ const {
   createContent,
   updateContent,
   deleteContent,
-  previewMetadata
+  previewMetadata,
+  getPlaylists,
+  getPlaylistById,
+  createPlaylist,
+  updatePlaylist,
+  deletePlaylist,
+  getDepartmentOverviewStats
 } = require('./training.controller');
 const { protect } = require('../../middleware/authMiddleware');
 const { authorize } = require('../../middleware/roleMiddleware');
 const { requireCompleteProfile } = require('../../middleware/profileMiddleware');
 
+// Department Overview Stats (Dynamic topic, category, playlist counts across all 9 departments)
+router.get('/departments/overview-stats', protect, requireCompleteProfile, getDepartmentOverviewStats);
+
 // Metadata preview
 router.post('/preview-metadata', protect, authorize('admin'), previewMetadata);
+
+// Playlists (Domain Knowledge YouTube Playlists)
+router.get('/playlists', protect, requireCompleteProfile, getPlaylists);
+router.get('/playlists/:id', protect, requireCompleteProfile, getPlaylistById);
+router.post('/playlists', protect, authorize('admin'), createPlaylist);
+router.put('/playlists/:id', protect, authorize('admin'), updatePlaylist);
+router.delete('/playlists/:id', protect, authorize('admin'), deletePlaylist);
 
 // Companies (Data-Driven Company Preparation)
 router.get('/companies', protect, requireCompleteProfile, getCompanies);
@@ -57,6 +73,7 @@ router.get('/topics/:id', protect, requireCompleteProfile, getTopicById);
 router.post('/topics', protect, authorize('admin'), createTopic);
 router.put('/topics/:id', protect, authorize('admin'), updateTopic);
 router.delete('/topics/:id', protect, authorize('admin'), deleteTopic);
+
 
 // Modules
 router.get('/modules', protect, requireCompleteProfile, getModules);

@@ -13,7 +13,7 @@ import EmptyState from '../../components/EmptyState';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import NoteReaderModal from '../../components/NoteReaderModal';
 import { MODULE_CATEGORIES, normalizeModuleName } from '../../constants/trainingModules';
-import { DEPARTMENT_DETAILS, getDepartmentDetails } from '../../constants/departments';
+import { DEPARTMENT_DETAILS, getDepartmentDetails, canonicalizeDepartment } from '../../constants/departments';
 import {
   Plus,
   Sparkles,
@@ -36,13 +36,19 @@ import {
   X,
   Layers,
   ChevronRight,
+  ChevronLeft,
   BookOpen,
   GraduationCap,
   UserCheck,
   Code2,
   MessageSquare,
-  Users
+  Users,
+  ListVideo,
+  Copy,
+  Check
 } from 'lucide-react';
+import YoutubeIcon from '../../components/YoutubeIcon';
+import { getEmbedVideoUrl, isPlaylistUrl, getExternalWatchUrl, validateVideoUrl, extractPlaylistId } from '../../utils/videoUtils';
 
 export const ContentManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -68,13 +74,32 @@ export const ContentManagementPage = () => {
   // Domain Module Specific State Hierarchy
   // Level 1: selectedDept (e.g. 'IT', 'EXTC', 'CSE', etc.)
   // Level 2: selectedDomainCategory (Category object)
-  // Level 3: selectedTopic (Topic object)
-  // Level 4: Topic Details (Videos / Notes)
+  // Level 3: domainPlaylists (Direct YouTube Playlist Management)
   // ==========================================
   const [selectedDept, setSelectedDept] = useState(null);
   const [selectedDomainCategory, setSelectedDomainCategory] = useState(null);
   const [domainCategories, setDomainCategories] = useState([]);
   const [deptStats, setDeptStats] = useState({});
+
+  // Domain YouTube Playlists state
+  const [domainPlaylists, setDomainPlaylists] = useState([]);
+  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+  const [editingPlaylist, setEditingPlaylist] = useState(null);
+  const [fetchingPlaylistMeta, setFetchingPlaylistMeta] = useState(false);
+  const [playlistFormError, setPlaylistFormError] = useState('');
+  const [playlistFormSuccess, setPlaylistFormSuccess] = useState('');
+  const [copiedUrlId, setCopiedUrlId] = useState(null);
+  const [playlistForm, setPlaylistForm] = useState({
+    title: '',
+    description: '',
+    playlistUrl: '',
+    thumbnailUrl: '',
+    channelTitle: '',
+    videoCount: 0,
+    order: 0,
+    status: 'published'
+  });
+
 
   // ==========================================
   // Communication Module Specific State Hierarchy
@@ -169,6 +194,7 @@ export const ContentManagementPage = () => {
     description: '',
     videoUrl: '',
     thumbnailUrl: '',
+    order: 1,
     difficulty: 'Beginner',
     status: 'published',
     category: availableCategories[0]?.id || 'Quantitative'
@@ -233,7 +259,7 @@ export const ContentManagementPage = () => {
       if (selectedTopic) {
         fetchTopicContents(selectedTopic._id, 'Domain');
       } else if (selectedDomainCategory) {
-        fetchDomainCategoryTopics(selectedDomainCategory._id);
+        fetchCategoryPlaylists(selectedDomainCategory._id);
       } else if (selectedDept) {
         fetchDepartmentCategories(selectedDept);
       } else {
@@ -284,16 +310,29 @@ export const ContentManagementPage = () => {
   const fetchDepartmentOverviewStats = async () => {
     setLoading(true);
     try {
+      // 1. Dedicated backend endpoint for real-time live department stats
+      const statsRes = await api.getDepartmentOverviewStats();
+      if (statsRes && statsRes.success && statsRes.stats) {
+        setDeptStats(statsRes.stats);
+        return;
+      }
+
+      // 2. Fallback: Aggregate from categories with alias canonicalization
       const res = await api.getCategories({ module: 'Domain' });
       if (res.success && res.categories) {
         const stats = {};
         DEPARTMENT_DETAILS.forEach((d) => {
-          const deptCats = res.categories.filter((c) => c.department === d.id || c.department === d.dbKey || c.department === d.code);
+          const canonId = canonicalizeDepartment(d.id);
+          const deptCats = res.categories.filter((c) => {
+            const cCanon = canonicalizeDepartment(c.department || c.departmentId);
+            return cCanon === canonId || c.department === d.id || c.department === d.code || c.department === d.dbKey;
+          });
           stats[d.id] = {
             categoryCount: deptCats.length,
             topicCount: deptCats.reduce((acc, c) => acc + (c.topicCount || 0), 0),
             videoCount: deptCats.reduce((acc, c) => acc + (c.videoCount || 0), 0),
-            notesCount: deptCats.reduce((acc, c) => acc + (c.notesCount || 0), 0)
+            notesCount: deptCats.reduce((acc, c) => acc + (c.notesCount || 0), 0),
+            playlistCount: deptCats.reduce((acc, c) => acc + (c.playlistCount || 0), 0)
           };
         });
         setDeptStats(stats);
@@ -314,6 +353,20 @@ export const ContentManagementPage = () => {
       }
     } catch (err) {
       console.error('Error fetching department categories:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCategoryPlaylists = async (categoryId) => {
+    setLoading(true);
+    try {
+      const res = await api.getPlaylists({ categoryId });
+      if (res.success) {
+        setDomainPlaylists(res.playlists || []);
+      }
+    } catch (err) {
+      console.error('Error fetching category playlists:', err);
     } finally {
       setLoading(false);
     }
@@ -843,9 +896,11 @@ export const ContentManagementPage = () => {
           else if (selectedInterviewCategory) fetchInterviewTopics(selectedInterviewCategory._id);
         } else if (isDomainModule && selectedDomainCategory) {
           fetchDomainCategoryTopics(selectedDomainCategory._id);
+          fetchDepartmentOverviewStats();
         } else {
           fetchAptitudeTopics();
         }
+        fetchDepartmentOverviewStats();
         if (selectedTopic && editingTopic && selectedTopic._id === editingTopic._id) {
           setSelectedTopic(res.topic);
         }
@@ -863,8 +918,8 @@ export const ContentManagementPage = () => {
       const res = await api.deleteTopic(deleteConfirm.item._id);
       if (res.success) {
         setDeleteConfirm({ open: false, type: null, item: null });
-        if (selectedTopic && selectedTopic._id === deleteConfirm.item._id) {
-          setSelectedTopic(null);
+        if (isDomainModule) {
+          fetchDepartmentOverviewStats();
         }
         if (isCommunicationModule && selectedCommCategory) {
           fetchCommTopics(selectedCommCategory._id);
@@ -881,6 +936,205 @@ export const ContentManagementPage = () => {
       }
     } catch (err) {
       console.error('Error deleting topic:', err);
+    }
+  };
+
+  // ==========================================
+  // YouTube Playlist Handlers (Domain Knowledge)
+  // ==========================================
+  const handleOpenAddPlaylist = () => {
+    setEditingPlaylist(null);
+    setPlaylistForm({
+      title: '',
+      description: '',
+      playlistUrl: '',
+      thumbnailUrl: '',
+      channelTitle: '',
+      videoCount: 0,
+      order: domainPlaylists.length,
+      status: 'published'
+    });
+    setPlaylistFormError('');
+    setPlaylistFormSuccess('');
+    setIsPlaylistModalOpen(true);
+  };
+
+  const handleOpenEditPlaylist = (pl, e) => {
+    if (e) e.stopPropagation();
+    setEditingPlaylist(pl);
+    setPlaylistForm({
+      title: pl.title || '',
+      description: pl.description || '',
+      playlistUrl: pl.playlistUrl || '',
+      thumbnailUrl: pl.thumbnailUrl || '',
+      channelTitle: pl.channelTitle || '',
+      videoCount: pl.videoCount || (pl.videos ? pl.videos.length : 0),
+      order: pl.order !== undefined ? pl.order : 0,
+      status: pl.status || 'published'
+    });
+    setPlaylistFormError('');
+    setPlaylistFormSuccess('');
+    setIsPlaylistModalOpen(true);
+  };
+
+  const handleAutoDetectPlaylistMeta = async () => {
+    if (!playlistForm.playlistUrl || !playlistForm.playlistUrl.trim()) {
+      setPlaylistFormError('Please enter a YouTube playlist URL first.');
+      return;
+    }
+    const extractedId = extractPlaylistId(playlistForm.playlistUrl);
+    if (!extractedId) {
+      setPlaylistFormError('Invalid playlist URL. Please ensure the URL includes a playlist ID (e.g. list=PL...).');
+      return;
+    }
+    setFetchingPlaylistMeta(true);
+    setPlaylistFormError('');
+    setPlaylistFormSuccess('');
+    try {
+      const res = await api.previewMetadata(playlistForm.playlistUrl.trim());
+      if (res.success && res.metadata) {
+        const meta = res.metadata;
+        setPlaylistForm((prev) => ({
+          ...prev,
+          title: prev.title && prev.title !== 'YouTube Playlist' ? prev.title : (meta.title || prev.title),
+          thumbnailUrl: meta.thumbnailUrl || prev.thumbnailUrl,
+          channelTitle: meta.channelTitle || prev.channelTitle,
+          videoCount: meta.videoCount || prev.videoCount,
+          description: prev.description || meta.description || ''
+        }));
+        setPlaylistFormSuccess(`Successfully detected: "${meta.title}" (${meta.videoCount || 0} lectures)`);
+      } else {
+        setPlaylistFormError(res.message || 'Could not auto-detect playlist details. You can enter details manually.');
+      }
+    } catch (err) {
+      setPlaylistFormError('Failed to fetch YouTube playlist metadata.');
+    } finally {
+      setFetchingPlaylistMeta(false);
+    }
+  };
+
+  const handleSavePlaylist = async (e) => {
+    if (e) e.preventDefault();
+    setPlaylistFormError('');
+    setPlaylistFormSuccess('');
+
+    if (!playlistForm.playlistUrl || !playlistForm.playlistUrl.trim()) {
+      setPlaylistFormError('Please enter a YouTube playlist URL.');
+      return;
+    }
+
+    const extractedId = extractPlaylistId(playlistForm.playlistUrl);
+    if (!extractedId) {
+      setPlaylistFormError('Invalid YouTube playlist URL. The URL must contain a valid playlist ID (e.g. ?list=PL...).');
+      return;
+    }
+
+    if (!playlistForm.title || !playlistForm.title.trim()) {
+      setPlaylistFormError('Please provide a playlist title.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (editingPlaylist) {
+        const res = await api.updatePlaylist(editingPlaylist._id, {
+          title: playlistForm.title.trim(),
+          description: playlistForm.description.trim(),
+          playlistUrl: playlistForm.playlistUrl.trim(),
+          thumbnailUrl: playlistForm.thumbnailUrl.trim(),
+          order: Number(playlistForm.order),
+          status: playlistForm.status
+        });
+        if (res.success) {
+          setIsPlaylistModalOpen(false);
+          await fetchCategoryPlaylists(selectedDomainCategory._id);
+          if (selectedDept) fetchDepartmentCategories(selectedDept);
+        } else {
+          setPlaylistFormError(res.message || 'Failed to update playlist.');
+        }
+      } else {
+        const res = await api.createPlaylist({
+          title: playlistForm.title.trim(),
+          description: playlistForm.description.trim(),
+          playlistUrl: playlistForm.playlistUrl.trim(),
+          thumbnailUrl: playlistForm.thumbnailUrl.trim(),
+          categoryId: selectedDomainCategory._id,
+          category: selectedDomainCategory.title,
+          department: selectedDept,
+          departmentId: selectedDept,
+          order: Number(playlistForm.order),
+          status: playlistForm.status
+        });
+        if (res.success) {
+          setIsPlaylistModalOpen(false);
+          await fetchCategoryPlaylists(selectedDomainCategory._id);
+          if (selectedDept) fetchDepartmentCategories(selectedDept);
+        } else {
+          setPlaylistFormError(res.message || 'Failed to add playlist.');
+        }
+      }
+    } catch (err) {
+      setPlaylistFormError('Failed to save playlist. Please check your network connection.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTogglePublishPlaylist = async (pl, e) => {
+    if (e) e.stopPropagation();
+    try {
+      const newStatus = pl.status === 'published' ? 'draft' : 'published';
+      const res = await api.updatePlaylist(pl._id, { status: newStatus });
+      if (res.success) {
+        setDomainPlaylists((prev) =>
+          prev.map((item) => (item._id === pl._id ? { ...item, status: newStatus } : item))
+        );
+        if (selectedDept) fetchDepartmentCategories(selectedDept);
+      }
+    } catch (err) {
+      console.error('Failed to toggle playlist status:', err);
+    }
+  };
+
+  const handleReorderPlaylist = async (pl, direction, e) => {
+    if (e) e.stopPropagation();
+    const currentIndex = domainPlaylists.findIndex((p) => p._id === pl._id);
+    if (currentIndex === -1) return;
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= domainPlaylists.length) return;
+
+    const targetPl = domainPlaylists[targetIndex];
+    const currentOrder = pl.order !== undefined ? pl.order : currentIndex;
+    const targetOrder = targetPl.order !== undefined ? targetPl.order : targetIndex;
+
+    const newOrderForPl = targetOrder;
+    const newOrderForTarget = currentOrder === targetOrder ? (direction === 'up' ? targetOrder + 1 : targetOrder - 1) : currentOrder;
+
+    try {
+      await Promise.all([
+        api.updatePlaylist(pl._id, { order: newOrderForPl }),
+        api.updatePlaylist(targetPl._id, { order: newOrderForTarget })
+      ]);
+      await fetchCategoryPlaylists(selectedDomainCategory._id);
+    } catch (err) {
+      console.error('Failed to reorder playlist:', err);
+    }
+  };
+
+  const handleDeletePlaylist = async () => {
+    if (!deleteConfirm.item) return;
+    setLoading(true);
+    try {
+      const res = await api.deletePlaylist(deleteConfirm.item._id);
+      if (res.success) {
+        setDomainPlaylists((prev) => prev.filter((p) => p._id !== deleteConfirm.item._id));
+        setDeleteConfirm({ open: false, type: null, item: null });
+        if (selectedDept) fetchDepartmentCategories(selectedDept);
+      }
+    } catch (err) {
+      console.error('Failed to delete playlist:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -902,6 +1156,7 @@ export const ContentManagementPage = () => {
       description: '',
       videoUrl: '',
       thumbnailUrl: '',
+      order: videoContents.length + 1,
       difficulty: 'Beginner',
       status: 'published',
       category: cat
@@ -918,6 +1173,7 @@ export const ContentManagementPage = () => {
       description: video.description || '',
       videoUrl: video.videoUrl || video.resourceUrl || '',
       thumbnailUrl: video.thumbnailUrl || '',
+      order: video.order !== undefined ? video.order : 0,
       difficulty: video.difficulty || 'Beginner',
       status: video.status || 'published',
       category: video.category || (selectedDomainCategory ? selectedDomainCategory.title : activeCategory)
@@ -927,7 +1183,7 @@ export const ContentManagementPage = () => {
 
   const handleFetchVideoDetails = async () => {
     if (!videoForm.videoUrl || !videoForm.videoUrl.trim()) {
-      setFetchError('Please enter a valid video URL first.');
+      setFetchError('Please enter a valid video or playlist URL first.');
       return;
     }
 
@@ -958,12 +1214,24 @@ export const ContentManagementPage = () => {
 
   const handleSaveVideo = async (e) => {
     e.preventDefault();
+    if (!videoForm.videoUrl || !videoForm.videoUrl.trim()) {
+      setFetchError('Video or Playlist URL is required.');
+      return;
+    }
+
+    const validation = validateVideoUrl(videoForm.videoUrl);
+    if (!validation.valid) {
+      setFetchError(validation.error);
+      return;
+    }
+
     setSubmitting(true);
     try {
       let payload;
       if (isCommunicationModule) {
         payload = {
           ...videoForm,
+          order: Number(videoForm.order) || 0,
           module: 'Communication',
           resourceType: 'video',
           contentType: 'video',
@@ -977,6 +1245,7 @@ export const ContentManagementPage = () => {
       } else if (isResumeModule) {
         payload = {
           ...videoForm,
+          order: Number(videoForm.order) || 0,
           module: 'Resume',
           resourceType: 'video',
           contentType: 'video',
@@ -990,6 +1259,7 @@ export const ContentManagementPage = () => {
       } else if (isInterviewModule) {
         payload = {
           ...videoForm,
+          order: Number(videoForm.order) || 0,
           module: 'Interview Preparation',
           resourceType: 'video',
           contentType: 'video',
@@ -1005,6 +1275,7 @@ export const ContentManagementPage = () => {
       } else {
         payload = {
           ...videoForm,
+          order: Number(videoForm.order) || 0,
           module: isDomainModule ? 'Domain' : currentModule,
           resourceType: 'video',
           contentType: 'video',
@@ -1278,6 +1549,7 @@ export const ContentManagementPage = () => {
     if (deleteConfirm.type === 'category') handleDeleteCategory();
     else if (deleteConfirm.type === 'company') handleDeleteCompany();
     else if (deleteConfirm.type === 'topic') handleDeleteTopic();
+    else if (deleteConfirm.type === 'playlist') handleDeletePlaylist();
     else if (deleteConfirm.type === 'video' || deleteConfirm.type === 'note') handleDeleteContent();
   };
 
@@ -1296,6 +1568,16 @@ export const ContentManagementPage = () => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return c.title?.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q);
+  });
+
+  const filteredDomainPlaylists = domainPlaylists.filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q) ||
+      p.channelTitle?.toLowerCase().includes(q)
+    );
   });
 
   const filteredTopics = topics.filter((t) => {
@@ -1391,8 +1673,8 @@ export const ContentManagementPage = () => {
       }
       if (selectedDomainCategory) {
         return {
-          title: `${selectedDomainCategory.title} • Topics`,
-          subtitle: `Manage placement topics, structured syllabus, and learning resources under ${selectedDomainCategory.title} for ${currentDeptObj?.name}.`,
+          title: `${selectedDomainCategory.title} • Playlists`,
+          subtitle: `Manage complete YouTube playlists and curriculum video series under ${selectedDomainCategory.title} for ${currentDeptObj?.name}.`,
           breadcrumbs: [
             { label: 'Admin', link: '/admin/dashboard' },
             { label: 'Training', onClick: () => { setSelectedDept(null); setSelectedDomainCategory(null); } },
@@ -1410,8 +1692,8 @@ export const ContentManagementPage = () => {
               >
                 Back to Categories
               </Button>
-              <Button size="md" icon={Plus} onClick={handleOpenAddTopic}>
-                Add Topic
+              <Button size="md" icon={Plus} onClick={handleOpenAddPlaylist}>
+                Add YouTube Playlist
               </Button>
             </div>
           )
@@ -1876,7 +2158,7 @@ export const ContentManagementPage = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {filteredDepartments.map((dept) => {
-                    const st = deptStats[dept.id] || { categoryCount: 0, topicCount: 0, videoCount: 0, notesCount: 0 };
+                    const st = deptStats[dept.id] || deptStats[dept.code] || deptStats[canonicalizeDepartment(dept.id)] || { categoryCount: 0, topicCount: 0, videoCount: 0, notesCount: 0 };
                     return (
                       <div
                         key={dept.id}
@@ -1946,12 +2228,17 @@ export const ContentManagementPage = () => {
               {/* Department Banner */}
               <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-black text-lg">
-                    {currentDeptObj?.code || selectedDept}
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 shadow-xs">
+                    <Building2 className="w-6 h-6" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold text-blue-600 uppercase">Domain Department</span>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className={`text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-lg border flex items-center gap-1.5 ${currentDeptObj?.badgeColor || 'text-blue-700 bg-blue-50 border-blue-200'}`}>
+                        <Building2 className="w-3.5 h-3.5" />
+                        {currentDeptObj?.code || selectedDept}
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">Domain Department</span>
                       <span className="text-slate-300">•</span>
                       <span className="text-xs font-bold text-slate-500">{domainCategories.length} Placement Categories</span>
                     </div>
@@ -2022,19 +2309,9 @@ export const ContentManagementPage = () => {
                         </p>
 
                         <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-100 text-xs text-slate-600">
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <Layers className="w-4 h-4 text-indigo-600" />
-                            <span>{cat.topicCount || 0} Topics</span>
-                          </div>
-                          <span className="text-slate-300">•</span>
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <Video className="w-4 h-4 text-blue-600" />
-                            <span>{cat.videoCount || 0} Videos</span>
-                          </div>
-                          <span className="text-slate-300">•</span>
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <FileText className="w-4 h-4 text-rose-600" />
-                            <span>{cat.notesCount || 0} Notes</span>
+                          <div className="flex items-center gap-1.5 font-bold text-red-600">
+                            <YoutubeIcon className="w-4 h-4 text-red-600" />
+                            <span>{cat.playlistCount !== undefined ? cat.playlistCount : 0} Playlists</span>
                           </div>
                         </div>
                       </div>
@@ -2065,13 +2342,13 @@ export const ContentManagementPage = () => {
                         <Button
                           size="sm"
                           variant="primary"
-                          icon={Settings2}
+                          icon={YoutubeIcon}
                           onClick={() => {
                             setSelectedDomainCategory(cat);
                             setSearchQuery('');
                           }}
                         >
-                          Manage Topics
+                          Manage Playlists
                         </Button>
                       </div>
                     </div>
@@ -2089,19 +2366,24 @@ export const ContentManagementPage = () => {
           )}
 
           {/* LEVEL 3: CATEGORY TOPICS VIEW */}
-          {selectedDept && selectedDomainCategory && !selectedTopic && (
+          {/* LEVEL 3: CATEGORY PLAYLISTS VIEW (Domain Knowledge Direct Workflow) */}
+          {selectedDept && selectedDomainCategory && (
             <div className="space-y-6">
+              {/* Category Overview Banner */}
               <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <span className="text-[11px] font-black uppercase tracking-wider text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200">
-                      {currentDeptObj?.code} • {selectedDomainCategory.title}
+                      {currentDeptObj?.code || selectedDept} • {selectedDomainCategory.title}
                     </span>
                     <StatusBadge status={selectedDomainCategory.status || 'published'} />
+                    <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                      {domainPlaylists.length} Playlists
+                    </span>
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900">{selectedDomainCategory.title} Topics</h2>
+                  <h2 className="text-2xl font-black text-slate-900">{selectedDomainCategory.title} Playlists</h2>
                   <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                    {selectedDomainCategory.description || 'Topic breakdown and resources.'}
+                    {selectedDomainCategory.description || 'Manage complete YouTube video playlists for this domain category.'}
                   </p>
                 </div>
 
@@ -2114,20 +2396,20 @@ export const ContentManagementPage = () => {
                   >
                     Edit Category
                   </Button>
-                  <Button size="sm" icon={Plus} onClick={handleOpenAddTopic}>
-                    Add Topic
+                  <Button size="sm" icon={Plus} onClick={handleOpenAddPlaylist}>
+                    Add YouTube Playlist
                   </Button>
                 </div>
               </div>
 
-              {/* Topics search bar */}
+              {/* Playlists Search Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="text-xs font-bold text-slate-600">
-                  Showing {filteredTopics.length} topics under {selectedDomainCategory.title}
+                  Showing {filteredDomainPlaylists.length} playlists under {selectedDomainCategory.title}
                 </div>
                 <div className="w-full sm:w-72">
                   <Input
-                    placeholder="Search topics..."
+                    placeholder="Search playlists..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="text-xs"
@@ -2135,68 +2417,145 @@ export const ContentManagementPage = () => {
                 </div>
               </div>
 
+              {/* Playlists Grid */}
               {loading ? (
-                <LoadingState message="Loading topics..." />
-              ) : filteredTopics.length > 0 ? (
+                <LoadingState message="Loading playlists..." />
+              ) : filteredDomainPlaylists.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredTopics.map((topic) => (
+                  {filteredDomainPlaylists.map((pl, idx) => (
                     <div
-                      key={topic._id}
-                      className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden group"
+                      key={pl._id}
+                      className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-lg transition-all duration-200 flex flex-col justify-between overflow-hidden group"
                     >
-                      <div className="p-6">
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 flex items-center gap-1.5">
-                            <FolderOpen className="w-3.5 h-3.5 text-emerald-600" />
-                            {topic.category || selectedDomainCategory.title}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <StatusBadge status={topic.status || 'published'} />
+                      <div>
+                        {/* 16:9 Thumbnail preview container */}
+                        <div className="aspect-video bg-slate-900 relative overflow-hidden group-hover:opacity-95 transition-opacity">
+                          {pl.thumbnailUrl ? (
+                            <img
+                              src={pl.thumbnailUrl}
+                              alt={pl.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 text-white">
+                              <YoutubeIcon className="w-12 h-12 text-red-500 mb-2" />
+                              <span className="text-xs font-semibold text-slate-300">YouTube Playlist</span>
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                          {/* Order Badge (Top-Left) */}
+                          <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-xs text-white text-[11px] font-black px-2.5 py-0.5 rounded-md shadow-sm">
+                            #{pl.order !== undefined ? pl.order : idx + 1}
+                          </div>
+
+                          {/* Status and Publish Toggle (Top-Right) */}
+                          <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-xs p-1 rounded-lg">
+                            <StatusBadge status={pl.status || 'published'} />
+                            <button
+                              type="button"
+                              onClick={(e) => handleTogglePublishPlaylist(pl, e)}
+                              className="p-1 text-slate-300 hover:text-white rounded transition"
+                              title={pl.status === 'published' ? 'Unpublish Playlist' : 'Publish Playlist'}
+                            >
+                              {pl.status === 'published' ? (
+                                <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Video count badge (Bottom-Right) */}
+                          <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-xs text-white text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-md">
+                            <ListVideo className="w-3.5 h-3.5 text-red-400" />
+                            <span>{pl.videoCount || (pl.videos ? pl.videos.length : 0)} Lectures</span>
+                          </div>
+                        </div>
+
+                        {/* Playlist Meta Details */}
+                        <div className="p-5">
+                          {pl.channelTitle && (
+                            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                              <span>{pl.channelTitle}</span>
+                            </div>
+                          )}
+                          <h3 className="font-extrabold text-base text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2">
+                            {pl.title}
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                            {pl.description || 'Complete lecture playlist for structured concept mastery.'}
+                          </p>
+
+                          {/* URL Box */}
+                          <div className="mt-4 bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <YoutubeIcon className="w-4 h-4 text-red-600 shrink-0" />
+                              <span className="text-[11px] font-mono text-slate-600 truncate">
+                                {pl.playlistUrl}
+                              </span>
+                            </div>
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleTogglePublish(topic, 'topic');
+                                navigator.clipboard.writeText(pl.playlistUrl);
+                                setCopiedUrlId(pl._id);
+                                setTimeout(() => setCopiedUrlId(null), 2000);
                               }}
-                              className="p-1 text-slate-400 hover:text-slate-700 rounded transition"
-                              title={topic.status === 'published' ? 'Unpublish Topic' : 'Publish Topic'}
+                              className="p-1 text-slate-400 hover:text-blue-600 rounded transition shrink-0"
+                              title="Copy URL"
                             >
-                              {topic.status === 'published' ? (
-                                <Eye className="w-4 h-4 text-emerald-600" />
+                              {copiedUrlId === pl._id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
                               ) : (
-                                <EyeOff className="w-4 h-4 text-slate-400" />
+                                <Copy className="w-3.5 h-3.5" />
                               )}
                             </button>
                           </div>
                         </div>
-
-                        <h3 className="font-extrabold text-lg text-slate-900 group-hover:text-emerald-700 transition-colors">
-                          {topic.title}
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
-                          {topic.description || 'Topic training modules, video lectures, and PDF study notes.'}
-                        </p>
-
-                        <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-100 text-xs text-slate-600">
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <Video className="w-4 h-4 text-blue-600" />
-                            <span>{topic.videoCount || 0} Videos</span>
-                          </div>
-                          <span className="text-slate-300">•</span>
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <FileText className="w-4 h-4 text-rose-600" />
-                            <span>{topic.notesCount || 0} PDF Notes</span>
-                          </div>
-                        </div>
                       </div>
 
-                      <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                      {/* Card Footer with Reordering and Actions */}
+                      <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                        {/* Reordering */}
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={(e) => handleOpenEditTopic(topic, e)}
+                            disabled={idx === 0}
+                            onClick={(e) => handleReorderPlaylist(pl, 'up', e)}
+                            className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-slate-400 rounded transition"
+                            title="Move Up"
+                          >
+                            <ChevronLeft className="w-4 h-4 rotate-90" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === filteredDomainPlaylists.length - 1}
+                            onClick={(e) => handleReorderPlaylist(pl, 'down', e)}
+                            className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-slate-400 rounded transition"
+                            title="Move Down"
+                          >
+                            <ChevronRight className="w-4 h-4 rotate-90" />
+                          </button>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={pl.playlistUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition flex items-center gap-1 text-xs font-semibold"
+                            title="Watch on YouTube"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenEditPlaylist(pl, e)}
                             className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                            title="Edit Topic Details"
+                            title="Edit Playlist"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -2204,37 +2563,24 @@ export const ContentManagementPage = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setDeleteConfirm({ open: true, type: 'topic', item: topic });
+                              setDeleteConfirm({ open: true, type: 'playlist', item: pl });
                             }}
                             className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                            title="Delete Topic"
+                            title="Delete Playlist"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          icon={Settings2}
-                          onClick={() => {
-                            setSelectedTopic(topic);
-                            setActiveTopicTab('videos');
-                            setSearchQuery('');
-                          }}
-                        >
-                          Manage Topic
-                        </Button>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <EmptyState
-                  title={`No Topics in ${selectedDomainCategory.title}`}
-                  description={`Add technical topics for ${selectedDomainCategory.title} under ${currentDeptObj?.code}.`}
-                  actionText="Add Topic"
-                  onAction={handleOpenAddTopic}
+                  title={`No Playlists in ${selectedDomainCategory.title}`}
+                  description={`Add a complete YouTube playlist to provide comprehensive video lectures under ${selectedDomainCategory.title}.`}
+                  actionText="Add YouTube Playlist"
+                  onAction={handleOpenAddPlaylist}
                 />
               )}
             </div>
@@ -2316,97 +2662,107 @@ export const ContentManagementPage = () => {
                     <LoadingState message="Loading videos..." />
                   ) : filteredVideos.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {filteredVideos.map((video) => (
-                        <div
-                          key={video._id}
-                          className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
-                        >
-                          <div className="relative aspect-video bg-slate-900 overflow-hidden">
-                            {video.thumbnailUrl ? (
-                              <img
-                                src={video.thumbnailUrl}
-                                alt={video.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-400">
-                                <Video className="w-10 h-10 opacity-50" />
-                              </div>
-                            )}
-
-                            <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <button
-                                type="button"
-                                onClick={() => setActiveVideoPreview(video)}
-                                className="p-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition transform hover:scale-110"
-                                title="Watch Video Preview"
-                              >
-                                <Play className="w-5 h-5 fill-current ml-0.5" />
-                              </button>
-                            </div>
-
-                            <div className="absolute top-2.5 left-2.5">
-                              <StatusBadge status={video.status || 'published'} />
-                            </div>
-                            <div className="absolute top-2.5 right-2.5 bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded">
-                              {video.difficulty || 'Beginner'}
-                            </div>
-                          </div>
-
-                          <div className="p-5 flex-1 flex flex-col justify-between">
-                            <div>
-                              <h4 className="font-bold text-sm text-slate-900 line-clamp-2">
-                                {video.title}
-                              </h4>
-                              {video.description && (
-                                <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">
-                                  {video.description}
-                                </p>
+                      {filteredVideos.map((video, idx) => {
+                        const isPlaylist = isPlaylistUrl(video.videoUrl || video.resourceUrl);
+                        return (
+                          <div
+                            key={video._id}
+                            className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
+                          >
+                            <div className="relative aspect-video bg-slate-900 overflow-hidden">
+                              {video.thumbnailUrl ? (
+                                <img
+                                  src={video.thumbnailUrl}
+                                  alt={video.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-400">
+                                  <Video className="w-10 h-10 opacity-50" />
+                                </div>
                               )}
+
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveVideoPreview(video)}
+                                  className="p-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition transform hover:scale-110"
+                                  title="Watch Video Preview"
+                                >
+                                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                                </button>
+                              </div>
+
+                              <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                                <span className="bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-black px-2 py-0.5 rounded shadow-xs">
+                                  Lecture #{video.order !== undefined && video.order !== null ? video.order : idx + 1}
+                                </span>
+                                {isPlaylist && (
+                                  <span className="bg-purple-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs flex items-center gap-1">
+                                    <Layers className="w-3 h-3" /> Playlist
+                                  </span>
+                                )}
+                              </div>
+                              <div className="absolute top-2.5 right-2.5 bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                                {video.difficulty || 'Beginner'}
+                              </div>
                             </div>
 
-                            <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => handleTogglePublish(video, 'video')}
-                                className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"
-                                title={video.status === 'published' ? 'Unpublish' : 'Publish'}
-                              >
-                                {video.status === 'published' ? (
-                                  <>
-                                    <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span className="text-[11px]">Published</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <EyeOff className="w-3.5 h-3.5 text-slate-400" />
-                                    <span className="text-[11px]">Draft</span>
-                                  </>
+                            <div className="p-5 flex-1 flex flex-col justify-between">
+                              <div>
+                                <h4 className="font-bold text-sm text-slate-900 line-clamp-2">
+                                  {video.title}
+                                </h4>
+                                {video.description && (
+                                  <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">
+                                    {video.description}
+                                  </p>
                                 )}
-                              </button>
+                              </div>
 
-                              <div className="flex items-center gap-1">
+                              <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between">
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenEditVideo(video)}
-                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                  title="Edit Video"
+                                  onClick={() => handleTogglePublish(video, 'video')}
+                                  className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                                  title={video.status === 'published' ? 'Unpublish' : 'Publish'}
                                 >
-                                  <Edit2 className="w-4 h-4" />
+                                  {video.status === 'published' ? (
+                                    <>
+                                      <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span className="text-[11px]">Published</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                                      <span className="text-[11px]">Draft</span>
+                                    </>
+                                  )}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteConfirm({ open: true, type: 'video', item: video })}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                                  title="Delete Video"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditVideo(video)}
+                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                    title="Edit Video"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirm({ open: true, type: 'video', item: video })}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                    title="Delete Video"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <EmptyState
@@ -5013,7 +5369,7 @@ export const ContentManagementPage = () => {
       <Modal
         isOpen={isVideoModalOpen}
         onClose={() => setIsVideoModalOpen(false)}
-        title={editingVideo ? 'Edit Video Lesson' : 'Add Video Lesson'}
+        title={editingVideo ? 'Edit Video Lesson' : 'Add Video Lesson / Playlist'}
       >
         <form onSubmit={handleSaveVideo} className="space-y-4">
           {selectedTopic && (
@@ -5026,10 +5382,12 @@ export const ContentManagementPage = () => {
           )}
 
           <div className="space-y-1">
-            <label className="block text-xs font-bold text-slate-700">Video URL (YouTube or Vimeo) *</label>
+            <label className="block text-xs font-bold text-slate-700">
+              Video or Playlist URL (YouTube or Vimeo) *
+            </label>
             <div className="flex gap-2">
               <Input
-                placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/..."
+                placeholder="https://www.youtube.com/watch?v=... or https://www.youtube.com/playlist?list=..."
                 value={videoForm.videoUrl}
                 onChange={(e) => {
                   setVideoForm({ ...videoForm, videoUrl: e.target.value });
@@ -5045,7 +5403,7 @@ export const ContentManagementPage = () => {
                 icon={Sparkles}
                 loading={detecting}
                 onClick={handleFetchVideoDetails}
-                title="Auto-detect title and thumbnail"
+                title="Auto-detect title, thumbnail, and playlist info"
               >
                 Auto Detect
               </Button>
@@ -5059,8 +5417,8 @@ export const ContentManagementPage = () => {
           </div>
 
           <Input
-            label="Video Title *"
-            placeholder="e.g. SQL Joins Explained with Practical Examples"
+            label="Video / Lecture Title *"
+            placeholder="e.g. Thermodynamics Lecture 1: First Law of Thermodynamics"
             value={videoForm.title}
             onChange={(e) => setVideoForm({ ...videoForm, title: e.target.value })}
             required
@@ -5070,14 +5428,22 @@ export const ContentManagementPage = () => {
             <label className="block text-xs font-bold text-slate-700">Description</label>
             <textarea
               rows={2}
-              placeholder="Lecture overview and learning goals..."
+              placeholder="Lecture overview, playlist topics covered, and key takeaways..."
               value={videoForm.description}
               onChange={(e) => setVideoForm({ ...videoForm, description: e.target.value })}
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 leading-relaxed"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <Input
+              label="Lecture Order"
+              type="number"
+              min="0"
+              value={videoForm.order}
+              onChange={(e) => setVideoForm({ ...videoForm, order: e.target.value })}
+              placeholder="1"
+            />
             <Select
               label="Difficulty Level"
               options={['Beginner', 'Intermediate', 'Advanced']}
@@ -5100,7 +5466,7 @@ export const ContentManagementPage = () => {
                 className="w-16 h-10 object-cover rounded-lg border border-slate-200"
               />
               <div className="text-xs text-slate-600 truncate flex-1">
-                <span className="font-bold block text-slate-800">Thumbnail Detected</span>
+                <span className="font-bold block text-slate-800">Thumbnail Preview</span>
                 <span className="text-[11px] text-slate-400 truncate block">{videoForm.thumbnailUrl}</span>
               </div>
             </div>
@@ -5240,63 +5606,93 @@ export const ContentManagementPage = () => {
         </form>
       </Modal>
 
-      {/* 5. Modal: Video Player Preview */}
-      {activeVideoPreview && (
-        <Modal
-          isOpen={Boolean(activeVideoPreview)}
-          onClose={() => setActiveVideoPreview(null)}
-          title={activeVideoPreview.title}
-          size="lg"
-        >
-          <div className="space-y-4">
-            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-lg">
-              {activeVideoPreview.videoUrl && (activeVideoPreview.videoUrl.includes('youtube') || activeVideoPreview.videoUrl.includes('youtu.be')) ? (
-                <iframe
-                  src={
-                    activeVideoPreview.videoUrl.includes('watch?v=')
-                      ? activeVideoPreview.videoUrl.replace('watch?v=', 'embed/')
-                      : activeVideoPreview.videoUrl.includes('youtu.be/')
-                      ? activeVideoPreview.videoUrl.replace('youtu.be/', 'www.youtube.com/embed/')
-                      : activeVideoPreview.videoUrl
-                  }
-                  title={activeVideoPreview.title}
-                  className="w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : activeVideoPreview.videoUrl && activeVideoPreview.videoUrl.includes('vimeo.com') ? (
-                <iframe
-                  src={activeVideoPreview.videoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')}
-                  title={activeVideoPreview.title}
-                  className="w-full h-full border-0"
-                  allow="autoplay; fullscreen; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-6 text-center">
-                  <Video className="w-12 h-12 mb-2 text-slate-400" />
-                  <p className="text-sm font-bold text-white mb-2">Direct Video URL</p>
-                  <a
-                    href={activeVideoPreview.videoUrl || activeVideoPreview.resourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-blue-400 hover:underline flex items-center gap-1"
-                  >
-                    <span>Open in External Tab</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+      {/* 5. Modal: Video Player Preview with Playlist Navigation */}
+      {activeVideoPreview && (() => {
+        const previewList = filteredVideos.length > 0 ? filteredVideos : videoContents;
+        const currentIdx = previewList.findIndex(v => v._id === activeVideoPreview._id);
+        const prevVideo = currentIdx > 0 ? previewList[currentIdx - 1] : null;
+        const nextVideo = currentIdx >= 0 && currentIdx < previewList.length - 1 ? previewList[currentIdx + 1] : null;
+
+        return (
+          <Modal
+            isOpen={Boolean(activeVideoPreview)}
+            onClose={() => setActiveVideoPreview(null)}
+            title={activeVideoPreview.title}
+            size="lg"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-xs text-slate-500 pb-2 border-b border-slate-100 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-800">
+                    {currentIdx >= 0 ? `Lecture ${currentIdx + 1} of ${previewList.length}` : 'Lecture Preview'}
+                  </span>
+                  {isPlaylistUrl(activeVideoPreview.videoUrl || activeVideoPreview.resourceUrl) && (
+                    <span className="text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[10px] font-black uppercase flex items-center gap-1">
+                      <Layers className="w-3 h-3" /> YouTube Playlist
+                    </span>
+                  )}
+                  {selectedTopic && (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-slate-500 font-semibold">{selectedTopic.title}</span>
+                    </>
+                  )}
                 </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={!prevVideo}
+                    onClick={() => prevVideo && setActiveVideoPreview(prevVideo)}
+                    className="px-2.5 py-1 rounded-lg text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-0.5 text-xs font-bold transition"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!nextVideo}
+                    onClick={() => nextVideo && setActiveVideoPreview(nextVideo)}
+                    className="px-2.5 py-1 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-0.5 text-xs font-bold transition"
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-lg">
+                <iframe
+                  src={getEmbedVideoUrl(activeVideoPreview.videoUrl || activeVideoPreview.resourceUrl)}
+                  title={activeVideoPreview.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-1 flex-wrap">
+                <div className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">Difficulty:</span> {activeVideoPreview.difficulty || 'Beginner'}
+                </div>
+                <a
+                  href={getExternalWatchUrl(activeVideoPreview.videoUrl || activeVideoPreview.resourceUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1.5"
+                >
+                  <span>Watch on External Provider</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              {activeVideoPreview.description && (
+                <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                  {activeVideoPreview.description}
+                </p>
               )}
             </div>
-
-            {activeVideoPreview.description && (
-              <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                {activeVideoPreview.description}
-              </p>
-            )}
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
 
       {/* 6. Modal: PDF Note Reader */}
       {activeNotePreview && (
@@ -5307,6 +5703,214 @@ export const ContentManagementPage = () => {
         />
       )}
 
+      {/* Modal: Add / Edit YouTube Playlist */}
+      <Modal
+        isOpen={isPlaylistModalOpen}
+        onClose={() => {
+          if (!submitting) setIsPlaylistModalOpen(false);
+        }}
+        title={editingPlaylist ? 'Edit YouTube Playlist' : 'Add YouTube Playlist'}
+        subtitle={`${currentDeptObj?.code || selectedDept} • ${selectedDomainCategory?.title}`}
+        size="lg"
+      >
+        <form onSubmit={handleSavePlaylist} className="space-y-4">
+          {playlistFormError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{playlistFormError}</span>
+            </div>
+          )}
+
+          {playlistFormSuccess && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>{playlistFormSuccess}</span>
+            </div>
+          )}
+
+          {/* YouTube Playlist URL with Auto Detect */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              YouTube Playlist URL <span className="text-rose-500">*</span>
+            </label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://www.youtube.com/playlist?list=PL..."
+                value={playlistForm.playlistUrl}
+                onChange={(e) => {
+                  setPlaylistForm({ ...playlistForm, playlistUrl: e.target.value });
+                  setPlaylistFormError('');
+                  setPlaylistFormSuccess('');
+                }}
+                className="text-xs font-mono"
+                required
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={Sparkles}
+                disabled={fetchingPlaylistMeta || !playlistForm.playlistUrl}
+                onClick={handleAutoDetectPlaylistMeta}
+                className="shrink-0"
+              >
+                {fetchingPlaylistMeta ? 'Detecting...' : 'Auto Detect'}
+              </Button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Paste the link to the full YouTube playlist. Click <strong>Auto Detect</strong> to automatically retrieve the playlist title, thumbnail, channel, and lecture count.
+            </p>
+          </div>
+
+          {/* Playlist Title */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Playlist Title <span className="text-rose-500">*</span>
+            </label>
+            <Input
+              placeholder="e.g. C Programming Full Course for Placements"
+              value={playlistForm.title}
+              onChange={(e) => setPlaylistForm({ ...playlistForm, title: e.target.value })}
+              className="text-xs"
+              required
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Description (Optional)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Brief summary of concepts covered in this lecture series..."
+              value={playlistForm.description}
+              onChange={(e) => setPlaylistForm({ ...playlistForm, description: e.target.value })}
+              className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+            />
+          </div>
+
+          {/* Thumbnail URL with manual override & live preview */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Thumbnail URL (Auto-retrieved or Custom)
+            </label>
+            <Input
+              placeholder="https://i.ytimg.com/vi/..."
+              value={playlistForm.thumbnailUrl}
+              onChange={(e) => setPlaylistForm({ ...playlistForm, thumbnailUrl: e.target.value })}
+              className="text-xs font-mono"
+            />
+            {playlistForm.thumbnailUrl && (
+              <div className="mt-2.5 p-2 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
+                <img
+                  src={playlistForm.thumbnailUrl}
+                  alt="Thumbnail preview"
+                  className="w-24 h-14 object-cover rounded-lg border border-slate-200"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+                <div className="text-xs">
+                  <div className="font-bold text-slate-800">Thumbnail Preview</div>
+                  <div className="text-[11px] text-slate-500">Live preview of the thumbnail that students will see</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Meta Information row: Display Order & Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Display Order
+              </label>
+              <Input
+                type="number"
+                min="0"
+                value={playlistForm.order}
+                onChange={(e) => setPlaylistForm({ ...playlistForm, order: e.target.value })}
+                className="text-xs"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Lower numbers appear first.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Visibility Status
+              </label>
+              <Select
+                value={playlistForm.status}
+                onChange={(e) => setPlaylistForm({ ...playlistForm, status: e.target.value })}
+                options={[
+                  { value: 'published', label: 'Published (Visible to students)' },
+                  { value: 'draft', label: 'Draft (Hidden from students)' }
+                ]}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Live Student Card Preview */}
+          <div className="pt-2 border-t border-slate-100">
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Student Card Preview
+            </div>
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 max-w-sm">
+              <div className="aspect-video bg-slate-900 rounded-xl overflow-hidden relative mb-2.5">
+                {playlistForm.thumbnailUrl ? (
+                  <img
+                    src={playlistForm.thumbnailUrl}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-red-950 text-white">
+                    <YoutubeIcon className="w-8 h-8 text-red-500 mb-1" />
+                    <span className="text-[10px] text-slate-300">Playlist Preview</span>
+                  </div>
+                )}
+                <div className="absolute bottom-2 right-2 bg-black/85 text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                  <ListVideo className="w-3 h-3 text-red-400" />
+                  <span>{playlistForm.videoCount || 0} Lectures</span>
+                </div>
+              </div>
+              {playlistForm.channelTitle && (
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                  {playlistForm.channelTitle}
+                </div>
+              )}
+              <div className="text-xs font-extrabold text-slate-900 line-clamp-1">
+                {playlistForm.title || 'Playlist Title'}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                {playlistForm.description || 'Short playlist overview description will appear here...'}
+              </div>
+            </div>
+          </div>
+
+          {/* Modal Actions */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              disabled={submitting}
+              onClick={() => setIsPlaylistModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={submitting}
+              icon={editingPlaylist ? Edit2 : Plus}
+            >
+              {submitting ? 'Saving...' : editingPlaylist ? 'Update Playlist' : 'Add YouTube Playlist'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       {/* 7. Confirm Delete Dialog */}
       <ConfirmDialog
         isOpen={deleteConfirm.open}
@@ -5314,12 +5918,15 @@ export const ContentManagementPage = () => {
         onConfirm={() => {
           if (deleteConfirm.type === 'category') handleDeleteCategory();
           else if (deleteConfirm.type === 'topic') handleDeleteTopic();
+          else if (deleteConfirm.type === 'playlist') handleDeletePlaylist();
           else handleDeleteContent();
         }}
-        title={`Delete ${deleteConfirm.type === 'category' ? 'Category' : deleteConfirm.type === 'topic' ? 'Topic' : deleteConfirm.type === 'note' ? 'Study Note' : 'Video'}`}
+        title={`Delete ${deleteConfirm.type === 'category' ? 'Category' : deleteConfirm.type === 'playlist' ? 'YouTube Playlist' : deleteConfirm.type === 'topic' ? 'Topic' : deleteConfirm.type === 'note' ? 'Study Note' : 'Video'}`}
         message={
           deleteConfirm.type === 'category'
-            ? `Are you sure you want to delete "${deleteConfirm.item?.title}"? All associated topics, video lectures, and PDF study notes under this category will also be deleted permanently.`
+            ? `Are you sure you want to delete "${deleteConfirm.item?.title}"? All associated playlists, topics, video lectures, and PDF study notes under this category will also be deleted permanently.`
+            : deleteConfirm.type === 'playlist'
+            ? `Are you sure you want to delete "${deleteConfirm.item?.title}"? Students will no longer have access to this YouTube playlist under this category.`
             : deleteConfirm.type === 'topic'
             ? `Are you sure you want to delete "${deleteConfirm.item?.title}"? All video lectures and PDF study notes under this topic will also be permanently deleted.`
             : `Are you sure you want to delete "${deleteConfirm.item?.title}"? This action cannot be undone.`

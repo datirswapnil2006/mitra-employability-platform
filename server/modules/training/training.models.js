@@ -158,11 +158,42 @@ const learningContentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+const playlistSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  description: { type: String, default: '' },
+  playlistUrl: { type: String, required: true, trim: true },
+  playlistId: { type: String, required: true, trim: true },
+  thumbnailUrl: { type: String, default: '' },
+  videoCount: { type: Number, default: 0 },
+  channelTitle: { type: String, default: '' },
+  videos: [{
+    videoId: { type: String },
+    title: { type: String },
+    thumbnailUrl: { type: String },
+    watchUrl: { type: String }
+  }],
+  department: {
+    type: String,
+    enum: [...OFFICIAL_DEPARTMENTS, 'All', null],
+    default: null
+  },
+  departmentId: { type: String, default: null },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
+  category: { type: String, required: true, trim: true },
+  order: { type: Number, default: 0 },
+  status: { type: String, enum: ['published', 'draft'], default: 'published' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
 const TrainingModule = mongoose.model('TrainingModule', trainingModuleSchema);
 const Submodule = mongoose.model('Submodule', submoduleSchema);
 const Category = mongoose.model('Category', categorySchema);
 const Topic = mongoose.model('Topic', topicSchema);
 const Company = mongoose.model('Company', companySchema);
 const LearningContent = mongoose.model('LearningContent', learningContentSchema);
+const Playlist = mongoose.model('Playlist', playlistSchema);
 
-module.exports = { TrainingModule, Submodule, Category, Topic, Company, LearningContent };
+module.exports = { TrainingModule, Submodule, Category, Topic, Company, LearningContent, Playlist };
+

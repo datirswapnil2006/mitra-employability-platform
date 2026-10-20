@@ -154,21 +154,95 @@ exports.getQuestions = async (req, res) => {
 exports.getTopicQuestionStats = async (req, res) => {
   try {
     const { topicId } = req.params;
-    const { topic } = req.query;
+    const { topic, category, categoryId, department, module } = req.query;
 
     const filter = {};
-    if (topicId && topicId !== 'undefined' && topicId !== 'null') {
+    if (topicId && topicId !== 'undefined' && topicId !== 'null' && topicId !== 'category') {
       filter.$or = [{ topicId }, { topic }];
     } else if (topic) {
       filter.topic = topic;
     }
 
-    let total = await Question.countDocuments(filter);
-    let [easy, medium, hard] = await Promise.all([
-      Question.countDocuments({ ...filter, difficulty: { $in: ['Easy', 'Beginner'] } }),
-      Question.countDocuments({ ...filter, difficulty: { $in: ['Medium', 'Intermediate', 'Mixed', 'mixed'] } }),
-      Question.countDocuments({ ...filter, difficulty: { $in: ['Hard', 'Advanced'] } })
-    ]);
+    let total = 0;
+    let easy = 0, medium = 0, hard = 0;
+
+    // If query has topic/topicId, check standard match first
+    if (filter.$or || filter.topic) {
+      total = await Question.countDocuments(filter);
+      if (total > 0) {
+        [easy, medium, hard] = await Promise.all([
+          Question.countDocuments({ ...filter, difficulty: { $in: ['Easy', 'Beginner'] } }),
+          Question.countDocuments({ ...filter, difficulty: { $in: ['Medium', 'Intermediate', 'Mixed', 'mixed'] } }),
+          Question.countDocuments({ ...filter, difficulty: { $in: ['Hard', 'Advanced'] } })
+        ]);
+      }
+    }
+
+    // Category / Department / Domain Module matching
+    if (total === 0 && (category || categoryId || department || module === 'Domain' || module === 'Domain Knowledge')) {
+      const domainFilter = {
+        module: { $in: ['Domain', 'Domain Knowledge'] },
+        status: 'active'
+      };
+      const orList = [];
+      if (categoryId && categoryId !== 'undefined' && categoryId !== 'null' && categoryId !== 'category') {
+        orList.push({ categoryId });
+      }
+      if (category) {
+        orList.push({ category }, { category: { $regex: new RegExp(`^${category}$`, 'i') } });
+        orList.push({ topic: category });
+      }
+      if (topic) {
+        orList.push({ topic }, { topic: { $regex: new RegExp(`^${topic}$`, 'i') } });
+      }
+      if (orList.length > 0) {
+        domainFilter.$or = orList;
+      }
+      if (department) {
+        domainFilter.$and = [
+          {
+            $or: [
+              { department: department },
+              { departments: department },
+              { department: 'All' },
+              { departments: 'All' },
+              { department: null }
+            ]
+          }
+        ];
+      }
+
+      total = await Question.countDocuments(domainFilter);
+
+      // Fallback to department pool if specific category had 0
+      if (total === 0 && department) {
+        const deptFilter = {
+          module: { $in: ['Domain', 'Domain Knowledge'] },
+          $or: [
+            { department: department },
+            { departments: department },
+            { department: 'All' },
+            { departments: 'All' }
+          ],
+          status: 'active'
+        };
+        total = await Question.countDocuments(deptFilter);
+      }
+
+      // Fallback to global domain pool
+      if (total === 0) {
+        total = await Question.countDocuments({
+          module: { $in: ['Domain', 'Domain Knowledge'] },
+          status: 'active'
+        });
+      }
+
+      [easy, medium, hard] = await Promise.all([
+        Question.countDocuments({ module: { $in: ['Domain', 'Domain Knowledge'] }, difficulty: { $in: ['Easy', 'Beginner'] }, status: 'active' }),
+        Question.countDocuments({ module: { $in: ['Domain', 'Domain Knowledge'] }, difficulty: { $in: ['Medium', 'Intermediate', 'Mixed', 'mixed'] }, status: 'active' }),
+        Question.countDocuments({ module: { $in: ['Domain', 'Domain Knowledge'] }, difficulty: { $in: ['Hard', 'Advanced'] }, status: 'active' })
+      ]);
+    }
 
     if (total === 0 && topic) {
       const aliasMap = {

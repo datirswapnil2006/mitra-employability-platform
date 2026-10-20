@@ -17,7 +17,9 @@ const {
   getAllAttemptsAdmin,
   createPracticeTest,
   getDefaultTopicAssessment,
-  getStudentSubmodulePracticeAnalytics
+  getStudentSubmodulePracticeAnalytics,
+  getGenerationJobStatus,
+  resumeGenerationJobController
 } = require('./assessment.controller');
 const { protect } = require('../../middleware/authMiddleware');
 const { authorize } = require('../../middleware/roleMiddleware');
@@ -62,6 +64,8 @@ router.get('/attempts', protect, requireCompleteProfile, getStudentAttempts);
 router.get('/admin/all', protect, authorize('admin'), getAllAssessmentsAdmin);
 router.get('/admin/results', protect, authorize('admin'), getAllAttemptsAdmin);
 router.post('/admin/generate-ai', protect, authorize('admin'), generateAIAssessment);
+router.get('/admin/generation-jobs/:jobId', protect, authorize('admin'), getGenerationJobStatus);
+router.post('/admin/generation-jobs/:jobId/resume', protect, authorize('admin'), resumeGenerationJobController);
 router.post('/admin/generate-questions', protect, authorize('admin'), generateQuestionsForReview);
 router.post('/admin/extract-pdf', protect, authorize('admin'), handlePdfUpload, extractPdfQuestions);
 router.post('/admin/create', protect, authorize('admin'), createAssessment);

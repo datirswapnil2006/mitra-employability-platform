@@ -1,6 +1,6 @@
-const { TrainingModule, Submodule, Category, Topic, Company, LearningContent } = require('./training.models');
-const { extractUrlMetadata } = require('../../utils/externalMetadata');
-const { getDepartmentAliases, canonicalizeDepartment } = require('../../config/constants');
+const { TrainingModule, Submodule, Category, Topic, Company, LearningContent, Playlist } = require('./training.models');
+const { extractUrlMetadata, extractPlaylistId } = require('../../utils/externalMetadata');
+const { OFFICIAL_DEPARTMENTS, getDepartmentAliases, canonicalizeDepartment } = require('../../config/constants');
 
 // Get URL metadata preview for Admin (SSRF Safe)
 exports.previewMetadata = async (req, res) => {
@@ -204,8 +204,8 @@ exports.getCategories = async (req, res) => {
     const categoryIds = categories.map(c => c._id);
 
 
-    // Aggregate topic count and content count per category
-    const [topicCounts, contentCounts] = await Promise.all([
+    // Aggregate topic count, content count, and playlist count per category
+    const [topicCounts, contentCounts, playlistCounts] = await Promise.all([
       Topic.aggregate([
         { $match: { categoryId: { $in: categoryIds } } },
         {
@@ -223,6 +223,15 @@ exports.getCategories = async (req, res) => {
             count: { $sum: 1 }
           }
         }
+      ]),
+      Playlist.aggregate([
+        { $match: { categoryId: { $in: categoryIds } } },
+        {
+          $group: {
+            _id: { categoryId: '$categoryId', status: '$status' },
+            count: { $sum: 1 }
+          }
+        }
       ])
     ]);
 
@@ -230,6 +239,7 @@ exports.getCategories = async (req, res) => {
       const cObj = cat.toObject();
       const relevantTopics = topicCounts.filter(t => t._id.categoryId && t._id.categoryId.toString() === cat._id.toString());
       const relevantContent = contentCounts.filter(c => c._id.categoryId && c._id.categoryId.toString() === cat._id.toString());
+      const relevantPlaylists = playlistCounts.filter(p => p._id.categoryId && p._id.categoryId.toString() === cat._id.toString());
 
       cObj.topicCount = relevantTopics.reduce((acc, curr) => acc + curr.count, 0);
       cObj.publishedTopicCount = relevantTopics.filter(t => t._id.status === 'published').reduce((acc, curr) => acc + curr.count, 0);
@@ -238,6 +248,9 @@ exports.getCategories = async (req, res) => {
       cObj.notesCount = relevantContent.filter(c => c._id.resourceType === 'note').reduce((acc, curr) => acc + curr.count, 0);
       cObj.publishedVideos = relevantContent.filter(c => c._id.resourceType !== 'note' && c._id.status === 'published').reduce((acc, curr) => acc + curr.count, 0);
       cObj.publishedNotes = relevantContent.filter(c => c._id.resourceType === 'note' && c._id.status === 'published').reduce((acc, curr) => acc + curr.count, 0);
+
+      cObj.playlistCount = relevantPlaylists.reduce((acc, curr) => acc + curr.count, 0);
+      cObj.publishedPlaylistCount = relevantPlaylists.filter(p => p._id.status === 'published').reduce((acc, curr) => acc + curr.count, 0);
 
       return cObj;
     });
@@ -310,10 +323,11 @@ exports.updateCategory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
 
-    // Also cascade category title to linked Topics and LearningContents if title changed
+    // Also cascade category title to linked Topics, LearningContents, and Playlists if title changed
     if (title !== undefined) {
       await Topic.updateMany({ categoryId: category._id }, { category: category.title });
       await LearningContent.updateMany({ categoryId: category._id }, { category: category.title });
+      await Playlist.updateMany({ categoryId: category._id }, { category: category.title });
     }
 
     res.json({ success: true, category });
@@ -329,7 +343,7 @@ exports.deleteCategory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
 
-    // Cascade delete topics and learning contents under this category
+    // Cascade delete topics, learning contents, and playlists under this category
     const topics = await Topic.find({ categoryId: req.params.id });
     const topicIds = topics.map(t => t._id);
 
@@ -340,8 +354,9 @@ exports.deleteCategory = async (req, res) => {
       ]
     });
     await Topic.deleteMany({ categoryId: req.params.id });
+    await Playlist.deleteMany({ categoryId: req.params.id });
 
-    res.json({ success: true, message: 'Category, associated topics, and all learning contents deleted' });
+    res.json({ success: true, message: 'Category, associated topics, learning contents, and playlists deleted' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -696,31 +711,43 @@ exports.getContentList = async (req, res) => {
     if (categoryId) filter.categoryId = categoryId;
     else if (category && category !== 'All') filter.category = category;
 
+    const andConditions = [];
+
     if (submoduleId) filter.submoduleId = submoduleId;
     if (topicId) {
-      filter.$or = [{ topicId }, { submoduleId: topicId }];
+      andConditions.push({ $or: [{ topicId }, { submoduleId: topicId }] });
     }
 
     if (req.user && req.user.role === 'student') {
       filter.status = 'published';
       if (department && department !== 'All') {
         const aliases = getDepartmentAliases(department);
-        filter.$or = [
-          { department: { $in: aliases } },
-          { departments: { $in: [...aliases, 'All'] } }
-        ];
+        andConditions.push({
+          $or: [
+            { department: { $in: aliases } },
+            { departments: { $in: [...aliases, 'All'] } }
+          ]
+        });
       }
     } else {
       if (department && department !== 'All') {
         const aliases = getDepartmentAliases(department);
-        filter.$or = [
-          { department: { $in: aliases } },
-          { departments: { $in: [...aliases, 'All'] } }
-        ];
+        andConditions.push({
+          $or: [
+            { department: { $in: aliases } },
+            { departments: { $in: [...aliases, 'All'] } }
+          ]
+        });
       }
       if (status && status !== 'All') {
         filter.status = status;
       }
+    }
+
+    if (andConditions.length === 1) {
+      Object.assign(filter, andConditions[0]);
+    } else if (andConditions.length > 1) {
+      filter.$and = andConditions;
     }
 
     if (topic) filter.topic = { $regex: topic, $options: 'i' };
@@ -734,7 +761,7 @@ exports.getContentList = async (req, res) => {
       }
     }
 
-    const contents = await LearningContent.find(filter).sort({ order: 1, createdAt: -1 });
+    const contents = await LearningContent.find(filter).sort({ order: 1, createdAt: 1 });
     res.json({ success: true, count: contents.length, contents });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -881,5 +908,283 @@ exports.deleteContent = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// ==========================================
+// PLAYLISTS CRUD (Direct YouTube Playlist Management)
+// ==========================================
+exports.getPlaylists = async (req, res) => {
+  try {
+    const { categoryId, category, department, status, search } = req.query;
+    const filter = {};
+
+    if (categoryId) {
+      filter.categoryId = categoryId;
+    } else if (category) {
+      filter.category = category;
+    }
+
+    if (department && department !== 'All') {
+      const aliases = getDepartmentAliases(department);
+      filter.department = { $in: aliases };
+    }
+
+    if (req.user && req.user.role === 'student') {
+      filter.status = 'published';
+    } else if (status && status !== 'All') {
+      filter.status = status;
+    }
+
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const playlists = await Playlist.find(filter).sort({ order: 1, createdAt: 1 });
+    res.json({ success: true, count: playlists.length, playlists });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.getPlaylistById = async (req, res) => {
+  try {
+    const playlist = await Playlist.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ success: false, message: 'Playlist not found' });
+    }
+    if (req.user && req.user.role === 'student' && playlist.status !== 'published') {
+      return res.status(403).json({ success: false, message: 'Access denied to unpublished playlist' });
+    }
+    res.json({ success: true, playlist });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.createPlaylist = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      playlistUrl,
+      thumbnailUrl,
+      categoryId,
+      category: categoryName,
+      department: deptName,
+      departmentId,
+      order,
+      status
+    } = req.body;
+
+    if (!playlistUrl || !playlistUrl.trim()) {
+      return res.status(400).json({ success: false, message: 'YouTube playlist URL is required.' });
+    }
+
+    if (!categoryId) {
+      return res.status(400).json({ success: false, message: 'Category ID is required.' });
+    }
+
+    const categoryDoc = await Category.findById(categoryId);
+    if (!categoryDoc) {
+      return res.status(404).json({ success: false, message: 'Category not found.' });
+    }
+
+    const extractedPlaylistId = extractPlaylistId(playlistUrl);
+    if (!extractedPlaylistId) {
+      return res.status(400).json({ success: false, message: 'Invalid YouTube playlist URL. URL must contain a valid playlist ID (e.g., list=PL...)' });
+    }
+
+    // Try fetching YouTube metadata (title, thumbnail, lecture list) if not already fully supplied
+    let meta = null;
+    try {
+      meta = await extractUrlMetadata(playlistUrl);
+    } catch (e) {
+      // Graceful fallback
+    }
+
+    const finalTitle = (title && title.trim()) || (meta && meta.title) || 'YouTube Playlist';
+    const finalThumbnail = thumbnailUrl || (meta && meta.thumbnailUrl) || '';
+    const finalDescription = (description !== undefined ? description : (meta && meta.description)) || '';
+    const finalChannel = (meta && meta.channelTitle) || '';
+    const finalVideos = (meta && meta.videos) || [];
+    const finalVideoCount = meta && meta.videoCount ? meta.videoCount : finalVideos.length;
+
+    const playlist = await Playlist.create({
+      title: finalTitle,
+      description: finalDescription,
+      playlistUrl: playlistUrl.trim(),
+      playlistId: extractedPlaylistId,
+      thumbnailUrl: finalThumbnail,
+      videoCount: finalVideoCount,
+      channelTitle: finalChannel,
+      videos: finalVideos,
+      categoryId: categoryDoc._id,
+      category: categoryDoc.title,
+      department: categoryDoc.department || deptName || null,
+      departmentId: categoryDoc.departmentId || departmentId || null,
+      order: order !== undefined ? Number(order) : 0,
+      status: status || 'published',
+      createdBy: req.user?._id
+    });
+
+    res.status(201).json({ success: true, playlist });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.updatePlaylist = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      playlistUrl,
+      thumbnailUrl,
+      order,
+      status
+    } = req.body;
+
+    const playlist = await Playlist.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ success: false, message: 'Playlist not found' });
+    }
+
+    const updateData = { updatedAt: Date.now() };
+
+    if (title !== undefined) updateData.title = title.trim();
+    if (description !== undefined) updateData.description = description.trim();
+    if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
+    if (order !== undefined) updateData.order = Number(order);
+    if (status !== undefined) updateData.status = status;
+
+    if (playlistUrl && playlistUrl.trim() !== playlist.playlistUrl) {
+      const extractedPlaylistId = extractPlaylistId(playlistUrl);
+      if (!extractedPlaylistId) {
+        return res.status(400).json({ success: false, message: 'Invalid YouTube playlist URL.' });
+      }
+      updateData.playlistUrl = playlistUrl.trim();
+      updateData.playlistId = extractedPlaylistId;
+
+      try {
+        const meta = await extractUrlMetadata(playlistUrl);
+        if (meta) {
+          if (!title) updateData.title = meta.title;
+          if (!thumbnailUrl && meta.thumbnailUrl) updateData.thumbnailUrl = meta.thumbnailUrl;
+          if (meta.videos) updateData.videos = meta.videos;
+          if (meta.videoCount) updateData.videoCount = meta.videoCount;
+          if (meta.channelTitle) updateData.channelTitle = meta.channelTitle;
+        }
+      } catch (e) {
+        // Fallback gracefully
+      }
+    }
+
+    const updated = await Playlist.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' });
+    res.json({ success: true, playlist: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.deletePlaylist = async (req, res) => {
+  try {
+    const playlist = await Playlist.findByIdAndDelete(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ success: false, message: 'Playlist not found' });
+    }
+    res.json({ success: true, message: 'Playlist deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ==========================================
+// DEPARTMENT OVERVIEW STATS (Dynamic across all 9 departments)
+// ==========================================
+exports.getDepartmentOverviewStats = async (req, res) => {
+  try {
+    const stats = {};
+    const isStudent = req.user && req.user.role === 'student';
+
+    // 1. Fetch domain categories
+    const catFilter = { module: { $in: ['Domain', 'Domain Knowledge'] } };
+    if (isStudent) catFilter.status = 'published';
+    const allCategories = await Category.find(catFilter).lean();
+
+    // 2. Fetch domain topics
+    const topicFilter = { module: { $in: ['Domain', 'Domain Knowledge'] } };
+    if (isStudent) topicFilter.status = 'published';
+    const allTopics = await Topic.find(topicFilter).lean();
+
+    // 3. Fetch playlists
+    const playlistFilter = {};
+    if (isStudent) playlistFilter.status = 'published';
+    const allPlaylists = await Playlist.find(playlistFilter).lean();
+
+    // 4. Fetch learning content
+    const contentFilter = { module: { $in: ['Domain', 'Domain Knowledge'] } };
+    if (isStudent) contentFilter.status = 'published';
+    const allContent = await LearningContent.find(contentFilter).lean();
+
+    for (const dept of OFFICIAL_DEPARTMENTS) {
+      const aliases = getDepartmentAliases(dept);
+      const aliasSet = new Set(aliases.map(a => a.toUpperCase()));
+
+      // Categories for this department
+      const deptCats = allCategories.filter(c => c.department && aliasSet.has(c.department.toUpperCase()));
+      const catIdSet = new Set(deptCats.map(c => c._id.toString()));
+
+      // Topics: match by department alias OR categoryId
+      const deptTopics = allTopics.filter(t => {
+        if (t.department && aliasSet.has(t.department.toUpperCase())) return true;
+        if (t.categoryId && catIdSet.has(t.categoryId.toString())) return true;
+        return false;
+      });
+
+      // Playlists: match by department alias OR categoryId
+      const deptPlaylists = allPlaylists.filter(p => {
+        if (p.department && aliasSet.has(p.department.toUpperCase())) return true;
+        if (p.categoryId && catIdSet.has(p.categoryId.toString())) return true;
+        return false;
+      });
+
+      // LearningContent (videos & notes)
+      const topicIdSet = new Set(deptTopics.map(t => t._id.toString()));
+      const deptContent = allContent.filter(c => {
+        if (c.department && aliasSet.has(c.department.toUpperCase())) return true;
+        if (c.categoryId && catIdSet.has(c.categoryId.toString())) return true;
+        if (c.topicId && topicIdSet.has(c.topicId.toString())) return true;
+        return false;
+      });
+
+      const videoContentCount = deptContent.filter(c => c.resourceType !== 'note').length;
+      const playlistVideoCount = deptPlaylists.reduce((acc, p) => acc + (p.videoCount || (p.videos ? p.videos.length : 0)), 0);
+      const totalVideos = videoContentCount + playlistVideoCount;
+      const notesCount = deptContent.filter(c => c.resourceType === 'note').length;
+
+      const deptStat = {
+        categoryCount: deptCats.length,
+        topicCount: deptTopics.length,
+        publishedTopicCount: deptTopics.filter(t => t.status === 'published').length,
+        playlistCount: deptPlaylists.length,
+        publishedPlaylistCount: deptPlaylists.filter(p => p.status === 'published').length,
+        videoCount: totalVideos,
+        notesCount
+      };
+
+      stats[dept] = deptStat;
+      stats[dept.toUpperCase()] = deptStat;
+      stats[canonicalizeDepartment(dept)] = deptStat;
+    }
+
+    res.json({ success: true, stats });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
 
 

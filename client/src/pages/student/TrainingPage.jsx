@@ -39,8 +39,16 @@ import {
   Code2,
   MessageSquare,
   Users,
-  Award
+  Award,
+  ChevronLeft,
+  ListVideo,
+  Sparkles,
+  Target,
+  ShieldCheck
 } from 'lucide-react';
+import YoutubeIcon from '../../components/YoutubeIcon';
+import { getEmbedVideoUrl, isPlaylistUrl, getExternalWatchUrl, extractPlaylistId } from '../../utils/videoUtils';
+
 
 export const TrainingPage = () => {
   const { user } = useAuth();
@@ -72,16 +80,19 @@ export const TrainingPage = () => {
   );
 
   // ==========================================
-  // Domain Hierarchy for Student (Identical to Admin View)
+  // Domain Hierarchy for Student (Direct YouTube Playlist Workflow)
   // Level 1: selectedDept (e.g. 'EXTC', 'CSE', 'IT', etc.)
   // Level 2: selectedDomainCategory (Category object)
-  // Level 3: selectedTopic (Topic object)
-  // Level 4: Topic Details (Videos / Notes)
+  // Level 3: domainPlaylists (Published YouTube Playlists)
+  // Level 4: selectedDomainPlaylist (Embedded playlist viewer)
   // ==========================================
   const [selectedDept, setSelectedDept] = useState(null);
   const [selectedDomainCategory, setSelectedDomainCategory] = useState(null);
   const [domainCategories, setDomainCategories] = useState([]);
   const [deptStats, setDeptStats] = useState({});
+  const [domainPlaylists, setDomainPlaylists] = useState([]);
+  const [selectedDomainPlaylist, setSelectedDomainPlaylist] = useState(null);
+  const [activeLectureIndex, setActiveLectureIndex] = useState(0);
 
   // ==========================================
   // Communication Hierarchy for Student (Read-Only)
@@ -166,7 +177,7 @@ export const TrainingPage = () => {
       if (selectedTopic) {
         fetchTopicContents(selectedTopic._id, 'Domain');
       } else if (selectedDomainCategory) {
-        fetchDomainCategoryTopics(selectedDomainCategory._id);
+        fetchCategoryPlaylists(selectedDomainCategory._id);
       } else if (selectedDept) {
         fetchDepartmentCategories(selectedDept);
       } else {
@@ -217,13 +228,23 @@ export const TrainingPage = () => {
   const fetchDepartmentOverviewStats = async () => {
     setLoading(true);
     try {
+      // 1. Dedicated backend endpoint for real-time live department stats
+      const statsRes = await api.getDepartmentOverviewStats();
+      if (statsRes && statsRes.success && statsRes.stats) {
+        setDeptStats(statsRes.stats);
+        return;
+      }
+
+      // 2. Fallback: Aggregate from categories with alias canonicalization
       const res = await api.getCategories({ module: 'Domain' });
       if (res.success && res.categories) {
         const stats = {};
         DEPARTMENT_DETAILS.forEach((d) => {
-          const deptCats = res.categories.filter(
-            (c) => c.department === d.id || c.department === d.dbKey || c.department === d.code
-          );
+          const canonId = canonicalizeDepartment(d.id);
+          const deptCats = res.categories.filter((c) => {
+            const cCanon = canonicalizeDepartment(c.department || c.departmentId);
+            return cCanon === canonId || c.department === d.id || c.department === d.code || c.department === d.dbKey;
+          });
           stats[d.id] = {
             categoryCount: deptCats.length,
             topicCount: deptCats.reduce(
@@ -236,6 +257,10 @@ export const TrainingPage = () => {
             ),
             notesCount: deptCats.reduce(
               (acc, c) => acc + (c.publishedNotes !== undefined ? c.publishedNotes : (c.notesCount || 0)),
+              0
+            ),
+            playlistCount: deptCats.reduce(
+              (acc, c) => acc + (c.publishedPlaylistCount !== undefined ? c.publishedPlaylistCount : (c.playlistCount || 0)),
               0
             )
           };
@@ -261,6 +286,20 @@ export const TrainingPage = () => {
       }
     } catch (err) {
       console.error('Error fetching department categories:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCategoryPlaylists = async (categoryId) => {
+    setLoading(true);
+    try {
+      const res = await api.getPlaylists({ categoryId });
+      if (res.success) {
+        setDomainPlaylists(res.playlists || []);
+      }
+    } catch (err) {
+      console.error('Error fetching category playlists:', err);
     } finally {
       setLoading(false);
     }
@@ -493,6 +532,21 @@ export const TrainingPage = () => {
     }
   };
 
+  const handleOpenCategoryPracticeTest = (catObj) => {
+    if (!catObj) return;
+    const categoryContext = {
+      _id: catObj._id,
+      categoryId: catObj._id,
+      category: catObj.title,
+      title: catObj.title,
+      department: selectedDept,
+      departmentId: currentDeptObj?._id,
+      module: 'Domain'
+    };
+    setPracticeModalTopic(categoryContext);
+    setIsPracticeModalOpen(true);
+  };
+
   const videoContents = contents.filter((c) => c.resourceType !== 'note');
   const noteContents = contents.filter((c) => c.resourceType === 'note');
 
@@ -510,6 +564,16 @@ export const TrainingPage = () => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return c.title?.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q);
+  });
+
+  const filteredDomainPlaylists = domainPlaylists.filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q) ||
+      p.channelTitle?.toLowerCase().includes(q)
+    );
   });
 
   const filteredTopics = topics.filter((t) => {
@@ -549,34 +613,34 @@ export const TrainingPage = () => {
   // Header Props Calculation
   const getHeaderProps = () => {
     if (isDomainModule) {
-      if (selectedTopic) {
+      if (selectedDomainPlaylist) {
         return {
-          title: `${selectedTopic.title} • Resources`,
-          subtitle: `Watch video lectures and study comprehensive PDF notes for ${selectedTopic.title} in ${selectedDomainCategory?.title} (${currentDeptObj?.code || selectedDept}).`,
+          title: selectedDomainPlaylist.title,
+          subtitle: `${selectedDomainPlaylist.channelTitle ? `By ${selectedDomainPlaylist.channelTitle} • ` : ''}${selectedDomainPlaylist.videoCount || (selectedDomainPlaylist.videos ? selectedDomainPlaylist.videos.length : 0)} video lectures under ${selectedDomainCategory?.title} (${currentDeptObj?.code || selectedDept}).`,
           breadcrumbs: [
             { label: 'Student', link: '/student/dashboard' },
-            { label: 'Training', onClick: () => { setSelectedDept(null); setSelectedDomainCategory(null); setSelectedTopic(null); } },
-            { label: 'Domain Knowledge', onClick: () => { setSelectedDept(null); setSelectedDomainCategory(null); setSelectedTopic(null); } },
-            { label: currentDeptObj?.code || selectedDept, onClick: () => { setSelectedTopic(null); } },
-            { label: selectedDomainCategory?.title || 'Category', onClick: () => { setSelectedTopic(null); } },
-            { label: selectedTopic.title }
+            { label: 'Training', onClick: () => { setSelectedDept(null); setSelectedDomainCategory(null); setSelectedDomainPlaylist(null); } },
+            { label: 'Domain Knowledge', onClick: () => { setSelectedDept(null); setSelectedDomainCategory(null); setSelectedDomainPlaylist(null); } },
+            { label: currentDeptObj?.code || selectedDept, onClick: () => { setSelectedDomainPlaylist(null); } },
+            { label: selectedDomainCategory?.title || 'Category', onClick: () => { setSelectedDomainPlaylist(null); } },
+            { label: selectedDomainPlaylist.title }
           ],
           actions: (
             <Button
               variant="outline"
               size="md"
               icon={ArrowLeft}
-              onClick={() => setSelectedTopic(null)}
+              onClick={() => setSelectedDomainPlaylist(null)}
             >
-              Back to Topics
+              Back to Playlists
             </Button>
           )
         };
       }
       if (selectedDomainCategory) {
         return {
-          title: `${selectedDomainCategory.title} • Topics`,
-          subtitle: `Select a topic to access verified video lectures and downloadable PDF notes for ${currentDeptObj?.name || selectedDept}.`,
+          title: `${selectedDomainCategory.title} • Playlists`,
+          subtitle: `Explore structured YouTube video playlists and lecture curricula under ${selectedDomainCategory.title} for ${currentDeptObj?.name || selectedDept}.`,
           breadcrumbs: [
             { label: 'Student', link: '/student/dashboard' },
             { label: 'Training', onClick: () => { setSelectedDept(null); setSelectedDomainCategory(null); } },
@@ -997,7 +1061,7 @@ export const TrainingPage = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {filteredDepartments.map((dept) => {
-                    const st = deptStats[dept.id] || { categoryCount: 0, topicCount: 0, videoCount: 0, notesCount: 0 };
+                    const st = deptStats[dept.id] || deptStats[dept.code] || deptStats[canonicalizeDepartment(dept.id)] || { categoryCount: 0, topicCount: 0, videoCount: 0, notesCount: 0 };
                     const isStudentOwnDept =
                       dept.id === studentDept ||
                       dept.code === studentDept ||
@@ -1129,6 +1193,7 @@ export const TrainingPage = () => {
                       key={cat._id}
                       onClick={() => {
                         setSelectedDomainCategory(cat);
+                        setSelectedDomainPlaylist(null);
                         setSearchQuery('');
                       }}
                       className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-md transition-all duration-200 p-6 flex flex-col justify-between cursor-pointer group"
@@ -1151,14 +1216,9 @@ export const TrainingPage = () => {
 
                       <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
                         <div className="flex items-center gap-3 text-xs text-slate-600 font-semibold">
-                          <span className="flex items-center gap-1">
-                            <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                            {cat.publishedTopicCount !== undefined ? cat.publishedTopicCount : (cat.topicCount || 0)} Topics
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className="flex items-center gap-1">
-                            <Video className="w-3.5 h-3.5 text-blue-600" />
-                            {cat.publishedVideos !== undefined ? cat.publishedVideos : (cat.videoCount || 0)} Videos
+                          <span className="flex items-center gap-1 font-bold text-red-600">
+                            <YoutubeIcon className="w-3.5 h-3.5 text-red-600" />
+                            {cat.publishedPlaylistCount !== undefined ? cat.publishedPlaylistCount : (cat.playlistCount || 0)} Playlists
                           </span>
                         </div>
 
@@ -1179,32 +1239,127 @@ export const TrainingPage = () => {
             </div>
           )}
 
-          {/* LEVEL 3: Category Topics */}
-          {selectedDept && selectedDomainCategory && !selectedTopic && (
+          {/* LEVEL 3: Category Playlists & Practice Test (Domain Knowledge Direct Workflow) */}
+          {selectedDept && selectedDomainCategory && !selectedDomainPlaylist && (
             <div className="space-y-6">
+              {/* Category Header Banner */}
               <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <span className="text-[11px] font-black uppercase tracking-wider text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200">
                       {currentDeptObj?.code || selectedDept} • {selectedDomainCategory.title}
                     </span>
-                    <Badge variant="primary">Category</Badge>
+                    <Badge variant="primary">Domain Knowledge</Badge>
+                    <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                      {domainPlaylists.length} Playlists Available
+                    </span>
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900">{selectedDomainCategory.title} Topics</h2>
+                  <h2 className="text-2xl font-black text-slate-900">{selectedDomainCategory.title}</h2>
                   <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                    {selectedDomainCategory.description || 'Topic breakdown, video lessons, and verified notes.'}
+                    {selectedDomainCategory.description || 'Watch structured YouTube video series, curated lecture curricula, and test your knowledge with self practice assessments.'}
                   </p>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={Award}
+                    onClick={() => handleOpenCategoryPracticeTest(selectedDomainCategory)}
+                    className="!bg-blue-600 hover:!bg-blue-700 !border-blue-600 shadow-sm shadow-blue-500/20 text-white font-bold"
+                  >
+                    Practice Test
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={ArrowLeft}
+                    onClick={() => { setSelectedDomainCategory(null); setSelectedDomainPlaylist(null); }}
+                  >
+                    Back to Categories
+                  </Button>
                 </div>
               </div>
 
-              {/* Topics search */}
+              {/* Dedicated Category Practice Test Banner */}
+              <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-6 sm:p-7 shadow-xl relative overflow-hidden border border-blue-800/40">
+                <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute bottom-0 right-1/4 -mb-16 w-48 h-48 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-3 max-w-2xl">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="bg-blue-500/30 text-blue-200 border border-blue-400/30 text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1.5 backdrop-blur-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-300" />
+                        Interactive Assessment
+                      </span>
+                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        Question Bank Verified
+                      </span>
+                      <span className="bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Award className="w-3.5 h-3.5 text-amber-400" />
+                        Earn up to 40 XP
+                      </span>
+                    </div>
+
+                    <h3 className="text-2xl font-black text-white tracking-tight">
+                      {selectedDomainCategory.title} Practice Test
+                    </h3>
+
+                    <p className="text-xs text-blue-100/90 leading-relaxed">
+                      Test your domain concepts in <span className="font-bold text-white">{selectedDomainCategory.title}</span> ({currentDeptObj?.code || selectedDept}). Practice with real timed MCQs, comprehensive solution breakdowns, instant evaluation, and XP rewards.
+                    </p>
+
+                    <div className="flex items-center gap-4 pt-1 flex-wrap text-[11px] text-blue-200/90 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-blue-400" />
+                        <span>5 to 30 Minutes</span>
+                      </div>
+                      <span className="text-blue-400/40">•</span>
+                      <div className="flex items-center gap-1.5">
+                        <Target className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Configurable Difficulties</span>
+                      </div>
+                      <span className="text-blue-400/40">•</span>
+                      <div className="flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Detailed Explanations</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0">
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      icon={Play}
+                      onClick={() => handleOpenCategoryPracticeTest(selectedDomainCategory)}
+                      className="!bg-blue-500 hover:!bg-blue-400 !border-blue-400 !text-slate-950 font-black shadow-lg shadow-blue-500/25 px-6 py-3.5 text-sm"
+                    >
+                      Start Practice Test
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Playlists Search Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="text-xs font-bold text-slate-600">
-                  Showing topics in {selectedDomainCategory.title}
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-red-50 text-red-600 rounded-xl">
+                    <YoutubeIcon className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Curated YouTube Playlists
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Structured video curricula and full course lectures in {selectedDomainCategory.title}
+                    </p>
+                  </div>
                 </div>
                 <div className="w-full sm:w-72">
                   <Input
-                    placeholder="Search topics..."
+                    placeholder="Search playlists..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="text-xs"
@@ -1212,66 +1367,349 @@ export const TrainingPage = () => {
                 </div>
               </div>
 
-              {/* Topics Grid */}
+              {/* Playlists & Practice Grid */}
               {loading ? (
-                <LoadingState message="Loading topics..." />
-              ) : filteredTopics.length > 0 ? (
+                <LoadingState message="Loading playlists..." />
+              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredTopics.map((topic) => (
-                    <div
-                      key={topic._id}
-                      onClick={() => {
-                        setSelectedTopic(topic);
-                        setActiveTopicTab('videos');
-                        setSearchQuery('');
-                      }}
-                      className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all duration-200 p-6 flex flex-col justify-between cursor-pointer group"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 flex items-center gap-1.5">
-                            <FolderOpen className="w-3.5 h-3.5 text-emerald-600" />
-                            {topic.category || selectedDomainCategory.title}
-                          </span>
+                  {/* Dedicated Practice Test Card alongside Playlist Cards */}
+                  <div
+                    onClick={() => handleOpenCategoryPracticeTest(selectedDomainCategory)}
+                    className="bg-gradient-to-br from-blue-50 via-indigo-50/40 to-white rounded-3xl border-2 border-blue-200 hover:border-blue-500 shadow-xs hover:shadow-xl transition-all duration-200 overflow-hidden flex flex-col justify-between cursor-pointer group"
+                  >
+                    <div>
+                      <div className="aspect-video bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 relative overflow-hidden flex flex-col items-center justify-center text-white p-4 text-center">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-600/40 border border-blue-400/40 flex items-center justify-center text-blue-200 mb-2 shadow-inner group-hover:scale-110 transition-transform">
+                          <Award className="w-6 h-6 text-blue-300" />
                         </div>
-
-                        <h3 className="font-extrabold text-lg text-slate-900 group-hover:text-emerald-700 transition-colors">
-                          {topic.title}
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
-                          {topic.description || 'Topic video curriculum, conceptual breakdowns, and revision notes.'}
-                        </p>
+                        <span className="text-xs font-black uppercase tracking-wider text-blue-200">
+                          Practice Assessment
+                        </span>
+                        <span className="text-[11px] text-blue-300/80 mt-0.5">
+                          Timed MCQs • Instant Scoring
+                        </span>
+                        <div className="absolute bottom-3 right-3 bg-blue-500/30 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 border border-blue-400/30">
+                          <Clock className="w-3 h-3 text-blue-300" />
+                          <span>5–30 Mins</span>
+                        </div>
                       </div>
 
-                      <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-3 text-xs text-slate-600 font-semibold">
-                          <span className="flex items-center gap-1">
-                            <Video className="w-3.5 h-3.5 text-blue-600" />
-                            {topic.publishedVideos !== undefined ? topic.publishedVideos : (topic.videoCount || 0)} Videos
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className="flex items-center gap-1">
-                            <FileText className="w-3.5 h-3.5 text-rose-600" />
-                            {topic.publishedNotes !== undefined ? topic.publishedNotes : (topic.notesCount || 0)} Notes
-                          </span>
+                      <div className="p-5">
+                        <div className="text-[11px] font-bold text-blue-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Interactive Drill</span>
+                        </div>
+                        <h3 className="font-extrabold text-base text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2">
+                          {selectedDomainCategory.title} Practice Test
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                          Test and validate your domain mastery with questions from the institutional question bank.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-5 pt-0">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="w-full justify-center !bg-blue-600 hover:!bg-blue-700 !border-blue-600 font-bold"
+                        icon={Play}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenCategoryPracticeTest(selectedDomainCategory);
+                        }}
+                      >
+                        Start Practice Test
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Curated YouTube Playlists */}
+                  {filteredDomainPlaylists.map((pl) => (
+                    <div
+                      key={pl._id}
+                      onClick={() => {
+                        setSelectedDomainPlaylist(pl);
+                        setActiveLectureIndex(0);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-red-400 hover:shadow-xl transition-all duration-200 overflow-hidden flex flex-col justify-between cursor-pointer group"
+                    >
+                      <div>
+                        {/* 16:9 Thumbnail preview container */}
+                        <div className="aspect-video bg-slate-900 relative overflow-hidden group-hover:opacity-95 transition-opacity">
+                          {pl.thumbnailUrl ? (
+                            <img
+                              src={pl.thumbnailUrl}
+                              alt={pl.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 text-white">
+                              <YoutubeIcon className="w-12 h-12 text-red-500 mb-2" />
+                              <span className="text-xs font-semibold text-slate-300">YouTube Playlist</span>
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                          {/* Video count badge */}
+                          <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-xs text-white text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-md">
+                            <ListVideo className="w-3.5 h-3.5 text-red-400" />
+                            <span>{pl.videoCount || (pl.videos ? pl.videos.length : 0)} Lectures</span>
+                          </div>
+
+                          {/* Play button hover overlay */}
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 backdrop-blur-2xs">
+                            <div className="w-12 h-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                              <Play className="w-5 h-5 fill-white translate-x-0.5" />
+                            </div>
+                          </div>
                         </div>
 
-                        <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                          <span>Explore</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </span>
+                        {/* Card body */}
+                        <div className="p-5">
+                          {pl.channelTitle && (
+                            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                              <span>{pl.channelTitle}</span>
+                            </div>
+                          )}
+                          <h3 className="font-extrabold text-base text-slate-900 group-hover:text-red-600 transition-colors line-clamp-2">
+                            {pl.title}
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                            {pl.description || 'Complete lecture playlist for structured concept mastery.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Card Footer */}
+                      <div className="p-5 pt-0">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="w-full justify-center !bg-red-600 hover:!bg-red-700 !border-red-600"
+                          icon={Play}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDomainPlaylist(pl);
+                            setActiveLectureIndex(0);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        >
+                          Watch Playlist
+                        </Button>
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <EmptyState
-                  title={`No Topics in ${selectedDomainCategory.title}`}
-                  description="Your instructors have not published topics for this category yet. Please check back soon."
-                />
               )}
             </div>
           )}
+
+          {/* LEVEL 4: Playlist Viewing Page (Embedded Player + Lecture Navigation) */}
+          {selectedDept && selectedDomainCategory && selectedDomainPlaylist && (() => {
+            const currentVideos = selectedDomainPlaylist.videos || [];
+            const activeLecture = currentVideos[activeLectureIndex] || null;
+            const embedUrl = activeLecture?.videoId
+              ? `https://www.youtube.com/embed/${activeLecture.videoId}?list=${selectedDomainPlaylist.playlistId}&autoplay=1&rel=0`
+              : `https://www.youtube.com/embed/videoseries?list=${selectedDomainPlaylist.playlistId}&rel=0`;
+
+            return (
+              <div className="space-y-6">
+                {/* Header Banner */}
+                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200">
+                        {currentDeptObj?.code || selectedDept} • {selectedDomainCategory.title}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                        Playlist
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-black text-slate-900">{selectedDomainPlaylist.title}</h2>
+                  </div>
+                  <div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon={ArrowLeft}
+                      onClick={() => setSelectedDomainPlaylist(null)}
+                    >
+                      Back to Playlists
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Main Player & Lectures Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left Column: Embedded YouTube Video Player + Current Lecture Info */}
+                  <div className="lg:col-span-8 space-y-4">
+                    {/* 16:9 Video Embed Container */}
+                    <div className="relative aspect-video bg-black rounded-3xl overflow-hidden shadow-xl border border-slate-900">
+                      <iframe
+                        key={activeLecture?.videoId || selectedDomainPlaylist.playlistId}
+                        src={embedUrl}
+                        title={activeLecture?.title || selectedDomainPlaylist.title}
+                        className="w-full h-full border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                      />
+                    </div>
+
+                    {/* Lecture Meta & Next / Previous Navigation */}
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-1">
+                            {currentVideos.length > 0 && (
+                              <span className="bg-red-50 text-red-700 px-2.5 py-0.5 rounded-md font-extrabold border border-red-200">
+                                Lecture {activeLectureIndex + 1} of {currentVideos.length}
+                              </span>
+                            )}
+                            {selectedDomainPlaylist.channelTitle && (
+                              <span>Channel: {selectedDomainPlaylist.channelTitle}</span>
+                            )}
+                          </div>
+                          <h3 className="text-lg font-black text-slate-900 leading-snug">
+                            {activeLecture?.title || selectedDomainPlaylist.title}
+                          </h3>
+                        </div>
+
+                        {/* Navigation Buttons */}
+                        {currentVideos.length > 1 && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              icon={ChevronLeft}
+                              disabled={activeLectureIndex === 0}
+                              onClick={() => {
+                                if (activeLectureIndex > 0) {
+                                  setActiveLectureIndex(activeLectureIndex - 1);
+                                }
+                              }}
+                            >
+                              Previous
+                            </Button>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              disabled={activeLectureIndex >= currentVideos.length - 1}
+                              onClick={() => {
+                                if (activeLectureIndex < currentVideos.length - 1) {
+                                  setActiveLectureIndex(activeLectureIndex + 1);
+                                }
+                              }}
+                            >
+                              <span>Next</span>
+                              <ChevronRight className="w-4 h-4 ml-1" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Playlist Description & YouTube External Link */}
+                      <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="text-xs text-slate-600 max-w-xl leading-relaxed">
+                          {selectedDomainPlaylist.description || 'Watch all lectures in sequence for comprehensive concept understanding.'}
+                        </div>
+                        <a
+                          href={activeLecture?.watchUrl || selectedDomainPlaylist.playlistUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1.5 shrink-0"
+                        >
+                          <YoutubeIcon className="w-4 h-4 text-red-600" />
+                          <span>Open on YouTube</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Playlist Lecture List Sidebar */}
+                  <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+                    <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ListVideo className="w-4 h-4 text-red-600" />
+                        <span className="font-extrabold text-sm text-slate-800">Playlist Lectures</span>
+                      </div>
+                      <span className="text-xs font-bold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                        {currentVideos.length} Videos
+                      </span>
+                    </div>
+
+                    {/* Scrollable list */}
+                    <div className="max-h-[560px] overflow-y-auto divide-y divide-slate-100 p-2">
+                      {currentVideos.length > 0 ? (
+                        currentVideos.map((video, idx) => {
+                          const isActive = idx === activeLectureIndex;
+                          return (
+                            <div
+                              key={video.videoId || idx}
+                              onClick={() => setActiveLectureIndex(idx)}
+                              className={`p-2.5 rounded-2xl flex items-center gap-3 cursor-pointer transition-all duration-150 ${
+                                isActive
+                                  ? 'bg-red-50/80 border border-red-200 shadow-xs'
+                                  : 'hover:bg-slate-50'
+                              }`}
+                            >
+                              {/* Index number or Playing Indicator */}
+                              <div className="w-6 text-center shrink-0">
+                                {isActive ? (
+                                  <Play className="w-4 h-4 text-red-600 fill-red-600 mx-auto" />
+                                ) : (
+                                  <span className="text-xs font-bold text-slate-400">
+                                    {idx + 1}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Thumbnail */}
+                              <div className="w-20 aspect-video bg-slate-900 rounded-lg overflow-hidden shrink-0 relative">
+                                {video.thumbnailUrl ? (
+                                  <img
+                                    src={video.thumbnailUrl}
+                                    alt={video.title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                                    <YoutubeIcon className="w-4 h-4 text-slate-500" />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Video Details */}
+                              <div className="min-w-0 flex-1">
+                                <h4
+                                  className={`text-xs font-extrabold leading-snug line-clamp-2 ${
+                                    isActive ? 'text-red-700' : 'text-slate-800'
+                                  }`}
+                                >
+                                  {video.title}
+                                </h4>
+                                {isActive && (
+                                  <span className="text-[10px] font-black uppercase text-red-600 tracking-wider mt-0.5 inline-block">
+                                    Now Playing
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          <p>Individual lecture breakdown not loaded. You can watch the full series directly in the embedded player on the left.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* LEVEL 4: Topic Details (Videos / Notes) */}
           {selectedDept && selectedDomainCategory && selectedTopic && (
@@ -1341,77 +1779,90 @@ export const TrainingPage = () => {
                     <LoadingState message="Loading videos..." />
                   ) : videoContents.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {videoContents.map((video) => (
-                        <div
-                          key={video._id}
-                          className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
-                        >
-                          <div className="relative aspect-video bg-slate-900 overflow-hidden">
-                            {video.thumbnailUrl ? (
-                              <img
-                                src={video.thumbnailUrl}
-                                alt={video.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-400">
-                                <Video className="w-10 h-10 opacity-50" />
-                              </div>
-                            )}
-
-                            <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <button
-                                type="button"
-                                onClick={() => setActiveVideo(video)}
-                                className="p-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition transform hover:scale-110"
-                              >
-                                <Play className="w-5 h-5 fill-current ml-0.5" />
-                              </button>
-                            </div>
-
-                            <div className="absolute top-2.5 right-2.5 bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded">
-                              {video.difficulty || 'Beginner'}
-                            </div>
-                          </div>
-
-                          <div className="p-5 flex-1 flex flex-col justify-between">
-                            <div>
-                              <h4 className="font-bold text-sm text-slate-900 line-clamp-2">
-                                {video.title}
-                              </h4>
-                              {video.description && (
-                                <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">
-                                  {video.description}
-                                </p>
+                      {videoContents.map((video, idx) => {
+                        const isPlaylist = isPlaylistUrl(video.videoUrl || video.resourceUrl);
+                        return (
+                          <div
+                            key={video._id}
+                            className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:shadow-md transition-all group"
+                          >
+                            <div className="relative aspect-video bg-slate-900 overflow-hidden">
+                              {video.thumbnailUrl ? (
+                                <img
+                                  src={video.thumbnailUrl}
+                                  alt={video.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-400">
+                                  <Video className="w-10 h-10 opacity-50" />
+                                </div>
                               )}
+
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveVideo(video)}
+                                  className="p-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition transform hover:scale-110"
+                                >
+                                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                                </button>
+                              </div>
+
+                              <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                                <span className="bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-black px-2 py-0.5 rounded shadow-xs">
+                                  Lecture #{video.order !== undefined && video.order !== null ? video.order : idx + 1}
+                                </span>
+                                {isPlaylist && (
+                                  <span className="bg-purple-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs flex items-center gap-1">
+                                    <Layers className="w-3 h-3" /> Playlist
+                                  </span>
+                                )}
+                              </div>
+                              <div className="absolute top-2.5 right-2.5 bg-slate-950/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                                {video.difficulty || 'Beginner'}
+                              </div>
                             </div>
 
-                            <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between">
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                icon={Play}
-                                onClick={() => setActiveVideo(video)}
-                              >
-                                Watch Lesson
-                              </Button>
+                            <div className="p-5 flex-1 flex flex-col justify-between">
+                              <div>
+                                <h4 className="font-bold text-sm text-slate-900 line-clamp-2">
+                                  {video.title}
+                                </h4>
+                                {video.description && (
+                                  <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">
+                                    {video.description}
+                                  </p>
+                                )}
+                              </div>
 
-                              <button
-                                type="button"
-                                onClick={() => handleToggleComplete(video._id)}
-                                className={`p-1.5 rounded-lg transition ${
-                                  completedMap[video._id]
-                                    ? 'text-emerald-600 bg-emerald-50'
-                                    : 'text-slate-400 hover:text-slate-600'
-                                }`}
-                                title={completedMap[video._id] ? 'Completed' : 'Mark Complete'}
-                              >
-                                <CheckCircle className="w-5 h-5" />
-                              </button>
+                              <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between">
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  icon={Play}
+                                  onClick={() => setActiveVideo(video)}
+                                >
+                                  Watch Lesson
+                                </Button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleComplete(video._id)}
+                                  className={`p-1.5 rounded-lg transition ${
+                                    completedMap[video._id]
+                                      ? 'text-emerald-600 bg-emerald-50'
+                                      : 'text-slate-400 hover:text-slate-600'
+                                  }`}
+                                  title={completedMap[video._id] ? 'Completed' : 'Mark Complete'}
+                                >
+                                  <CheckCircle className="w-5 h-5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <EmptyState
@@ -3153,63 +3604,140 @@ export const TrainingPage = () => {
       {/* MODALS */}
       {/* ========================================================================= */}
 
-      {/* 1. Modal: Video Player */}
-      {activeVideo && (
-        <Modal
-          isOpen={Boolean(activeVideo)}
-          onClose={() => setActiveVideo(null)}
-          title={activeVideo.title}
-          size="lg"
-        >
-          <div className="space-y-4">
-            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-lg">
-              {activeVideo.videoUrl && (activeVideo.videoUrl.includes('youtube') || activeVideo.videoUrl.includes('youtu.be')) ? (
-                <iframe
-                  src={
-                    activeVideo.videoUrl.includes('watch?v=')
-                      ? activeVideo.videoUrl.replace('watch?v=', 'embed/')
-                      : activeVideo.videoUrl.includes('youtu.be/')
-                      ? activeVideo.videoUrl.replace('youtu.be/', 'www.youtube.com/embed/')
-                      : activeVideo.videoUrl
-                  }
-                  title={activeVideo.title}
-                  className="w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : activeVideo.videoUrl && activeVideo.videoUrl.includes('vimeo.com') ? (
-                <iframe
-                  src={activeVideo.videoUrl.replace('vimeo.com/', 'player.vimeo.com/video/')}
-                  title={activeVideo.title}
-                  className="w-full h-full border-0"
-                  allow="autoplay; fullscreen; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 p-6 text-center">
-                  <Video className="w-12 h-12 mb-2 text-slate-400" />
-                  <p className="text-sm font-bold text-white mb-2">Direct Video Resource</p>
-                  <a
-                    href={activeVideo.videoUrl || activeVideo.resourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-blue-400 hover:underline flex items-center gap-1"
+      {/* 1. Modal: Video Player with Topic Playlist Navigation */}
+      {activeVideo && (() => {
+        const currentIdx = videoContents.findIndex(v => v._id === activeVideo._id);
+        const prevVideo = currentIdx > 0 ? videoContents[currentIdx - 1] : null;
+        const nextVideo = currentIdx >= 0 && currentIdx < videoContents.length - 1 ? videoContents[currentIdx + 1] : null;
+
+        return (
+          <Modal
+            isOpen={Boolean(activeVideo)}
+            onClose={() => setActiveVideo(null)}
+            title={activeVideo.title}
+            size="lg"
+          >
+            <div className="space-y-4">
+              {/* Lecture header bar with navigation controls */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-900">
+                    {currentIdx >= 0 ? `Lecture ${currentIdx + 1} of ${videoContents.length}` : 'Lecture'}
+                  </span>
+                  {isPlaylistUrl(activeVideo.videoUrl || activeVideo.resourceUrl) && (
+                    <span className="text-[10px] font-black uppercase text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 flex items-center gap-1">
+                      <Layers className="w-3 h-3" /> YouTube Playlist
+                    </span>
+                  )}
+                  {selectedTopic && (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-slate-500 font-semibold">{selectedTopic.title}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={!prevVideo}
+                    onClick={() => prevVideo && setActiveVideo(prevVideo)}
+                    className="px-2.5 py-1 rounded-lg text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 text-xs font-bold transition"
                   >
-                    <span>Open in External Tab</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                    <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!nextVideo}
+                    onClick={() => nextVideo && setActiveVideo(nextVideo)}
+                    className="px-2.5 py-1 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 text-xs font-bold transition"
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Secure responsive iframe */}
+              <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-lg">
+                <iframe
+                  src={getEmbedVideoUrl(activeVideo.videoUrl || activeVideo.resourceUrl)}
+                  title={activeVideo.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+
+              {/* Action bar under video */}
+              <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => handleToggleComplete(activeVideo._id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+                    completedMap[activeVideo._id]
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>{completedMap[activeVideo._id] ? 'Completed' : 'Mark as Completed'}</span>
+                </button>
+
+                <a
+                  href={getExternalWatchUrl(activeVideo.videoUrl || activeVideo.resourceUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1.5"
+                >
+                  <span>Watch on YouTube</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              {activeVideo.description && (
+                <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                  {activeVideo.description}
+                </p>
+              )}
+
+              {/* Playlist drawer: Jump to another lecture in this topic */}
+              {videoContents.length > 1 && (
+                <div className="pt-2 border-t border-slate-100">
+                  <h5 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2">
+                    Topic Lectures ({videoContents.length})
+                  </h5>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {videoContents.map((v, idx) => (
+                      <button
+                        key={v._id}
+                        type="button"
+                        onClick={() => setActiveVideo(v)}
+                        className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between gap-3 transition ${
+                          v._id === activeVideo._id
+                            ? 'bg-blue-50 border border-blue-200 text-blue-900 font-bold'
+                            : 'hover:bg-slate-50 border border-transparent text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 ${
+                            v._id === activeVideo._id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          <span className="truncate">{v.title}</span>
+                        </div>
+                        {completedMap[v._id] && (
+                          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-
-            {activeVideo.description && (
-              <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                {activeVideo.description}
-              </p>
-            )}
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
 
       {/* 2. Modal: PDF Note Reader */}
       {activeNote && (

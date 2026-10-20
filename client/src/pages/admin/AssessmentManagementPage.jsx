@@ -169,16 +169,20 @@ export const AssessmentManagementPage = () => {
       if (res.success) {
         queryClient.invalidateQueries({ queryKey: ASSESSMENT_KEYS.all });
         setIsAIModalOpen(false);
+        const isComplete = res.isComplete && res.assessmentStatus === 'published';
         setToast({
-          type: 'success',
-          title: 'Assessment Created',
-          message: `Assessment "${res.assessment?.title || aiForm.title || 'Test'}" generated and published successfully.`
+          type: isComplete ? 'success' : 'warning',
+          title: isComplete ? 'Assessment Created & Published' : 'Saved as Draft (Incomplete)',
+          message: isComplete
+            ? `Assessment "${res.assessment?.title || aiForm.title || 'Test'}" generated with all ${res.acceptedCount} questions and published successfully.`
+            : `Generated ${res.acceptedCount}/${res.requestedCount} verified questions. Assessment is preserved as Draft for review before publishing.`
         });
       } else {
         setAiError(res.message || 'Failed to generate assessment. Please try again.');
       }
     } catch (err) {
-      setAiError('AI generation failed. Please verify API keys or try another provider.');
+      console.error('AI generation error:', err);
+      setAiError(err.message || 'AI generation failed. Please verify API keys or configuration.');
     } finally {
       setGeneratingAI(false);
     }
