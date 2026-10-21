@@ -63,7 +63,7 @@ export const TermsConditionsPage = () => {
     },
     {
       title: '15. Contact Information',
-      content: 'For questions regarding these Terms & Conditions or institutional grievance resolution, please contact the Placement Directorate at placements@mitra.edu.'
+      content: 'For questions regarding these Terms & Conditions or institutional grievance resolution, please contact the Placement Directorate at tpomitech@mitra.ac.in.'
     }
   ];
 

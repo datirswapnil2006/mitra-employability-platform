@@ -169,6 +169,81 @@
 }
 
 /* ========================================================= */
+/* LUXURY DARK BLUE & CREAM AUTHENTICATION THEME */
+/* ========================================================= */
+.auth-page-bg {
+  background-color: #08101E;
+  background-image: 
+    radial-gradient(circle at 18% 18%, rgba(30, 62, 98, 0.42) 0%, transparent 45%),
+    radial-gradient(circle at 82% 12%, rgba(247, 238, 220, 0.14) 0%, transparent 40%),
+    radial-gradient(circle at 50% 95%, rgba(16, 32, 54, 0.85) 0%, transparent 60%),
+    linear-gradient(180deg, #070D19 0%, #0A1424 50%, #060B14 100%);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.auth-page-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-size: 32px 32px;
+  background-image: radial-gradient(circle, rgba(245, 238, 225, 0.07) 1.2px, transparent 1.2px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.auth-cream-card {
+  background-color: #FAF7F2;
+  border: 1px solid #E2D6C0;
+  box-shadow: 
+    0 25px 60px -15px rgba(2, 6, 15, 0.6),
+    0 10px 25px -5px rgba(2, 6, 15, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+}
+
+.auth-cream-subcard {
+  background-color: #F4EFE6;
+  border: 1px solid #DFD3BF;
+}
+
+.auth-navy-button {
+  background: linear-gradient(180deg, #0E213D 0%, #0B192C 100%) !important;
+  color: #FAF7F2 !important;
+  border: 1px solid rgba(226, 214, 192, 0.2) !important;
+  box-shadow: 0 4px 14px 0 rgba(11, 25, 44, 0.35) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.auth-navy-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #16325B 0%, #0E213D 100%) !important;
+  box-shadow: 0 6px 20px 0 rgba(11, 25, 44, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+.auth-navy-button:active:not(:disabled) {
+  transform: translateY(0);
+  background: #0B192C !important;
+}
+
+.auth-field-input {
+  background-color: #FFFFFF !important;
+  border-color: #D4C8B5 !important;
+  color: #0B192C !important;
+  transition: all 0.2s ease !important;
+}
+
+.auth-field-input:hover {
+  border-color: #1E3E62 !important;
+}
+
+.auth-field-input:focus {
+  border-color: #0B192C !important;
+  box-shadow: 0 0 0 3px rgba(11, 25, 44, 0.12) !important;
+  outline: none !important;
+}
+
+
+/* ========================================================= */
 /* STRICT ONE-PAGE PRINT STYLES FOR TALENT INTELLIGENCE REPORT */
 /* ========================================================= */
 @media print {

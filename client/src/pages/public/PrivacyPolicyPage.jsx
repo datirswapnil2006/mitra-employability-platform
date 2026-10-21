@@ -63,7 +63,7 @@ export const PrivacyPolicyPage = () => {
     },
     {
       title: '15. Contact Information',
-      content: 'For privacy inquiries, data verification, or policy questions, please contact the Placement Directorate at privacy@mitra.edu.'
+      content: 'For privacy inquiries, data verification, or policy questions, please contact the Placement Directorate at tpomitech@mitra.ac.in .'
     }
   ];
 
