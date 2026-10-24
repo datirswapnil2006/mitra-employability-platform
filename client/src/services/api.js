@@ -568,6 +568,18 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(data)
     });
+    if (!res.ok) {
+      let errMessage = '';
+      try {
+        const errorData = await res.json();
+        errMessage = errorData.message || `Request failed with status ${res.status}`;
+      } catch {
+        errMessage = res.status === 504
+          ? 'Gateway timeout (504): The question generation took too long. Please try a smaller question count.'
+          : `Server error (${res.status}): ${res.statusText || 'Unable to generate questions'}`;
+      }
+      throw new Error(errMessage);
+    }
     return res.json();
   },
   extractPdfQuestions: async (data) => {

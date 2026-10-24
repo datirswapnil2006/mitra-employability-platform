@@ -102,58 +102,189 @@ const extractUrlMetadata = async (resourceUrl) => {
     let description = '';
     let channelTitle = '';
     let thumbnailUrl = '';
+    let videoCount = 0;
     let videos = [];
 
-    // Try fetching YouTube Atom RSS feed (Official public endpoint, no API key required)
+    // Method A: Modern YouTube playlist page HTML scraping (Extracts full video list and actual count)
     try {
-      const feedRes = await axios.get(
-        `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`,
+      const pageRes = await axios.get(
+        `https://www.youtube.com/playlist?list=${playlistId}`,
         {
-          timeout: 5000,
+          timeout: 8000,
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
           }
         }
       );
 
-      if (feedRes.data && typeof feedRes.data === 'string') {
-        const xml = feedRes.data;
-        const feedTitleMatch = xml.match(/<feed[^>]*>[\s\S]*?<title>([^<]+)<\/title>/);
-        if (feedTitleMatch) title = feedTitleMatch[1].trim();
+      const html = typeof pageRes.data === 'string' ? pageRes.data : '';
+      let ytInitialData = null;
 
-        const authorMatch = xml.match(/<author>[\s\S]*?<name>([^<]+)<\/name>/);
-        if (authorMatch) channelTitle = authorMatch[1].trim();
+      const markers = ['var ytInitialData = ', 'window["ytInitialData"] = ', 'ytInitialData = '];
+      for (const marker of markers) {
+        const startIdx = html.indexOf(marker);
+        if (startIdx !== -1) {
+          const jsonStart = startIdx + marker.length;
+          const endScriptIdx = html.indexOf(';</script>', jsonStart);
+          const scriptCloseIdx = html.indexOf('</script>', jsonStart);
+          const endIdx = endScriptIdx !== -1 ? endScriptIdx : scriptCloseIdx;
+          if (endIdx !== -1) {
+            try {
+              ytInitialData = JSON.parse(html.substring(jsonStart, endIdx).trim().replace(/;$/, ''));
+              if (ytInitialData) break;
+            } catch (e) {
+              // try next
+            }
+          }
+        }
+      }
 
-        const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
-        let entryMatch;
-        while ((entryMatch = entryRegex.exec(xml)) !== null) {
-          const entryXml = entryMatch[1];
-          const vIdMatch = entryXml.match(/<yt:videoId>([^<]+)<\/yt:videoId>/);
-          const vTitleMatch = entryXml.match(/<title>([^<]+)<\/title>/);
-          const vThumbMatch = entryXml.match(/<media:thumbnail[^>]+url="([^"]+)"/);
+      if (ytInitialData) {
+        const header = ytInitialData.header?.playlistHeaderRenderer;
+        const metadata = ytInitialData.metadata?.playlistMetadataRenderer;
 
-          if (vIdMatch && vIdMatch[1]) {
-            const vId = vIdMatch[1];
-            const vTitle = vTitleMatch ? vTitleMatch[1] : `Lecture ${videos.length + 1}`;
-            const vThumb = vThumbMatch ? vThumbMatch[1] : `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
-            videos.push({
-              videoId: vId,
-              title: vTitle,
-              thumbnailUrl: vThumb,
-              watchUrl: `https://www.youtube.com/watch?v=${vId}&list=${playlistId}`
-            });
+        title = header?.title?.simpleText ||
+                (header?.title?.runs && header.title.runs.map(r => r.text).join('')) ||
+                metadata?.title || '';
+
+        channelTitle = header?.ownerText?.runs?.[0]?.text ||
+                       metadata?.albumArtist || '';
+
+        if (!channelTitle && ytInitialData.sidebar) {
+          const secondary = ytInitialData.sidebar.playlistSidebarRenderer?.items?.find(i => i.playlistSidebarSecondaryInfoRenderer);
+          channelTitle = secondary?.playlistSidebarSecondaryInfoRenderer?.videoOwner?.videoOwnerRenderer?.title?.runs?.[0]?.text || '';
+        }
+
+        // Parse total video count from header stats (e.g. "150 videos")
+        const numVideosText = header?.numVideosText?.runs?.map(r => r.text).join(' ') ||
+                              header?.briefStats?.[0]?.runs?.map(r => r.text).join(' ') ||
+                              header?.stats?.[0]?.runs?.map(r => r.text).join(' ') || '';
+        if (numVideosText) {
+          const countMatch = numVideosText.replace(/,/g, '').match(/(\d+)/);
+          if (countMatch && countMatch[1]) {
+            videoCount = parseInt(countMatch[1], 10);
           }
         }
 
-        if (videos.length > 0) {
+        // Hero / Banner thumbnail
+        const heroThumb = header?.playlistHeaderBanner?.heroPlaylistThumbnailRenderer?.thumbnail?.thumbnails;
+        if (heroThumb && heroThumb.length > 0) {
+          thumbnailUrl = heroThumb[heroThumb.length - 1].url;
+        }
+
+        // Extract videos from lockupViewModel (New YouTube UI) or playlistVideoRenderer (Classic UI)
+        const rawItems = ytInitialData.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
+
+        for (const item of rawItems) {
+          if (item.lockupViewModel) {
+            const lvm = item.lockupViewModel;
+            const onTapWatch = lvm.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint;
+            const overlayAdd = lvm.contentImage?.thumbnailViewModel?.overlays?.find(o => o.thumbnailHoverOverlayToggleActionsViewModel);
+            const queueCmd = overlayAdd?.thumbnailHoverOverlayToggleActionsViewModel?.buttons?.find(b => b.toggleButtonViewModel?.defaultButtonViewModel?.buttonViewModel?.onTap?.innertubeCommand?.signalServiceEndpoint?.actions?.[0]?.addToPlaylistCommand);
+            const vId = onTapWatch?.videoId ||
+                        queueCmd?.toggleButtonViewModel?.defaultButtonViewModel?.buttonViewModel?.onTap?.innertubeCommand?.signalServiceEndpoint?.actions?.[0]?.addToPlaylistCommand?.videoId;
+
+            let vTitle = lvm.metadata?.lockupMetadataViewModel?.title?.content || '';
+            if (!vTitle && lvm.rendererContext?.accessibilityContext?.label) {
+              vTitle = lvm.rendererContext.accessibilityContext.label.replace(/\s+\d+\s+minutes?.*$/i, '').trim();
+            }
+
+            let vThumb = '';
+            const sources = lvm.contentImage?.thumbnailViewModel?.image?.sources;
+            if (sources && sources.length > 0) {
+              vThumb = sources[sources.length - 1].url;
+            } else if (vId) {
+              vThumb = `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
+            }
+
+            if (vId) {
+              videos.push({
+                videoId: vId,
+                title: vTitle || `Lecture ${videos.length + 1}`,
+                thumbnailUrl: vThumb,
+                watchUrl: `https://www.youtube.com/watch?v=${vId}&list=${playlistId}`
+              });
+            }
+          } else if (item.playlistVideoRenderer) {
+            const pvr = item.playlistVideoRenderer;
+            const vId = pvr.videoId;
+            const vTitle = pvr.title?.runs?.[0]?.text || pvr.title?.simpleText || `Lecture ${videos.length + 1}`;
+            const thumbs = pvr.thumbnail?.thumbnails;
+            const vThumb = thumbs && thumbs.length > 0 ? thumbs[thumbs.length - 1].url : `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
+
+            if (vId) {
+              videos.push({
+                videoId: vId,
+                title: vTitle,
+                thumbnailUrl: vThumb,
+                watchUrl: `https://www.youtube.com/watch?v=${vId}&list=${playlistId}`
+              });
+            }
+          }
+        }
+
+        if (!thumbnailUrl && videos.length > 0) {
           thumbnailUrl = videos[0].thumbnailUrl;
         }
       }
-    } catch (feedErr) {
-      // Feed query failed or playlist has 0 public items, fallback to oEmbed
+    } catch (pageErr) {
+      // Continue to RSS and oEmbed fallbacks
     }
 
-    // Fallback: oEmbed for playlist title & channel if RSS didn't supply them
+    // Method B: Fallback to YouTube Atom RSS feed
+    if (videos.length === 0) {
+      try {
+        const feedRes = await axios.get(
+          `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`,
+          {
+            timeout: 5000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+          }
+        );
+
+        if (feedRes.data && typeof feedRes.data === 'string') {
+          const xml = feedRes.data;
+          const feedTitleMatch = xml.match(/<feed[^>]*>[\s\S]*?<title>([^<]+)<\/title>/);
+          if (feedTitleMatch && !title) title = feedTitleMatch[1].trim();
+
+          const authorMatch = xml.match(/<author>[\s\S]*?<name>([^<]+)<\/name>/);
+          if (authorMatch && !channelTitle) channelTitle = authorMatch[1].trim();
+
+          const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+          let entryMatch;
+          while ((entryMatch = entryRegex.exec(xml)) !== null) {
+            const entryXml = entryMatch[1];
+            const vIdMatch = entryXml.match(/<yt:videoId>([^<]+)<\/yt:videoId>/);
+            const vTitleMatch = entryXml.match(/<title>([^<]+)<\/title>/);
+            const vThumbMatch = entryXml.match(/<media:thumbnail[^>]+url="([^"]+)"/);
+
+            if (vIdMatch && vIdMatch[1]) {
+              const vId = vIdMatch[1];
+              const vTitle = vTitleMatch ? vTitleMatch[1] : `Lecture ${videos.length + 1}`;
+              const vThumb = vThumbMatch ? vThumbMatch[1] : `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
+              videos.push({
+                videoId: vId,
+                title: vTitle,
+                thumbnailUrl: vThumb,
+                watchUrl: `https://www.youtube.com/watch?v=${vId}&list=${playlistId}`
+              });
+            }
+          }
+
+          if (videos.length > 0 && !thumbnailUrl) {
+            thumbnailUrl = videos[0].thumbnailUrl;
+          }
+        }
+      } catch (feedErr) {
+        // Feed query fallback completed
+      }
+    }
+
+    // Method C: oEmbed for playlist title & channel if not yet found
     if (!title || !thumbnailUrl) {
       try {
         const oembedRes = await axios.get(
@@ -166,7 +297,7 @@ const extractUrlMetadata = async (resourceUrl) => {
           if (!thumbnailUrl && oembedRes.data.thumbnail_url) thumbnailUrl = oembedRes.data.thumbnail_url;
         }
       } catch (oembedErr) {
-        // Continue to final fallback
+        // Continue
       }
     }
 
@@ -180,6 +311,8 @@ const extractUrlMetadata = async (resourceUrl) => {
     }
     description = `Complete YouTube Playlist • ${channelTitle || 'Curated Domain Lectures'}`;
 
+    const finalVideoCount = videoCount > 0 ? videoCount : videos.length;
+
     return {
       title,
       description,
@@ -190,7 +323,7 @@ const extractUrlMetadata = async (resourceUrl) => {
       playlistUrl: `https://www.youtube.com/playlist?list=${playlistId}`,
       embedUrl: `https://www.youtube.com/embed/videoseries?list=${playlistId}`,
       channelTitle: channelTitle || 'YouTube Channel',
-      videoCount: videos.length,
+      videoCount: finalVideoCount,
       videos
     };
   }
@@ -253,6 +386,14 @@ const extractUrlMetadata = async (resourceUrl) => {
       resourceType: 'video',
       provider: 'youtube',
       videoId,
+      channelTitle: authorName,
+      videoCount: 1,
+      videos: [{
+        videoId,
+        title,
+        thumbnailUrl,
+        watchUrl: `https://www.youtube.com/watch?v=${videoId}`
+      }],
       embedUrl: `https://www.youtube.com/embed/${videoId}`
     };
   }

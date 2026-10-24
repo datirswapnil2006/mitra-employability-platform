@@ -246,8 +246,15 @@ export const FullAssessmentCreateModal = ({
     setErrorMsg('');
   };
 
-  // Helper to generate a single section via AI
-  const generateSectionQuestionsAI = async ({ sectionName, department = null, categoryName, targetCount, syllabusPrompt }) => {
+  // Helper to generate a single section via AI in safe batches of 5 to avoid Gateway Timeout (504)
+  const generateSectionQuestionsAI = async ({
+    sectionName,
+    department = null,
+    categoryName,
+    targetCount,
+    syllabusPrompt,
+    onProgress
+  }) => {
     const totalTarget = Math.max(1, parseInt(targetCount, 10) || 5);
     const collected = [];
 
@@ -255,46 +262,67 @@ export const FullAssessmentCreateModal = ({
       ? `${sectionName}: ${syllabusPrompt.slice(0, 80)}`
       : `${sectionName} Questions`;
 
-    const res = await api.generateQuestionsForReview({
-      provider: 'gemini',
-      module: department ? 'Domain' : 'Aptitude',
-      category: categoryName,
-      department: department || null,
-      topic: effectiveTopic,
-      prompt: syllabusPrompt || `${sectionName} placement questions`,
-      customPrompt: syllabusPrompt || `${sectionName} comprehensive test questions`,
-      difficulty,
-      questionCount: totalTarget,
-      existingQuestions: []
-    });
+    // Process in sub-batches of max 5 questions to keep each HTTP call under ~12 seconds
+    const SUB_BATCH_SIZE = 5;
+    let remaining = totalTarget;
 
-    if (res.success && Array.isArray(res.questions) && res.questions.length > 0) {
-      for (const q of res.questions) {
-        if (collected.length >= totalTarget) break;
-        let opts = Array.isArray(q.options) && q.options.length >= 4
-          ? q.options.slice(0, 4).map((o) => String(o || '').trim())
-          : ['Option A', 'Option B', 'Option C', 'Option D'];
-        while (opts.length < 4) {
-          opts.push(`Option ${String.fromCharCode(65 + opts.length)}`);
-        }
-        let corr = String(q.correctAnswer || opts[0]).trim();
-        if (!opts.includes(corr)) opts[0] = corr;
+    while (remaining > 0) {
+      const currentChunk = Math.min(SUB_BATCH_SIZE, remaining);
 
-        collected.push({
-          id: `gen-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-          section: sectionName,
-          department: department || null,
-          category: categoryName,
-          questionText: q.questionText,
-          codeSnippet: q.codeSnippet || '',
-          options: opts,
-          correctAnswer: corr,
-          explanation: q.explanation || '',
-          difficulty: q.difficulty || difficulty,
-          status: 'APPROVED',
-          marks: 1
-        });
+      if (onProgress) {
+        onProgress(collected.length, totalTarget);
       }
+
+      const res = await api.generateQuestionsForReview({
+        provider: 'gemini',
+        module: department ? 'Domain' : 'Aptitude',
+        category: categoryName,
+        department: department || null,
+        topic: effectiveTopic,
+        prompt: syllabusPrompt || `${sectionName} placement questions`,
+        customPrompt: syllabusPrompt || `${sectionName} comprehensive test questions`,
+        difficulty,
+        questionCount: currentChunk,
+        batchSize: currentChunk,
+        existingQuestions: collected.map((q) => q.questionText)
+      });
+
+      if (res && res.success && Array.isArray(res.questions) && res.questions.length > 0) {
+        for (const q of res.questions) {
+          if (collected.length >= totalTarget) break;
+          let opts = Array.isArray(q.options) && q.options.length >= 4
+            ? q.options.slice(0, 4).map((o) => String(o || '').trim())
+            : ['Option A', 'Option B', 'Option C', 'Option D'];
+          while (opts.length < 4) {
+            opts.push(`Option ${String.fromCharCode(65 + opts.length)}`);
+          }
+          let corr = String(q.correctAnswer || opts[0]).trim();
+          if (!opts.includes(corr)) opts[0] = corr;
+
+          collected.push({
+            id: `gen-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            section: sectionName,
+            department: department || null,
+            category: categoryName,
+            questionText: q.questionText,
+            codeSnippet: q.codeSnippet || '',
+            options: opts,
+            correctAnswer: corr,
+            explanation: q.explanation || '',
+            difficulty: q.difficulty || difficulty,
+            status: 'APPROVED',
+            marks: 1
+          });
+        }
+        remaining = totalTarget - collected.length;
+      } else {
+        // Fallback break if no questions returned to avoid infinite loop
+        break;
+      }
+    }
+
+    if (onProgress) {
+      onProgress(collected.length, totalTarget);
     }
 
     return collected;
@@ -379,15 +407,19 @@ export const FullAssessmentCreateModal = ({
       for (let i = 0; i < totalTasks; i++) {
         const t = tasks[i];
         const label = t.department ? `Domain (${t.department})` : t.section;
-        setProgressStatus(`[${i + 1}/${totalTasks}] Generating ${label} (${t.count} questions)...`);
-        setProgressPercent(Math.round(((i) / totalTasks) * 90) + 5);
 
         const chunk = await generateSectionQuestionsAI({
           sectionName: t.section,
           department: t.department,
           categoryName: t.category,
           targetCount: t.count,
-          syllabusPrompt: t.prompt
+          syllabusPrompt: t.prompt,
+          onProgress: (current, total) => {
+            setProgressStatus(`[${i + 1}/${totalTasks}] ${label} (${current}/${total} questions)...`);
+            const subProgress = total > 0 ? (current / total) : 0;
+            const overall = ((i + subProgress) / totalTasks) * 90 + 5;
+            setProgressPercent(Math.min(95, Math.round(overall)));
+          }
         });
 
         if (chunk.length > 0) {

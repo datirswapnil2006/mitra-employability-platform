@@ -51,6 +51,27 @@ export const extractPlaylistId = (url) => {
   return match ? match[1] : null;
 };
 
+/**
+ * Extracts YouTube video ID from URL (watch, youtu.be, embed, shorts, live).
+ */
+export const extractYoutubeVideoId = (url) => {
+  if (!url || typeof url !== 'string') return null;
+  const match = url.match(/(?:watch\?v=|youtu\.be\/|embed\/|shorts\/|live\/|v\/)([a-zA-Z0-9_-]{11})/i);
+  return match ? match[1] : null;
+};
+
+/**
+ * Extracts either a playlist or video ID from a YouTube URL.
+ */
+export const extractVideoOrPlaylistId = (url) => {
+  if (!url || typeof url !== 'string') return null;
+  const playlistId = extractPlaylistId(url);
+  if (playlistId) return { type: 'playlist', id: playlistId };
+  const videoId = extractYoutubeVideoId(url);
+  if (videoId) return { type: 'video', id: videoId };
+  return null;
+};
+
 
 /**
  * Transforms any YouTube (watch, embed, short, live, playlist) or Vimeo link into a secure iframe embed URL.

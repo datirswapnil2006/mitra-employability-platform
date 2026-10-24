@@ -91,6 +91,8 @@ export const TrainingPage = () => {
   const [domainCategories, setDomainCategories] = useState([]);
   const [deptStats, setDeptStats] = useState({});
   const [domainPlaylists, setDomainPlaylists] = useState([]);
+  const [domainNotes, setDomainNotes] = useState([]);
+  const [activeDomainTab, setActiveDomainTab] = useState('playlists');
   const [selectedDomainPlaylist, setSelectedDomainPlaylist] = useState(null);
   const [activeLectureIndex, setActiveLectureIndex] = useState(0);
 
@@ -294,12 +296,18 @@ export const TrainingPage = () => {
   const fetchCategoryPlaylists = async (categoryId) => {
     setLoading(true);
     try {
-      const res = await api.getPlaylists({ categoryId });
-      if (res.success) {
-        setDomainPlaylists(res.playlists || []);
+      const [plRes, notesRes] = await Promise.all([
+        api.getPlaylists({ categoryId }),
+        api.getContentList({ module: 'Domain', categoryId, resourceType: 'note' })
+      ]);
+      if (plRes.success) {
+        setDomainPlaylists(plRes.playlists || []);
+      }
+      if (notesRes.success) {
+        setDomainNotes((notesRes.contents || []).filter(c => c.status === 'published' || !c.status));
       }
     } catch (err) {
-      console.error('Error fetching category playlists:', err);
+      console.error('Error fetching category playlists and notes:', err);
     } finally {
       setLoading(false);
     }
@@ -573,6 +581,15 @@ export const TrainingPage = () => {
       p.title?.toLowerCase().includes(q) ||
       p.description?.toLowerCase().includes(q) ||
       p.channelTitle?.toLowerCase().includes(q)
+    );
+  });
+
+  const filteredDomainNotes = domainNotes.filter((n) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      n.title?.toLowerCase().includes(q) ||
+      n.description?.toLowerCase().includes(q)
     );
   });
 
@@ -1220,6 +1237,10 @@ export const TrainingPage = () => {
                             <YoutubeIcon className="w-3.5 h-3.5 text-red-600" />
                             {cat.publishedPlaylistCount !== undefined ? cat.publishedPlaylistCount : (cat.playlistCount || 0)} Playlists
                           </span>
+                          <span className="flex items-center gap-1 font-bold text-blue-600">
+                            <FileText className="w-3.5 h-3.5 text-blue-600" />
+                            {cat.publishedNotes !== undefined ? cat.publishedNotes : (cat.notesCount || 0)} Notes
+                          </span>
                         </div>
 
                         <span className="text-xs font-bold text-blue-600 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
@@ -1251,12 +1272,12 @@ export const TrainingPage = () => {
                     </span>
                     <Badge variant="primary">Domain Knowledge</Badge>
                     <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                      {domainPlaylists.length} Playlists Available
+                      {domainPlaylists.length} Playlists • {domainNotes.length} Notes Available
                     </span>
                   </div>
                   <h2 className="text-2xl font-black text-slate-900">{selectedDomainCategory.title}</h2>
                   <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                    {selectedDomainCategory.description || 'Watch structured YouTube video series, curated lecture curricula, and test your knowledge with self practice assessments.'}
+                    {selectedDomainCategory.description || 'Watch structured YouTube video series, curated lecture curricula, read study notes, and test your knowledge with self practice assessments.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2.5 flex-wrap">
@@ -1273,7 +1294,7 @@ export const TrainingPage = () => {
                     variant="outline"
                     size="sm"
                     icon={ArrowLeft}
-                    onClick={() => { setSelectedDomainCategory(null); setSelectedDomainPlaylist(null); }}
+                    onClick={() => { setSelectedDomainCategory(null); setSelectedDomainPlaylist(null); setActiveDomainTab('playlists'); }}
                   >
                     Back to Categories
                   </Button>
@@ -1342,24 +1363,37 @@ export const TrainingPage = () => {
                 </div>
               </div>
 
-              {/* Playlists Search Header */}
+              {/* Domain Content Tabs & Search */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-red-50 text-red-600 rounded-xl">
-                    <YoutubeIcon className="w-5 h-5 text-red-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Curated YouTube Playlists
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      Structured video curricula and full course lectures in {selectedDomainCategory.title}
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDomainTab('playlists')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      activeDomainTab === 'playlists'
+                        ? 'bg-red-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <YoutubeIcon className="w-4 h-4" />
+                    <span>Playlists ({domainPlaylists.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDomainTab('notes')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      activeDomainTab === 'notes'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>PDF Notes ({domainNotes.length})</span>
+                  </button>
                 </div>
                 <div className="w-full sm:w-72">
                   <Input
-                    placeholder="Search playlists..."
+                    placeholder={activeDomainTab === 'playlists' ? "Search playlists..." : "Search study notes..."}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="text-xs"
@@ -1367,10 +1401,10 @@ export const TrainingPage = () => {
                 </div>
               </div>
 
-              {/* Playlists & Practice Grid */}
+              {/* Playlists & Notes Content Views */}
               {loading ? (
-                <LoadingState message="Loading playlists..." />
-              ) : (
+                <LoadingState message={activeDomainTab === 'playlists' ? "Loading playlists..." : "Loading study notes..."} />
+              ) : activeDomainTab === 'playlists' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Dedicated Practice Test Card alongside Playlist Cards */}
                   <div
@@ -1455,7 +1489,7 @@ export const TrainingPage = () => {
                           {/* Video count badge */}
                           <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-xs text-white text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-md">
                             <ListVideo className="w-3.5 h-3.5 text-red-400" />
-                            <span>{pl.videoCount || (pl.videos ? pl.videos.length : 0)} Lectures</span>
+                            <span>{pl.videoCount === 1 ? '1 Video' : `${pl.videoCount || (pl.videos ? pl.videos.length : 0)} Lectures`}</span>
                           </div>
 
                           {/* Play button hover overlay */}
@@ -1496,23 +1530,89 @@ export const TrainingPage = () => {
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
                         >
-                          Watch Playlist
+                          {pl.videoCount === 1 ? 'Watch Video' : 'Watch Playlist'}
                         </Button>
                       </div>
                     </div>
                   ))}
                 </div>
+              ) : (
+                /* PDF Notes Grid */
+                filteredDomainNotes.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredDomainNotes.map((note) => (
+                      <div
+                        key={note._id}
+                        className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-xl transition-all duration-200 p-6 flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-blue-800 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/60 flex items-center gap-1.5">
+                              <FileText className="w-3.5 h-3.5 text-blue-600" />
+                              PDF Document
+                            </span>
+                            {note.fileSize && (
+                              <span className="text-[11px] font-semibold text-slate-400">
+                                {Math.round(note.fileSize / 1024)} KB
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="font-extrabold text-base text-slate-900 line-clamp-2">
+                            {note.title}
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-2 line-clamp-3 leading-relaxed">
+                            {note.description || 'Comprehensive domain study notes and reference material in PDF format.'}
+                          </p>
+                        </div>
+
+                        <div className="pt-4 mt-6 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            icon={FileText}
+                            onClick={() => setActiveNote(note)}
+                            className="!bg-blue-600 hover:!bg-blue-700 !border-blue-600 font-bold"
+                          >
+                            Read Note (PDF)
+                          </Button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleToggleComplete(note._id)}
+                            className={`p-2 rounded-xl transition ${
+                              completedMap[note._id]
+                                ? 'text-emerald-600 bg-emerald-50 border border-emerald-200'
+                                : 'text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100'
+                            }`}
+                            title={completedMap[note._id] ? 'Completed' : 'Mark Complete'}
+                          >
+                            <CheckCircle className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No PDF Notes in this Category"
+                    description={`Study notes and reference guides for ${selectedDomainCategory.title} are being prepared.`}
+                  />
+                )
               )}
             </div>
           )}
 
-          {/* LEVEL 4: Playlist Viewing Page (Embedded Player + Lecture Navigation) */}
+          {/* LEVEL 4: Playlist / Video Viewing Page (Embedded Player + Lecture Navigation) */}
           {selectedDept && selectedDomainCategory && selectedDomainPlaylist && (() => {
             const currentVideos = selectedDomainPlaylist.videos || [];
             const activeLecture = currentVideos[activeLectureIndex] || null;
-            const embedUrl = activeLecture?.videoId
-              ? `https://www.youtube.com/embed/${activeLecture.videoId}?list=${selectedDomainPlaylist.playlistId}&autoplay=1&rel=0`
-              : `https://www.youtube.com/embed/videoseries?list=${selectedDomainPlaylist.playlistId}&rel=0`;
+            const isSingle = !selectedDomainPlaylist.playlistId?.startsWith('PL') && currentVideos.length <= 1;
+            const embedUrl = isSingle
+              ? `https://www.youtube.com/embed/${activeLecture?.videoId || selectedDomainPlaylist.playlistId}?autoplay=1&rel=0`
+              : (activeLecture?.videoId
+                  ? `https://www.youtube.com/embed/${activeLecture.videoId}?list=${selectedDomainPlaylist.playlistId}&autoplay=1&rel=0`
+                  : `https://www.youtube.com/embed/videoseries?list=${selectedDomainPlaylist.playlistId}&rel=0`);
 
             return (
               <div className="space-y-6">
@@ -1524,7 +1624,7 @@ export const TrainingPage = () => {
                         {currentDeptObj?.code || selectedDept} • {selectedDomainCategory.title}
                       </span>
                       <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                        Playlist
+                        {isSingle ? 'Single Video Lecture' : 'Curated Playlist'}
                       </span>
                     </div>
                     <h2 className="text-xl font-black text-slate-900">{selectedDomainPlaylist.title}</h2>
@@ -1536,7 +1636,7 @@ export const TrainingPage = () => {
                       icon={ArrowLeft}
                       onClick={() => setSelectedDomainPlaylist(null)}
                     >
-                      Back to Playlists
+                      Back to Videos & Playlists
                     </Button>
                   </div>
                 </div>
@@ -1562,9 +1662,13 @@ export const TrainingPage = () => {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                           <div className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-1">
-                            {currentVideos.length > 0 && (
+                            {currentVideos.length > 1 ? (
                               <span className="bg-red-50 text-red-700 px-2.5 py-0.5 rounded-md font-extrabold border border-red-200">
                                 Lecture {activeLectureIndex + 1} of {currentVideos.length}
+                              </span>
+                            ) : (
+                              <span className="bg-red-50 text-red-700 px-2.5 py-0.5 rounded-md font-extrabold border border-red-200">
+                                Full Lecture Video
                               </span>
                             )}
                             {selectedDomainPlaylist.channelTitle && (

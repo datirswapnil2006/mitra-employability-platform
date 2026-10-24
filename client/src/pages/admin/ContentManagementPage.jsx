@@ -48,7 +48,7 @@ import {
   Check
 } from 'lucide-react';
 import YoutubeIcon from '../../components/YoutubeIcon';
-import { getEmbedVideoUrl, isPlaylistUrl, getExternalWatchUrl, validateVideoUrl, extractPlaylistId } from '../../utils/videoUtils';
+import { getEmbedVideoUrl, isPlaylistUrl, getExternalWatchUrl, validateVideoUrl, extractPlaylistId, extractYoutubeVideoId, extractVideoOrPlaylistId } from '../../utils/videoUtils';
 
 export const ContentManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -81,8 +81,9 @@ export const ContentManagementPage = () => {
   const [domainCategories, setDomainCategories] = useState([]);
   const [deptStats, setDeptStats] = useState({});
 
-  // Domain YouTube Playlists state
+  // Domain YouTube Playlists & Notes state
   const [domainPlaylists, setDomainPlaylists] = useState([]);
+  const [activeDomainTab, setActiveDomainTab] = useState('playlists'); // 'playlists' | 'notes'
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
   const [editingPlaylist, setEditingPlaylist] = useState(null);
   const [fetchingPlaylistMeta, setFetchingPlaylistMeta] = useState(false);
@@ -96,6 +97,7 @@ export const ContentManagementPage = () => {
     thumbnailUrl: '',
     channelTitle: '',
     videoCount: 0,
+    videos: [],
     order: 0,
     status: 'published'
   });
@@ -245,6 +247,7 @@ export const ContentManagementPage = () => {
     setSelectedInterviewCategory(null);
     setSelectedCompany(null);
     setSelectedTopic(null);
+    setActiveDomainTab('playlists');
     setSearchQuery('');
     if (isAptitudeModule) {
       setActiveCategory(availableCategories[0]?.id || 'Quantitative');
@@ -260,6 +263,7 @@ export const ContentManagementPage = () => {
         fetchTopicContents(selectedTopic._id, 'Domain');
       } else if (selectedDomainCategory) {
         fetchCategoryPlaylists(selectedDomainCategory._id);
+        fetchCategoryContents(selectedDomainCategory._id);
       } else if (selectedDept) {
         fetchDepartmentCategories(selectedDept);
       } else {
@@ -369,6 +373,21 @@ export const ContentManagementPage = () => {
       console.error('Error fetching category playlists:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCategoryContents = async (categoryId) => {
+    try {
+      const res = await api.getContentList({
+        module: 'Domain',
+        categoryId,
+        department: selectedDept
+      });
+      if (res.success) {
+        setContents(res.contents || []);
+      }
+    } catch (err) {
+      console.error('Error fetching category contents:', err);
     }
   };
 
@@ -951,6 +970,7 @@ export const ContentManagementPage = () => {
       thumbnailUrl: '',
       channelTitle: '',
       videoCount: 0,
+      videos: [],
       order: domainPlaylists.length,
       status: 'published'
     });
@@ -968,7 +988,8 @@ export const ContentManagementPage = () => {
       playlistUrl: pl.playlistUrl || '',
       thumbnailUrl: pl.thumbnailUrl || '',
       channelTitle: pl.channelTitle || '',
-      videoCount: pl.videoCount || (pl.videos ? pl.videos.length : 0),
+      videoCount: pl.videoCount !== undefined ? pl.videoCount : (pl.videos ? pl.videos.length : 0),
+      videos: pl.videos || [],
       order: pl.order !== undefined ? pl.order : 0,
       status: pl.status || 'published'
     });
@@ -979,35 +1000,51 @@ export const ContentManagementPage = () => {
 
   const handleAutoDetectPlaylistMeta = async () => {
     if (!playlistForm.playlistUrl || !playlistForm.playlistUrl.trim()) {
-      setPlaylistFormError('Please enter a YouTube playlist URL first.');
+      setPlaylistFormError('Please enter a YouTube video or playlist URL first.');
       return;
     }
-    const extractedId = extractPlaylistId(playlistForm.playlistUrl);
-    if (!extractedId) {
-      setPlaylistFormError('Invalid playlist URL. Please ensure the URL includes a playlist ID (e.g. list=PL...).');
+    const cleanUrl = playlistForm.playlistUrl.trim();
+    const detected = extractVideoOrPlaylistId(cleanUrl);
+    if (!detected) {
+      setPlaylistFormError('Invalid YouTube URL. Please enter a valid YouTube video (watch?v=...) or playlist (list=...) URL.');
       return;
     }
     setFetchingPlaylistMeta(true);
     setPlaylistFormError('');
     setPlaylistFormSuccess('');
     try {
-      const res = await api.previewMetadata(playlistForm.playlistUrl.trim());
+      const res = await api.previewMetadata(cleanUrl);
       if (res.success && res.metadata) {
         const meta = res.metadata;
+        const vCount = meta.videoCount !== undefined
+          ? meta.videoCount
+          : (meta.videos && meta.videos.length > 0 ? meta.videos.length : (detected.type === 'video' ? 1 : 0));
+
+        const detectedVideos = meta.videos && meta.videos.length > 0
+          ? meta.videos
+          : (meta.videoId ? [{
+              videoId: meta.videoId,
+              title: meta.title,
+              thumbnailUrl: meta.thumbnailUrl,
+              watchUrl: cleanUrl
+            }] : []);
+
         setPlaylistForm((prev) => ({
           ...prev,
-          title: prev.title && prev.title !== 'YouTube Playlist' ? prev.title : (meta.title || prev.title),
+          title: prev.title && prev.title !== 'YouTube Playlist' && prev.title !== 'YouTube Video' ? prev.title : (meta.title || prev.title),
           thumbnailUrl: meta.thumbnailUrl || prev.thumbnailUrl,
           channelTitle: meta.channelTitle || prev.channelTitle,
-          videoCount: meta.videoCount || prev.videoCount,
+          videoCount: vCount,
+          videos: detectedVideos.length > 0 ? detectedVideos : (prev.videos || []),
           description: prev.description || meta.description || ''
         }));
-        setPlaylistFormSuccess(`Successfully detected: "${meta.title}" (${meta.videoCount || 0} lectures)`);
+        const countMsg = vCount === 1 ? '1 video' : `${vCount} lectures`;
+        setPlaylistFormSuccess(`Successfully detected: "${meta.title}" (${countMsg})`);
       } else {
-        setPlaylistFormError(res.message || 'Could not auto-detect playlist details. You can enter details manually.');
+        setPlaylistFormError(res.message || 'Could not auto-detect details. You can enter details manually.');
       }
     } catch (err) {
-      setPlaylistFormError('Failed to fetch YouTube playlist metadata.');
+      setPlaylistFormError('Failed to fetch YouTube metadata.');
     } finally {
       setFetchingPlaylistMeta(false);
     }
@@ -1019,62 +1056,66 @@ export const ContentManagementPage = () => {
     setPlaylistFormSuccess('');
 
     if (!playlistForm.playlistUrl || !playlistForm.playlistUrl.trim()) {
-      setPlaylistFormError('Please enter a YouTube playlist URL.');
+      setPlaylistFormError('Please enter a YouTube video or playlist URL.');
       return;
     }
 
-    const extractedId = extractPlaylistId(playlistForm.playlistUrl);
-    if (!extractedId) {
-      setPlaylistFormError('Invalid YouTube playlist URL. The URL must contain a valid playlist ID (e.g. ?list=PL...).');
+    const cleanUrl = playlistForm.playlistUrl.trim();
+    const detected = extractVideoOrPlaylistId(cleanUrl);
+    if (!detected) {
+      setPlaylistFormError('Invalid YouTube URL. Please enter a valid YouTube video (watch?v=...) or playlist (list=...) link.');
       return;
     }
 
     if (!playlistForm.title || !playlistForm.title.trim()) {
-      setPlaylistFormError('Please provide a playlist title.');
+      setPlaylistFormError('Please provide a title.');
       return;
     }
 
     setSubmitting(true);
     try {
+      const isSingleVideo = detected.type === 'video';
+      const countVal = Number(playlistForm.videoCount !== undefined && playlistForm.videoCount > 0 ? playlistForm.videoCount : (isSingleVideo ? 1 : 0));
+
+      const payload = {
+        title: playlistForm.title.trim(),
+        description: playlistForm.description.trim(),
+        playlistUrl: cleanUrl,
+        thumbnailUrl: playlistForm.thumbnailUrl.trim(),
+        channelTitle: playlistForm.channelTitle,
+        videoCount: countVal,
+        videos: playlistForm.videos || [],
+        order: Number(playlistForm.order),
+        status: playlistForm.status
+      };
+
       if (editingPlaylist) {
-        const res = await api.updatePlaylist(editingPlaylist._id, {
-          title: playlistForm.title.trim(),
-          description: playlistForm.description.trim(),
-          playlistUrl: playlistForm.playlistUrl.trim(),
-          thumbnailUrl: playlistForm.thumbnailUrl.trim(),
-          order: Number(playlistForm.order),
-          status: playlistForm.status
-        });
+        const res = await api.updatePlaylist(editingPlaylist._id, payload);
         if (res.success) {
           setIsPlaylistModalOpen(false);
           await fetchCategoryPlaylists(selectedDomainCategory._id);
           if (selectedDept) fetchDepartmentCategories(selectedDept);
         } else {
-          setPlaylistFormError(res.message || 'Failed to update playlist.');
+          setPlaylistFormError(res.message || 'Failed to update video/playlist.');
         }
       } else {
         const res = await api.createPlaylist({
-          title: playlistForm.title.trim(),
-          description: playlistForm.description.trim(),
-          playlistUrl: playlistForm.playlistUrl.trim(),
-          thumbnailUrl: playlistForm.thumbnailUrl.trim(),
+          ...payload,
           categoryId: selectedDomainCategory._id,
           category: selectedDomainCategory.title,
-          department: selectedDept,
-          departmentId: selectedDept,
-          order: Number(playlistForm.order),
-          status: playlistForm.status
+          department: currentDeptObj?.code || selectedDept,
+          departmentId: currentDeptObj?.id || selectedDept
         });
         if (res.success) {
           setIsPlaylistModalOpen(false);
           await fetchCategoryPlaylists(selectedDomainCategory._id);
           if (selectedDept) fetchDepartmentCategories(selectedDept);
         } else {
-          setPlaylistFormError(res.message || 'Failed to add playlist.');
+          setPlaylistFormError(res.message || 'Failed to add video/playlist.');
         }
       }
     } catch (err) {
-      setPlaylistFormError('Failed to save playlist. Please check your network connection.');
+      setPlaylistFormError('Failed to save YouTube video or playlist. Please check your network connection.');
     } finally {
       setSubmitting(false);
     }
@@ -1483,6 +1524,10 @@ export const ContentManagementPage = () => {
         if (selectedTopic) {
           const mod = isInterviewModule ? 'Interview Preparation' : (isResumeModule ? 'Resume' : (isCommunicationModule ? 'Communication' : (isDomainModule ? 'Domain' : 'Aptitude')));
           fetchTopicContents(selectedTopic._id, mod);
+        } else if (isDomainModule && selectedDomainCategory) {
+          fetchCategoryContents(selectedDomainCategory._id);
+          if (selectedDept) fetchDepartmentCategories(selectedDept);
+          fetchDepartmentOverviewStats();
         }
       } else {
         setPdfError(res.message || 'Unable to save study note PDF.');
@@ -1521,6 +1566,10 @@ export const ContentManagementPage = () => {
           if (selectedTopic) {
             const mod = isInterviewModule ? 'Interview Preparation' : (isResumeModule ? 'Resume' : (isCommunicationModule ? 'Communication' : (isDomainModule ? 'Domain' : 'Aptitude')));
             fetchTopicContents(selectedTopic._id, mod);
+          } else if (isDomainModule && selectedDomainCategory) {
+            fetchCategoryContents(selectedDomainCategory._id);
+            if (selectedDept) fetchDepartmentCategories(selectedDept);
+            fetchDepartmentOverviewStats();
           } else fetchNonAptitudeContents();
         }
       }
@@ -1538,6 +1587,10 @@ export const ContentManagementPage = () => {
         if (selectedTopic) {
           const mod = isInterviewModule ? 'Interview Preparation' : (isResumeModule ? 'Resume' : (isCommunicationModule ? 'Communication' : (isDomainModule ? 'Domain' : 'Aptitude')));
           fetchTopicContents(selectedTopic._id, mod);
+        } else if (isDomainModule && selectedDomainCategory) {
+          fetchCategoryContents(selectedDomainCategory._id);
+          if (selectedDept) fetchDepartmentCategories(selectedDept);
+          fetchDepartmentOverviewStats();
         } else fetchNonAptitudeContents();
       }
     } catch (err) {
@@ -1673,8 +1726,8 @@ export const ContentManagementPage = () => {
       }
       if (selectedDomainCategory) {
         return {
-          title: `${selectedDomainCategory.title} • Playlists`,
-          subtitle: `Manage complete YouTube playlists and curriculum video series under ${selectedDomainCategory.title} for ${currentDeptObj?.name}.`,
+          title: `${selectedDomainCategory.title} • Playlists & Study Notes`,
+          subtitle: `Manage complete YouTube playlists and PDF study notes under ${selectedDomainCategory.title} for ${currentDeptObj?.name}.`,
           breadcrumbs: [
             { label: 'Admin', link: '/admin/dashboard' },
             { label: 'Training', onClick: () => { setSelectedDept(null); setSelectedDomainCategory(null); } },
@@ -1693,7 +1746,15 @@ export const ContentManagementPage = () => {
                 Back to Categories
               </Button>
               <Button size="md" icon={Plus} onClick={handleOpenAddPlaylist}>
-                Add YouTube Playlist
+                Add Video / Playlist
+              </Button>
+              <Button
+                size="md"
+                icon={Upload}
+                onClick={handleOpenAddNote}
+                className="!bg-rose-600 hover:!bg-rose-700 !border-rose-600"
+              >
+                Add Study Note (PDF)
               </Button>
             </div>
           )
@@ -2248,10 +2309,6 @@ export const ContentManagementPage = () => {
                     </p>
                   </div>
                 </div>
-
-                <Button size="md" icon={Plus} onClick={handleOpenAddCategory}>
-                  Add Category
-                </Button>
               </div>
 
               {/* Search bar */}
@@ -2313,6 +2370,10 @@ export const ContentManagementPage = () => {
                             <YoutubeIcon className="w-4 h-4 text-red-600" />
                             <span>{cat.playlistCount !== undefined ? cat.playlistCount : 0} Playlists</span>
                           </div>
+                          <div className="flex items-center gap-1.5 font-bold text-rose-600">
+                            <FileText className="w-4 h-4 text-rose-600" />
+                            <span>{cat.notesCount !== undefined ? cat.notesCount : 0} Notes</span>
+                          </div>
                         </div>
                       </div>
 
@@ -2342,13 +2403,13 @@ export const ContentManagementPage = () => {
                         <Button
                           size="sm"
                           variant="primary"
-                          icon={YoutubeIcon}
+                          icon={ChevronRight}
                           onClick={() => {
                             setSelectedDomainCategory(cat);
                             setSearchQuery('');
                           }}
                         >
-                          Manage Playlists
+                          Manage Content
                         </Button>
                       </div>
                     </div>
@@ -2365,9 +2426,8 @@ export const ContentManagementPage = () => {
             </div>
           )}
 
-          {/* LEVEL 3: CATEGORY TOPICS VIEW */}
-          {/* LEVEL 3: CATEGORY PLAYLISTS VIEW (Domain Knowledge Direct Workflow) */}
-          {selectedDept && selectedDomainCategory && (
+          {/* LEVEL 3: CATEGORY PLAYLISTS & PDF NOTES VIEW */}
+          {selectedDept && selectedDomainCategory && !selectedTopic && (
             <div className="space-y-6">
               {/* Category Overview Banner */}
               <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2380,14 +2440,17 @@ export const ContentManagementPage = () => {
                     <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
                       {domainPlaylists.length} Playlists
                     </span>
+                    <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200/60">
+                      {noteContents.length} Study Notes
+                    </span>
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900">{selectedDomainCategory.title} Playlists</h2>
+                  <h2 className="text-2xl font-black text-slate-900">{selectedDomainCategory.title} Curriculum</h2>
                   <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                    {selectedDomainCategory.description || 'Manage complete YouTube video playlists for this domain category.'}
+                    {selectedDomainCategory.description || 'Manage complete YouTube video playlists and PDF study notes for this domain category.'}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
@@ -2396,20 +2459,41 @@ export const ContentManagementPage = () => {
                   >
                     Edit Category
                   </Button>
-                  <Button size="sm" icon={Plus} onClick={handleOpenAddPlaylist}>
-                    Add YouTube Playlist
-                  </Button>
                 </div>
               </div>
 
-              {/* Playlists Search Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="text-xs font-bold text-slate-600">
-                  Showing {filteredDomainPlaylists.length} playlists under {selectedDomainCategory.title}
+              {/* Sub-Tabs: Playlists & PDF Notes */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveDomainTab('playlists')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+                      activeDomainTab === 'playlists'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <ListVideo className="w-4 h-4 text-red-500" />
+                    <span>Videos & Playlists ({domainPlaylists.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDomainTab('notes')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+                      activeDomainTab === 'notes'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm shadow-rose-500/20'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-rose-500" />
+                    <span>PDF Notes ({noteContents.length})</span>
+                  </button>
                 </div>
-                <div className="w-full sm:w-72">
+
+                <div className="w-full sm:w-64">
                   <Input
-                    placeholder="Search playlists..."
+                    placeholder={activeDomainTab === 'playlists' ? "Search videos and playlists..." : "Search study notes..."}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="text-xs"
@@ -2417,171 +2501,268 @@ export const ContentManagementPage = () => {
                 </div>
               </div>
 
-              {/* Playlists Grid */}
-              {loading ? (
-                <LoadingState message="Loading playlists..." />
-              ) : filteredDomainPlaylists.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredDomainPlaylists.map((pl, idx) => (
-                    <div
-                      key={pl._id}
-                      className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-lg transition-all duration-200 flex flex-col justify-between overflow-hidden group"
-                    >
-                      <div>
-                        {/* 16:9 Thumbnail preview container */}
-                        <div className="aspect-video bg-slate-900 relative overflow-hidden group-hover:opacity-95 transition-opacity">
-                          {pl.thumbnailUrl ? (
-                            <img
-                              src={pl.thumbnailUrl}
-                              alt={pl.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 text-white">
-                              <YoutubeIcon className="w-12 h-12 text-red-500 mb-2" />
-                              <span className="text-xs font-semibold text-slate-300">YouTube Playlist</span>
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-
-                          {/* Order Badge (Top-Left) */}
-                          <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-xs text-white text-[11px] font-black px-2.5 py-0.5 rounded-md shadow-sm">
-                            #{pl.order !== undefined ? pl.order : idx + 1}
-                          </div>
-
-                          {/* Status and Publish Toggle (Top-Right) */}
-                          <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-xs p-1 rounded-lg">
-                            <StatusBadge status={pl.status || 'published'} />
-                            <button
-                              type="button"
-                              onClick={(e) => handleTogglePublishPlaylist(pl, e)}
-                              className="p-1 text-slate-300 hover:text-white rounded transition"
-                              title={pl.status === 'published' ? 'Unpublish Playlist' : 'Publish Playlist'}
-                            >
-                              {pl.status === 'published' ? (
-                                <Eye className="w-3.5 h-3.5 text-emerald-400" />
+              {/* TAB 1: YOUTUBE PLAYLISTS */}
+              {activeDomainTab === 'playlists' && (
+                <div>
+                  {loading ? (
+                    <LoadingState message="Loading playlists..." />
+                  ) : filteredDomainPlaylists.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredDomainPlaylists.map((pl, idx) => (
+                        <div
+                          key={pl._id}
+                          className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-lg transition-all duration-200 flex flex-col justify-between overflow-hidden group"
+                        >
+                          <div>
+                            {/* 16:9 Thumbnail preview container */}
+                            <div className="aspect-video bg-slate-900 relative overflow-hidden group-hover:opacity-95 transition-opacity">
+                              {pl.thumbnailUrl ? (
+                                <img
+                                  src={pl.thumbnailUrl}
+                                  alt={pl.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
                               ) : (
-                                <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 text-white">
+                                  <YoutubeIcon className="w-12 h-12 text-red-500 mb-2" />
+                                  <span className="text-xs font-semibold text-slate-300">YouTube Playlist</span>
+                                </div>
                               )}
-                            </button>
-                          </div>
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-                          {/* Video count badge (Bottom-Right) */}
-                          <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-xs text-white text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-md">
-                            <ListVideo className="w-3.5 h-3.5 text-red-400" />
-                            <span>{pl.videoCount || (pl.videos ? pl.videos.length : 0)} Lectures</span>
-                          </div>
-                        </div>
+                              {/* Order Badge (Top-Left) */}
+                              <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-xs text-white text-[11px] font-black px-2.5 py-0.5 rounded-md shadow-sm">
+                                #{pl.order !== undefined ? pl.order : idx + 1}
+                              </div>
 
-                        {/* Playlist Meta Details */}
-                        <div className="p-5">
-                          {pl.channelTitle && (
-                            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                              <span>{pl.channelTitle}</span>
+                              {/* Status and Publish Toggle (Top-Right) */}
+                              <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-xs p-1 rounded-lg">
+                                <StatusBadge status={pl.status || 'published'} />
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleTogglePublishPlaylist(pl, e)}
+                                  className="p-1 text-slate-300 hover:text-white rounded transition"
+                                  title={pl.status === 'published' ? 'Unpublish Playlist' : 'Publish Playlist'}
+                                >
+                                  {pl.status === 'published' ? (
+                                    <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                                  ) : (
+                                    <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                                  )}
+                                </button>
+                              </div>
+
+                              {/* Video count badge (Bottom-Right) */}
+                              <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-xs text-white text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-md">
+                                <ListVideo className="w-3.5 h-3.5 text-red-400" />
+                                <span>{pl.videoCount === 1 ? '1 Video' : `${pl.videoCount !== undefined ? pl.videoCount : (pl.videos ? pl.videos.length : 0)} Lectures`}</span>
+                              </div>
                             </div>
-                          )}
-                          <h3 className="font-extrabold text-base text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2">
-                            {pl.title}
-                          </h3>
-                          <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
-                            {pl.description || 'Complete lecture playlist for structured concept mastery.'}
-                          </p>
 
-                          {/* URL Box */}
-                          <div className="mt-4 bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <YoutubeIcon className="w-4 h-4 text-red-600 shrink-0" />
-                              <span className="text-[11px] font-mono text-slate-600 truncate">
-                                {pl.playlistUrl}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(pl.playlistUrl);
-                                setCopiedUrlId(pl._id);
-                                setTimeout(() => setCopiedUrlId(null), 2000);
-                              }}
-                              className="p-1 text-slate-400 hover:text-blue-600 rounded transition shrink-0"
-                              title="Copy URL"
-                            >
-                              {copiedUrlId === pl._id ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
+                            {/* Playlist Meta Details */}
+                            <div className="p-5">
+                              {pl.channelTitle && (
+                                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                                  <span>{pl.channelTitle}</span>
+                                </div>
                               )}
-                            </button>
+                              <h3 className="font-extrabold text-base text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2">
+                                {pl.title}
+                              </h3>
+                              <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                                {pl.description || 'Complete lecture playlist for structured concept mastery.'}
+                              </p>
+
+                              {/* URL Box */}
+                              <div className="mt-4 bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <YoutubeIcon className="w-4 h-4 text-red-600 shrink-0" />
+                                  <span className="text-[11px] font-mono text-slate-600 truncate">
+                                    {pl.playlistUrl}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(pl.playlistUrl);
+                                    setCopiedUrlId(pl._id);
+                                    setTimeout(() => setCopiedUrlId(null), 2000);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-blue-600 rounded transition shrink-0"
+                                  title="Copy URL"
+                                >
+                                  {copiedUrlId === pl._id ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Card Footer with Reordering and Actions */}
+                          <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                            {/* Reordering */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={(e) => handleReorderPlaylist(pl, 'up', e)}
+                                className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-slate-400 rounded transition"
+                                title="Move Up"
+                              >
+                                <ChevronLeft className="w-4 h-4 rotate-90" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === filteredDomainPlaylists.length - 1}
+                                onClick={(e) => handleReorderPlaylist(pl, 'down', e)}
+                                className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-slate-400 rounded transition"
+                                title="Move Down"
+                              >
+                                <ChevronRight className="w-4 h-4 rotate-90" />
+                              </button>
+                            </div>
+
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-1.5">
+                              <a
+                                href={pl.playlistUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition flex items-center gap-1 text-xs font-semibold"
+                                title="Watch on YouTube"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={(e) => handleOpenEditPlaylist(pl, e)}
+                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                title="Edit Playlist"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteConfirm({ open: true, type: 'playlist', item: pl });
+                                }}
+                                className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="Delete Playlist"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-
-                      {/* Card Footer with Reordering and Actions */}
-                      <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                        {/* Reordering */}
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            disabled={idx === 0}
-                            onClick={(e) => handleReorderPlaylist(pl, 'up', e)}
-                            className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-slate-400 rounded transition"
-                            title="Move Up"
-                          >
-                            <ChevronLeft className="w-4 h-4 rotate-90" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={idx === filteredDomainPlaylists.length - 1}
-                            onClick={(e) => handleReorderPlaylist(pl, 'down', e)}
-                            className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-slate-400 rounded transition"
-                            title="Move Down"
-                          >
-                            <ChevronRight className="w-4 h-4 rotate-90" />
-                          </button>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-1.5">
-                          <a
-                            href={pl.playlistUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition flex items-center gap-1 text-xs font-semibold"
-                            title="Watch on YouTube"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                          <button
-                            type="button"
-                            onClick={(e) => handleOpenEditPlaylist(pl, e)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                            title="Edit Playlist"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteConfirm({ open: true, type: 'playlist', item: pl });
-                            }}
-                            className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                            title="Delete Playlist"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <EmptyState
+                      title={`No Videos or Playlists in ${selectedDomainCategory.title}`}
+                      description={`Add individual YouTube videos or full lecture playlists under ${selectedDomainCategory.title}.`}
+                      actionText="Add Video / Playlist"
+                      onAction={handleOpenAddPlaylist}
+                    />
+                  )}
                 </div>
-              ) : (
-                <EmptyState
-                  title={`No Playlists in ${selectedDomainCategory.title}`}
-                  description={`Add a complete YouTube playlist to provide comprehensive video lectures under ${selectedDomainCategory.title}.`}
-                  actionText="Add YouTube Playlist"
-                  onAction={handleOpenAddPlaylist}
-                />
+              )}
+
+              {/* TAB 2: PDF STUDY NOTES */}
+              {activeDomainTab === 'notes' && (
+                <div>
+                  {loading ? (
+                    <LoadingState message="Loading PDF notes..." />
+                  ) : filteredNotes.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredNotes.map((note) => (
+                        <div
+                          key={note._id}
+                          className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 flex flex-col justify-between hover:shadow-md transition-all group"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 flex items-center gap-1">
+                                <FileText className="w-3 h-3 text-rose-600" />
+                                PDF {note.fileSize ? `• ${note.fileSize}` : ''}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <StatusBadge status={note.status || 'published'} />
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePublish(note, 'note')}
+                                  className="p-1 text-slate-400 hover:text-slate-800 rounded transition"
+                                  title={note.status === 'published' ? 'Unpublish Note' : 'Publish Note'}
+                                >
+                                  {note.status === 'published' ? (
+                                    <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            <h4 className="font-extrabold text-base text-slate-900 group-hover:text-rose-700 transition-colors line-clamp-2">
+                              {note.title}
+                            </h4>
+
+                            {note.fileName && (
+                              <p className="text-[11px] font-mono text-slate-400 mt-1 truncate">
+                                📄 {note.fileName}
+                              </p>
+                            )}
+
+                            <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                              {note.description || 'Topic reference note in PDF format.'}
+                            </p>
+                          </div>
+
+                          <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              icon={FileText}
+                              onClick={() => setActiveNotePreview(note)}
+                            >
+                              View PDF
+                            </Button>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditNote(note)}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                title="Edit Note"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirm({ open: true, type: 'note', item: note })}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="Delete Note"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      title={`No PDF Notes in ${selectedDomainCategory.title}`}
+                      description={`Upload study notes, syllabus materials, and formula cheat sheets in PDF format (max 5MB) for ${selectedDomainCategory.title}.`}
+                      actionText="Add Study Note (PDF)"
+                      onAction={handleOpenAddNote}
+                    />
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -5487,11 +5668,13 @@ export const ContentManagementPage = () => {
         title={editingNote ? 'Edit Study Note (PDF)' : 'Add Study Note (PDF)'}
       >
         <form onSubmit={handleSaveNote} className="space-y-4">
-          {selectedTopic && (
+          {(selectedTopic || (isDomainModule && selectedDomainCategory)) && (
             <div className="p-3 bg-rose-50/70 border border-rose-200/80 rounded-xl text-xs text-rose-900 flex items-center justify-between">
-              <span className="font-bold">Topic: {selectedTopic.title}</span>
+              <span className="font-bold">
+                {selectedTopic ? `Topic: ${selectedTopic.title}` : `Category: ${selectedDomainCategory?.title}`}
+              </span>
               <span className="text-[11px] font-semibold text-rose-700">
-                {isDomainModule ? `(${currentDeptObj?.code || selectedDept} • ${selectedDomainCategory?.title})` : `(${selectedTopic.category})`}
+                {isDomainModule ? `(${currentDeptObj?.code || selectedDept} • ${selectedDomainCategory?.title})` : `(${selectedTopic?.category || noteForm.category})`}
               </span>
             </div>
           )}
@@ -5703,13 +5886,13 @@ export const ContentManagementPage = () => {
         />
       )}
 
-      {/* Modal: Add / Edit YouTube Playlist */}
+      {/* Modal: Add / Edit YouTube Video or Playlist */}
       <Modal
         isOpen={isPlaylistModalOpen}
         onClose={() => {
           if (!submitting) setIsPlaylistModalOpen(false);
         }}
-        title={editingPlaylist ? 'Edit YouTube Playlist' : 'Add YouTube Playlist'}
+        title={editingPlaylist ? 'Edit Video / Playlist' : 'Add Video or Playlist'}
         subtitle={`${currentDeptObj?.code || selectedDept} • ${selectedDomainCategory?.title}`}
         size="lg"
       >
@@ -5728,14 +5911,14 @@ export const ContentManagementPage = () => {
             </div>
           )}
 
-          {/* YouTube Playlist URL with Auto Detect */}
+          {/* YouTube Video or Playlist URL with Auto Detect */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              YouTube Playlist URL <span className="text-rose-500">*</span>
+              YouTube Video or Playlist URL <span className="text-rose-500">*</span>
             </label>
             <div className="flex gap-2">
               <Input
-                placeholder="https://www.youtube.com/playlist?list=PL..."
+                placeholder="https://www.youtube.com/watch?v=... or https://www.youtube.com/playlist?list=..."
                 value={playlistForm.playlistUrl}
                 onChange={(e) => {
                   setPlaylistForm({ ...playlistForm, playlistUrl: e.target.value });
@@ -5758,17 +5941,17 @@ export const ContentManagementPage = () => {
               </Button>
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Paste the link to the full YouTube playlist. Click <strong>Auto Detect</strong> to automatically retrieve the playlist title, thumbnail, channel, and lecture count.
+              Paste a single YouTube video URL or a full playlist link. Click <strong>Auto Detect</strong> to automatically retrieve title, thumbnail, channel, and lectures.
             </p>
           </div>
 
-          {/* Playlist Title */}
+          {/* Video or Playlist Title */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Playlist Title <span className="text-rose-500">*</span>
+              Video or Playlist Title <span className="text-rose-500">*</span>
             </label>
             <Input
-              placeholder="e.g. C Programming Full Course for Placements"
+              placeholder="e.g. C Programming Full Course or Pointers in C"
               value={playlistForm.title}
               onChange={(e) => setPlaylistForm({ ...playlistForm, title: e.target.value })}
               className="text-xs"
@@ -5783,7 +5966,7 @@ export const ContentManagementPage = () => {
             </label>
             <textarea
               rows={3}
-              placeholder="Brief summary of concepts covered in this lecture series..."
+              placeholder="Brief summary of concepts covered in this video or lecture series..."
               value={playlistForm.description}
               onChange={(e) => setPlaylistForm({ ...playlistForm, description: e.target.value })}
               className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
@@ -5865,12 +6048,12 @@ export const ContentManagementPage = () => {
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-red-950 text-white">
                     <YoutubeIcon className="w-8 h-8 text-red-500 mb-1" />
-                    <span className="text-[10px] text-slate-300">Playlist Preview</span>
+                    <span className="text-[10px] text-slate-300">Video Preview</span>
                   </div>
                 )}
                 <div className="absolute bottom-2 right-2 bg-black/85 text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
                   <ListVideo className="w-3 h-3 text-red-400" />
-                  <span>{playlistForm.videoCount || 0} Lectures</span>
+                  <span>{playlistForm.videoCount === 1 ? '1 Video' : `${playlistForm.videoCount || 0} Lectures`}</span>
                 </div>
               </div>
               {playlistForm.channelTitle && (
@@ -5879,10 +6062,10 @@ export const ContentManagementPage = () => {
                 </div>
               )}
               <div className="text-xs font-extrabold text-slate-900 line-clamp-1">
-                {playlistForm.title || 'Playlist Title'}
+                {playlistForm.title || 'Video / Playlist Title'}
               </div>
               <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">
-                {playlistForm.description || 'Short playlist overview description will appear here...'}
+                {playlistForm.description || 'Short overview description will appear here...'}
               </div>
             </div>
           </div>
@@ -5905,7 +6088,7 @@ export const ContentManagementPage = () => {
               disabled={submitting}
               icon={editingPlaylist ? Edit2 : Plus}
             >
-              {submitting ? 'Saving...' : editingPlaylist ? 'Update Playlist' : 'Add YouTube Playlist'}
+              {submitting ? 'Saving...' : editingPlaylist ? 'Update Content' : 'Save Video / Playlist'}
             </Button>
           </div>
         </form>

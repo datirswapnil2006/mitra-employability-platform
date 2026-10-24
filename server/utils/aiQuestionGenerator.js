@@ -73,7 +73,7 @@ const generateQuestionsAI = async ({
   existingQuestions = []
 }) => {
   const targetCount = Math.max(1, parseInt(count, 10) || 5);
-  const actualBatchSize = Math.max(5, Math.min(10, parseInt(batchSize, 10) || 5));
+  const actualBatchSize = Math.max(5, Math.min(10, parseInt(batchSize, 10) || Math.min(targetCount, 10)));
 
   const allAccepted = [];
   const accumulatedPool = Array.isArray(existingQuestions)

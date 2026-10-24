@@ -975,7 +975,10 @@ exports.createPlaylist = async (req, res) => {
       department: deptName,
       departmentId,
       order,
-      status
+      status,
+      videoCount,
+      channelTitle,
+      videos
     } = req.body;
 
     if (!playlistUrl || !playlistUrl.trim()) {
@@ -992,9 +995,22 @@ exports.createPlaylist = async (req, res) => {
     }
 
     const extractedPlaylistId = extractPlaylistId(playlistUrl);
+    let extractedVideoId = null;
     if (!extractedPlaylistId) {
-      return res.status(400).json({ success: false, message: 'Invalid YouTube playlist URL. URL must contain a valid playlist ID (e.g., list=PL...)' });
+      const ytMatch = playlistUrl.trim().match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|live\/|.+\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (ytMatch && ytMatch[1]) {
+        extractedVideoId = ytMatch[1];
+      }
     }
+
+    if (!extractedPlaylistId && !extractedVideoId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid YouTube URL. Please provide a valid YouTube video (watch?v=...) or playlist (list=...) URL.'
+      });
+    }
+
+    const effectivePlaylistId = extractedPlaylistId || extractedVideoId;
 
     // Try fetching YouTube metadata (title, thumbnail, lecture list) if not already fully supplied
     let meta = null;
@@ -1004,18 +1020,29 @@ exports.createPlaylist = async (req, res) => {
       // Graceful fallback
     }
 
-    const finalTitle = (title && title.trim()) || (meta && meta.title) || 'YouTube Playlist';
-    const finalThumbnail = thumbnailUrl || (meta && meta.thumbnailUrl) || '';
+    const finalTitle = (title && title.trim()) || (meta && meta.title) || (extractedVideoId ? 'YouTube Video' : 'YouTube Playlist');
+    const finalThumbnail = thumbnailUrl || (meta && meta.thumbnailUrl) || (extractedVideoId ? `https://img.youtube.com/vi/${extractedVideoId}/hqdefault.jpg` : '');
     const finalDescription = (description !== undefined ? description : (meta && meta.description)) || '';
-    const finalChannel = (meta && meta.channelTitle) || '';
-    const finalVideos = (meta && meta.videos) || [];
-    const finalVideoCount = meta && meta.videoCount ? meta.videoCount : finalVideos.length;
+    const finalChannel = channelTitle || (meta && meta.channelTitle) || '';
+    let finalVideos = (videos && Array.isArray(videos) && videos.length > 0 ? videos : (meta && meta.videos)) || [];
+    if (finalVideos.length === 0 && extractedVideoId) {
+      finalVideos = [{
+        videoId: extractedVideoId,
+        title: finalTitle,
+        thumbnailUrl: finalThumbnail,
+        watchUrl: `https://www.youtube.com/watch?v=${extractedVideoId}`
+      }];
+    }
+
+    const finalVideoCount = videoCount !== undefined && Number(videoCount) > 0
+      ? Number(videoCount)
+      : (meta && meta.videoCount ? meta.videoCount : (finalVideos.length > 0 ? finalVideos.length : 1));
 
     const playlist = await Playlist.create({
       title: finalTitle,
       description: finalDescription,
       playlistUrl: playlistUrl.trim(),
-      playlistId: extractedPlaylistId,
+      playlistId: effectivePlaylistId,
       thumbnailUrl: finalThumbnail,
       videoCount: finalVideoCount,
       channelTitle: finalChannel,
@@ -1043,7 +1070,10 @@ exports.updatePlaylist = async (req, res) => {
       playlistUrl,
       thumbnailUrl,
       order,
-      status
+      status,
+      videoCount,
+      channelTitle,
+      videos
     } = req.body;
 
     const playlist = await Playlist.findById(req.params.id);
@@ -1058,14 +1088,26 @@ exports.updatePlaylist = async (req, res) => {
     if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
     if (order !== undefined) updateData.order = Number(order);
     if (status !== undefined) updateData.status = status;
+    if (videoCount !== undefined) updateData.videoCount = Number(videoCount);
+    if (channelTitle !== undefined) updateData.channelTitle = channelTitle;
+    if (videos !== undefined && Array.isArray(videos)) updateData.videos = videos;
 
     if (playlistUrl && playlistUrl.trim() !== playlist.playlistUrl) {
       const extractedPlaylistId = extractPlaylistId(playlistUrl);
+      let extractedVideoId = null;
       if (!extractedPlaylistId) {
-        return res.status(400).json({ success: false, message: 'Invalid YouTube playlist URL.' });
+        const ytMatch = playlistUrl.trim().match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|live\/|.+\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        if (ytMatch && ytMatch[1]) {
+          extractedVideoId = ytMatch[1];
+        }
       }
+
+      if (!extractedPlaylistId && !extractedVideoId) {
+        return res.status(400).json({ success: false, message: 'Invalid YouTube video or playlist URL.' });
+      }
+
       updateData.playlistUrl = playlistUrl.trim();
-      updateData.playlistId = extractedPlaylistId;
+      updateData.playlistId = extractedPlaylistId || extractedVideoId;
 
       try {
         const meta = await extractUrlMetadata(playlistUrl);

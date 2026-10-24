@@ -470,6 +470,7 @@ exports.generateQuestionsForReview = async (req, res) => {
       customPrompt,
       difficulty = 'Medium',
       questionCount = 5,
+      batchSize,
       existingQuestions = []
     } = req.body;
 
@@ -491,6 +492,7 @@ exports.generateQuestionsForReview = async (req, res) => {
       customPrompt: effectivePrompt,
       difficulty,
       count,
+      batchSize: parseInt(batchSize, 10) || Math.min(count, 10),
       existingQuestions
     });
 
