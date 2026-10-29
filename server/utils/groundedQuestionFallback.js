@@ -5,10 +5,63 @@
  * and Psychometric evaluations.
  */
 
+/**
+ * Shuffles options of a grounded question using Fisher-Yates, preserving
+ * the exact correctAnswer text. Likert scales (psychometric) are not shuffled.
+ */
+const shuffleGroundedOptions = (q) => {
+  if (!q || !Array.isArray(q.options) || q.options.length <= 1) return q;
+  if (q.type === 'psychometric') return q;
+  const shuffled = [...q.options];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return {
+    ...q,
+    options: shuffled
+  };
+};
+
+const isGenericTopic = (topic = '', category = '', module = '') => {
+  const t = String(topic || '').toLowerCase().trim();
+  const c = String(category || '').toLowerCase().trim();
+  const m = String(module || '').toLowerCase().trim();
+  if (!t || t === 'general' || t === 'all' || t === 'all topics' || t === 'mixed' || t === 'arithmetic' || t === 'puzzles' || t === 'partial' || t.startsWith('initial') || t.startsWith('test') || t.startsWith('sample')) return true;
+  if (t === c || t === m) return true;
+  if (t.includes('general') || t === 'quantitative aptitude' || t === 'logical reasoning' || t === 'verbal ability' || t === 'aptitude' || t === 'math') return true;
+  return false;
+};
+
 // 1. QUANTITATIVE APTITUDE GENERATOR
-const generateQuantQuestion = (seed, difficulty = 'Medium') => {
+const generateQuantQuestion = (seed, difficulty = 'Medium', topic = '') => {
   const i = Math.abs(seed);
-  const typeIndex = i % 8;
+  let typeIndex = i % 8;
+
+  if (topic && !isGenericTopic(topic, 'Quantitative Aptitude', 'Aptitude')) {
+    const clean = topic.toLowerCase().trim();
+    if (clean.includes('time') && clean.includes('work') || clean.includes('pipe') || clean.includes('cistern')) {
+      typeIndex = 0;
+    } else if (clean.includes('profit') || clean.includes('loss') || clean.includes('discount')) {
+      typeIndex = 1;
+    } else if (clean.includes('interest') || clean.includes('simple interest') || clean.includes('compound interest') || clean.includes('si') || clean.includes('ci')) {
+      typeIndex = 2;
+    } else if (clean.includes('speed') || clean.includes('distance') || clean.includes('train') || clean.includes('boat')) {
+      typeIndex = 3;
+    } else if (clean.includes('probab') || clean.includes('dice') || clean.includes('urn')) {
+      typeIndex = 4;
+    } else if (clean.includes('percent') || clean.includes('ratio') || clean.includes('proportion')) {
+      typeIndex = 5;
+    } else if (clean.includes('number') || clean.includes('divisib') || clean.includes('remainder')) {
+      typeIndex = 6;
+    } else if (clean.includes('age') || clean.includes('average') || clean.includes('mean')) {
+      typeIndex = 7;
+    } else {
+      // Specific topic requested that is not covered by quantitative fallback templates.
+      // Do not silently insert an unrelated question!
+      return null;
+    }
+  }
 
   switch (typeIndex) {
     case 0: { // Time & Work
@@ -173,9 +226,27 @@ const generateQuantQuestion = (seed, difficulty = 'Medium') => {
 };
 
 // 2. LOGICAL REASONING GENERATOR
-const generateLogicalQuestion = (seed, difficulty = 'Medium') => {
+const generateLogicalQuestion = (seed, difficulty = 'Medium', topic = '') => {
   const i = Math.abs(seed);
-  const typeIndex = i % 5;
+  let typeIndex = i % 5;
+
+  if (topic && !isGenericTopic(topic, 'Logical Reasoning', 'Aptitude')) {
+    const clean = topic.toLowerCase().trim();
+    if (clean.includes('coding') || clean.includes('decoding') || clean.includes('cipher')) {
+      typeIndex = 0;
+    } else if (clean.includes('blood') || clean.includes('relation') || clean.includes('kinship')) {
+      typeIndex = 1;
+    } else if (clean.includes('syllogism') || clean.includes('deduction')) {
+      typeIndex = 2;
+    } else if (clean.includes('series') || clean.includes('progression') || clean.includes('sequence')) {
+      typeIndex = 3;
+    } else if (clean.includes('direction') || clean.includes('distance') || clean.includes('sense')) {
+      typeIndex = 4;
+    } else {
+      // Specific topic not covered by logical fallback templates.
+      return null;
+    }
+  }
 
   switch (typeIndex) {
     case 0: { // Coding Decoding
@@ -527,46 +598,51 @@ const generateGroundedQuestion = ({
   const cleanModule = String(module || '').toLowerCase();
   const cleanTopic = String(topic || '').toLowerCase();
 
+  let generated = null;
+
   // 1. SQL / DBMS
   if (type === 'sql' || cleanCategory.includes('sql') || cleanCategory.includes('dbms') || cleanTopic.includes('sql')) {
-    return generateSqlQuestion(seed, difficulty);
+    generated = generateSqlQuestion(seed, difficulty);
   }
-
   // 2. Coding / Language (C, C++, Java, Python)
-  if (type === 'coding' || type === 'output' ||
+  else if (type === 'coding' || type === 'output' ||
       cleanCategory.includes('java') || cleanCategory.includes('python') || cleanCategory.includes('c++') || cleanCategory.includes('c programming') ||
       cleanTopic.includes('java') || cleanTopic.includes('python') || cleanTopic.includes('c++')) {
-    const lang = cleanCategory.includes('python') ? 'Python' :
-                 (cleanCategory.includes('c++') ? 'C++' : (cleanCategory.includes('c programming') || cleanCategory === 'c' ? 'C' : 'Java'));
-    return generateProgrammingQuestion(seed, lang, difficulty);
+    const lang = cleanCategory.includes('python') || cleanTopic.includes('python') ? 'Python' :
+                 (cleanCategory.includes('c++') || cleanTopic.includes('c++') ? 'C++' : (cleanCategory.includes('c programming') || cleanTopic.includes('c programming') || cleanCategory === 'c' ? 'C' : 'Java'));
+    generated = generateProgrammingQuestion(seed, lang, difficulty);
   }
-
   // 3. Psychometric
-  if (type === 'psychometric' || cleanModule.includes('psychometric') || cleanCategory.includes('behavior') || cleanCategory.includes('personality')) {
-    return generatePsychometricQuestion(seed, category, difficulty);
+  else if (type === 'psychometric' || cleanModule.includes('psychometric') || cleanCategory.includes('behavior') || cleanCategory.includes('personality')) {
+    generated = generatePsychometricQuestion(seed, category, difficulty);
   }
-
   // 4. Aptitude Sections
-  if (cleanCategory.includes('quant') || cleanTopic.includes('quant') || cleanCategory.includes('arithmetic')) {
-    return generateQuantQuestion(seed, difficulty);
+  else if (cleanCategory.includes('quant') || cleanTopic.includes('quant') || cleanCategory.includes('arithmetic')) {
+    generated = generateQuantQuestion(seed, difficulty, topic);
   }
-  if (cleanCategory.includes('logic') || cleanCategory.includes('reason') || cleanTopic.includes('reason')) {
-    return generateLogicalQuestion(seed, difficulty);
+  else if (cleanCategory.includes('logic') || cleanCategory.includes('reason') || cleanTopic.includes('reason')) {
+    generated = generateLogicalQuestion(seed, difficulty, topic);
   }
-  if (cleanCategory.includes('verbal') || cleanCategory.includes('english') || cleanTopic.includes('verbal')) {
-    return generateVerbalQuestion(seed, difficulty);
+  else if (cleanCategory.includes('verbal') || cleanCategory.includes('english') || cleanTopic.includes('verbal')) {
+    generated = generateVerbalQuestion(seed, difficulty);
   }
-
   // 5. Technical Domain
-  if (cleanModule.includes('domain') || department || cleanCategory.includes('cse') || cleanCategory.includes('ece') || cleanCategory.includes('mech')) {
-    return generateTechnicalDomainQuestion(seed, department || category || 'CSE', difficulty);
+  else if (cleanModule.includes('domain') || department || cleanCategory.includes('cse') || cleanCategory.includes('ece') || cleanCategory.includes('mech')) {
+    generated = generateTechnicalDomainQuestion(seed, department || category || 'CSE', difficulty);
+  }
+  // Default balanced Aptitude if topic is generic
+  else if (isGenericTopic(topic, category, module)) {
+    const cycle = Math.abs(seed) % 3;
+    if (cycle === 0) generated = generateQuantQuestion(seed, difficulty, topic);
+    else if (cycle === 1) generated = generateLogicalQuestion(seed, difficulty, topic);
+    else generated = generateVerbalQuestion(seed, difficulty);
+  } else {
+    // Specific topic outside known domains - cannot produce topic-specific question.
+    return null;
   }
 
-  // Default balanced Aptitude
-  const cycle = Math.abs(seed) % 3;
-  if (cycle === 0) return generateQuantQuestion(seed, difficulty);
-  if (cycle === 1) return generateLogicalQuestion(seed, difficulty);
-  return generateVerbalQuestion(seed, difficulty);
+  if (!generated) return null;
+  return shuffleGroundedOptions(generated);
 };
 
 /**
@@ -593,6 +669,10 @@ const generateGroundedQuestionsBatch = ({
       difficulty,
       seed: seedOffset + idx + 1
     });
+    if (!q) {
+      // Cannot produce topic-specific fallback question; do not pad with unrelated questions
+      break;
+    }
     result.push({
       ...q,
       section: topic || category || module,
@@ -608,6 +688,7 @@ const generateGroundedQuestionsBatch = ({
 module.exports = {
   generateGroundedQuestion,
   generateGroundedQuestionsBatch,
+  shuffleGroundedOptions,
   generateQuantQuestion,
   generateLogicalQuestion,
   generateVerbalQuestion,

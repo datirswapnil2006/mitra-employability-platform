@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const AssessmentGenerationJob = require('../modules/assessments/generationJob.model');
 const { Assessment } = require('../modules/assessments/assessment.models');
 const { generateQuestionsWithGemini } = require('./geminiClient');
+const { retrieveQuestionBankFallback } = require('./aiQuestionGenerator');
 const { validateQuestionBatch } = require('./questionValidator');
 const { checkIsDuplicate, filterUniqueQuestions, computeQuestionHash } = require('./questionDeduplicator');
 const { generateGroundedQuestionsBatch } = require('./groundedQuestionFallback');
@@ -220,7 +221,9 @@ STRICT SPECIFICATION RULES:
 4. Provide a thorough, step-by-step explanation.
 5. If Question Type is "sql", include a schemaSql definition and referenceQuery.
 6. If Question Type is "coding", provide an explicit codeSnippet.
-7. Return ONLY a valid JSON array complying with the requested response schema.`;
+7. Return ONLY a valid JSON array complying with the requested response schema.
+8. Every question MUST strictly evaluate concepts from the section topic "${section.topic}". Do NOT generate questions outside this topic.
+9. Distribute correct answers across varying option positions (A, B, C, D) without predictable patterns.`;
 };
 
 /**
@@ -232,6 +235,10 @@ const createGenerationJob = async ({
   module: moduleName,
   category,
   department,
+  topic,
+  prompt,
+  customPrompt,
+  questionCount,
   difficulty,
   timeLimitMinutes,
   passingScorePercentage,
@@ -239,6 +246,7 @@ const createGenerationJob = async ({
   sections,
   batchSize = 5,
   assessmentId = null,
+  provider = null,
   userId = null
 }) => {
   const normalizedSections = normalizeAssessmentSections({
@@ -246,8 +254,11 @@ const createGenerationJob = async ({
     module: moduleName,
     category,
     department,
+    topic,
+    prompt,
+    customPrompt,
     difficulty,
-    questionCount: sections ? undefined : 5
+    questionCount: questionCount || (sections ? undefined : 5)
   });
 
   const requestedCount = normalizedSections.reduce((acc, s) => acc + s.questionCount, 0);
@@ -294,12 +305,17 @@ const createGenerationJob = async ({
       module: moduleName,
       category,
       department,
+      topic,
+      prompt,
+      customPrompt,
+      questionCount: requestedCount,
       difficulty,
       timeLimitMinutes,
       passingScorePercentage,
       scoringRules,
       sections: normalizedSections,
-      batchSize
+      batchSize,
+      provider: (provider || process.env.AI_PROVIDER || 'gemini').toLowerCase().trim()
     },
     requestedCount,
     acceptedCount: 0,
@@ -338,8 +354,47 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
     await job.save();
 
     const sections = job.config.sections;
-    const batchSize = Math.max(5, Math.min(10, job.config.batchSize || 5));
+    const batchSize = Math.max(1, Math.min(10, job.config.batchSize || parseInt(process.env.GEMINI_BATCH_SIZE, 10) || 5));
     const accumulatedPool = [...job.acceptedQuestions];
+    let resolvedProviderUsed = (job.config?.provider || process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
+
+    // Fetch relevant existing questions from recent official assessments for cross-assessment deduplication
+    // (Preserves separation: checks official Assessment collection, NOT the Practice Question Bank)
+    const existingOfficialQuestions = [];
+    try {
+      const filter = { status: { $in: ['published', 'draft'] } };
+      if (job.config.module && job.config.module !== 'All') {
+        filter.module = job.config.module;
+      }
+      if (job.config.category && job.config.category !== 'General') {
+        filter.category = job.config.category;
+      }
+      if (job.assessmentId) {
+        filter._id = { $ne: job.assessmentId };
+      }
+
+      const recentAssessments = await Assessment.find(filter)
+        .select('questions.questionText')
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .lean();
+
+      if (Array.isArray(recentAssessments)) {
+        for (const a of recentAssessments) {
+          if (Array.isArray(a.questions)) {
+            for (const q of a.questions) {
+              if (q && q.questionText) {
+                existingOfficialQuestions.push(q);
+                if (existingOfficialQuestions.length >= 25) break;
+              }
+            }
+          }
+          if (existingOfficialQuestions.length >= 25) break;
+        }
+      }
+    } catch (fetchErr) {
+      // Non-fatal, continue with accumulated pool
+    }
 
     for (let sIdx = 0; sIdx < sections.length; sIdx++) {
       const section = sections[sIdx];
@@ -366,18 +421,28 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
           continue;
         }
 
+        // Rate-limit aware pacing between sequential API calls to protect 15 RPM free-tier limit
+        if (bIdx > 0 || sIdx > 0) {
+          const interBatchDelay = parseInt(process.env.GEMINI_INTER_BATCH_DELAY_MS, 10) || 1200;
+          await new Promise((r) => setTimeout(r, interBatchDelay));
+        }
+
         batch.status = 'in_progress';
         batch.attempts += 1;
 
         let batchAccepted = [];
         let batchError = null;
 
-        // Try Gemini structured output first
-        try {
+        // Deduplication pool combining existing official assessment questions with current job accepted questions
+        const deduplicationPool = [...existingOfficialQuestions, ...accumulatedPool];
+
+        let providerUsed = 'gemini';
+
+        const generateViaGemini = async () => {
           const prompt = buildSectionBatchPrompt({
             section,
             count: needed,
-            existingQuestions: accumulatedPool.map((q) => q.questionText)
+            existingQuestions: deduplicationPool.map((q) => (typeof q === 'string' ? q : q.questionText))
           });
 
           const geminiRes = await generateQuestionsWithGemini({
@@ -393,7 +458,7 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
             job.tokenUsage.estimatedCostUsd += geminiRes.tokenUsage.estimatedCostUsd;
           }
 
-          // Validate every question with strict Zod schema & deterministic checks
+          // Validate every question with strict Zod schema & deterministic checks (including option shuffling)
           const { accepted: validList, rejected } = validateQuestionBatch(geminiRes.questions, {
             type: section.type,
             section: section.name,
@@ -415,10 +480,10 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
             });
           }
 
-          // Filter duplicates against accumulated pool
+          // Filter duplicates against deduplication pool (cross-official assessment + current job)
           const { accepted: uniqueList, rejectedDuplicates } = filterUniqueQuestions(
             validList,
-            accumulatedPool,
+            deduplicationPool,
             0.75
           );
 
@@ -427,13 +492,19 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
               timestamp: new Date(),
               section: section.name,
               batchIndex: bIdx,
-              error: `Deduplication rejected ${rejectedDuplicates.length} duplicates`,
+              error: `Deduplication rejected ${rejectedDuplicates.length} duplicates against existing official assessments`,
               code: 'DUPLICATE_REJECTION',
               isTransient: false
             });
           }
 
-          batchAccepted = uniqueList;
+          return uniqueList;
+        };
+
+        // Sole AI provider execution: Google Gemini
+        try {
+          batchAccepted = await generateViaGemini();
+          providerUsed = 'gemini';
         } catch (genErr) {
           batchError = genErr;
           const isTransient = !genErr.isPermanent;
@@ -441,14 +512,66 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
             timestamp: new Date(),
             section: section.name,
             batchIndex: bIdx,
-            error: genErr.message,
+            error: `Gemini error: ${genErr.message}`,
             code: genErr.code || genErr.status || 'GEN_ERROR',
             isTransient
           });
+        }
 
-          // Top up with deterministic grounded questions so the batch does not halt incomplete
+        // When Gemini fails or generates fewer valid questions than requested:
+        // 1. Preserve all valid questions already generated by Gemini (in batchAccepted)
+        // 2. Calculate remaining question count (needed - batchAccepted.length)
+        // 3. Retrieve eligible questions from existing Question Bank
+        // 4. Exclude questions already selected (in deduplicationPool and batchAccepted)
+        // 5. Validate the combined question list
+        if (batchAccepted.length < needed) {
+          const deficit = needed - batchAccepted.length;
+          try {
+            const qbFallback = await retrieveQuestionBankFallback({
+              count: deficit,
+              module: job.config.module,
+              category: section.category,
+              department: section.department,
+              topic: section.topic,
+              prompt: job.config.prompt || section.topic || '',
+              difficulty: section.difficulty,
+              existingQuestions: [...deduplicationPool, ...batchAccepted]
+            });
+
+            if (qbFallback && qbFallback.length > 0) {
+              const { accepted: validFallback } = validateQuestionBatch(qbFallback, {
+                type: section.type,
+                section: section.name,
+                department: section.department,
+                category: section.category,
+                topic: section.topic,
+              prompt: job.config.prompt || section.topic || '',
+                difficulty: section.difficulty,
+                marks: section.marks
+              });
+
+              for (const fbQ of validFallback) {
+                if (batchAccepted.length >= needed) break;
+                const check = checkIsDuplicate(fbQ, [...deduplicationPool, ...batchAccepted]);
+                if (!check.isDuplicate) {
+                  batchAccepted.push(fbQ);
+                }
+              }
+
+              if (batchAccepted.length > 0) {
+                providerUsed = 'gemini';
+              }
+            }
+          } catch (qbErr) {
+            console.warn(`[Batch Engine]: Question Bank fallback error: ${qbErr.message}`);
+          }
+        }
+
+        // If Question Bank still had a deficit, fallback to deterministic grounded bank for matching topic
+        if (batchAccepted.length < needed) {
+          const remainingDeficit = needed - batchAccepted.length;
           const fallbackList = generateGroundedQuestionsBatch({
-            count: needed,
+            count: remainingDeficit,
             type: section.type,
             module: job.config.module,
             category: section.category,
@@ -468,16 +591,20 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
             marks: section.marks
           });
 
-          const { accepted: uniqueFallback } = filterUniqueQuestions(
-            validFallback,
-            accumulatedPool,
-            0.8
-          );
-
-          batchAccepted = uniqueFallback;
+          for (const fbQ of validFallback) {
+            if (batchAccepted.length >= needed) break;
+            const check = checkIsDuplicate(fbQ, [...deduplicationPool, ...batchAccepted]);
+            if (!check.isDuplicate) {
+              batchAccepted.push(fbQ);
+            }
+          }
         }
 
-        // Top up any remaining deficit in this batch to guarantee exact count
+        if (providerUsed) {
+          resolvedProviderUsed = providerUsed;
+        }
+
+        // Top up any remaining deficit in this batch only if valid topic-specific questions can be produced
         if (batchAccepted.length < needed) {
           const deficit = needed - batchAccepted.length;
           const topUpList = generateGroundedQuestionsBatch({
@@ -493,11 +620,24 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
 
           for (const tQ of topUpList) {
             if (batchAccepted.length >= needed) break;
-            const check = checkIsDuplicate(tQ, [...accumulatedPool, ...batchAccepted]);
+            const check = checkIsDuplicate(tQ, [...deduplicationPool, ...batchAccepted]);
             if (!check.isDuplicate) {
               batchAccepted.push(tQ);
             }
           }
+        }
+
+        // If a shortfall still exists because no topic-specific fallback was available, report shortfall
+        if (batchAccepted.length < needed) {
+          const shortfall = needed - batchAccepted.length;
+          job.errorDetails.push({
+            timestamp: new Date(),
+            section: section.name,
+            batchIndex: bIdx,
+            error: `Topic shortfall: Could not generate ${shortfall} verified question(s) strictly matching topic "${section.topic}". Reported shortfall without inserting unrelated questions.`,
+            code: 'TOPIC_SHORTFALL',
+            isTransient: false
+          });
         }
 
         // Add verified unique questions to pool and job
@@ -561,10 +701,12 @@ const runGenerationJob = async (jobId, { maxBatchAttempts = 2 } = {}) => {
         questions: job.acceptedQuestions,
         totalMarks: job.acceptedQuestions.reduce((sum, q) => sum + (q.marks || 1), 0),
         status: targetStatus,
+        aiProvider: resolvedProviderUsed,
         updatedAt: new Date()
       });
     }
 
+    job.providerUsed = resolvedProviderUsed;
     return job;
   } finally {
     releaseJobLock(jobId);

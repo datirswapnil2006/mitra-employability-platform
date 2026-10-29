@@ -101,9 +101,6 @@ export const AptitudeAssessmentCreateModal = ({
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(20);
   const [passingScorePercentage, setPassingScorePercentage] = useState(70);
 
-  // AI Provider Config
-  const [aiProvider, setAiProvider] = useState('gemini');
-
   // PDF Upload Config
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfFileName, setPdfFileName] = useState('');
@@ -160,6 +157,7 @@ export const AptitudeAssessmentCreateModal = ({
   }, [isDomain, isFull, selectedDepartment, category]);
 
   const handleAddTopicToPrompt = (topicName) => {
+    setTopic(topicName);
     setPrompt((prev) => {
       const trimmed = prev.trim();
       if (!trimmed) {
@@ -198,7 +196,6 @@ export const AptitudeAssessmentCreateModal = ({
       setIsCustomCount(false);
       setTimeLimitMinutes(20);
       setPassingScorePercentage(70);
-      setAiProvider('gemini');
       setPdfFile(null);
       setPdfFileName('');
       setPdfText('');
@@ -310,11 +307,11 @@ export const AptitudeAssessmentCreateModal = ({
           setProgressPercent(Math.round((bIdx / batchChunks.length) * 100));
 
           const res = await api.generateQuestionsForReview({
-            provider: aiProvider,
+            provider: 'gemini',
             module: normalizedModule,
             category: normalizedCategory,
             department: normalizedDepartment,
-            topic: prompt.slice(0, 60).trim(),
+            topic: (topic && topic !== 'Custom Topic' && !topic.toLowerCase().startsWith('generate')) ? topic : (prompt.slice(0, 60).trim() || 'General'),
             prompt: prompt.trim(),
             customPrompt: prompt.trim(),
             difficulty,
@@ -372,11 +369,11 @@ export const AptitudeAssessmentCreateModal = ({
         if (collected.length < totalTarget) {
           const deficit = totalTarget - collected.length;
           const topUpRes = await api.generateQuestionsForReview({
-            provider: aiProvider,
+            provider: 'gemini',
             module: normalizedModule,
             category: normalizedCategory,
             department: normalizedDepartment,
-            topic: prompt.slice(0, 60).trim(),
+            topic: (topic && topic !== 'Custom Topic' && !topic.toLowerCase().startsWith('generate')) ? topic : (prompt.slice(0, 60).trim() || 'General'),
             prompt: prompt.trim(),
             customPrompt: prompt.trim(),
             difficulty,
@@ -437,14 +434,14 @@ export const AptitudeAssessmentCreateModal = ({
           payload.append('category', category);
           payload.append('topic', effectiveTopic);
           payload.append('difficulty', difficulty);
-          payload.append('questionCount', targetQuestionCount || 50);
+          payload.append('questionCount', 'all');
         } else {
           payload = {
             pdfText: pdfText || '',
             category,
             topic: effectiveTopic,
             difficulty,
-            questionCount: targetQuestionCount || 50
+            questionCount: 'all'
           };
         }
 
@@ -514,11 +511,11 @@ export const AptitudeAssessmentCreateModal = ({
       const otherQuestionTexts = questions.filter((_, i) => i !== idx).map((q) => q.questionText);
 
       const res = await api.generateQuestionsForReview({
-        provider: aiProvider,
+        provider: 'gemini',
         module: normalizedModule,
         category: normalizedCategory,
         department: normalizedDepartment,
-        topic: prompt.slice(0, 60).trim() || effectiveTopic,
+        topic: (topic && topic !== 'Custom Topic' && !topic.toLowerCase().startsWith('generate')) ? topic : (prompt.slice(0, 60).trim() || effectiveTopic || 'General'),
         prompt: prompt.trim() || effectiveTopic,
         customPrompt: prompt.trim() || effectiveTopic,
         difficulty: targetQ.difficulty || difficulty,
@@ -627,7 +624,7 @@ export const AptitudeAssessmentCreateModal = ({
           explanation: q.explanation,
           difficulty: q.difficulty || difficulty,
           aiGenerated: creationMethod === 'AI_GENERATED',
-          aiProvider: creationMethod === 'AI_GENERATED' ? aiProvider : 'manual'
+          aiProvider: creationMethod === 'AI_GENERATED' ? 'gemini' : 'manual'
         });
         savedCount++;
       }
@@ -689,7 +686,7 @@ export const AptitudeAssessmentCreateModal = ({
         module: normalizedModule,
         category: normalizedCategory,
         department: normalizedDepartment,
-        topic: prompt.slice(0, 60).trim() || effectiveTopic,
+        topic: (topic && topic !== 'Custom Topic' && !topic.toLowerCase().startsWith('generate')) ? topic : (prompt.slice(0, 60).trim() || effectiveTopic || 'General'),
         prompt: prompt.trim(),
         difficulty,
         questions: approvedQuestions.map((q) => ({
@@ -698,6 +695,8 @@ export const AptitudeAssessmentCreateModal = ({
           correctAnswer: q.correctAnswer,
           explanation: q.explanation,
           difficulty: q.difficulty,
+          section: q.section || normalizedCategory,
+          category: q.category || normalizedCategory,
           type: 'mcq',
           marks: 1
         })),
@@ -705,7 +704,7 @@ export const AptitudeAssessmentCreateModal = ({
         timeLimitMinutes,
         totalMarks: approvedQuestions.length,
         isAIGenerated: creationMethod === 'AI_GENERATED',
-        aiProvider: creationMethod === 'AI_GENERATED' ? aiProvider : 'manual',
+        aiProvider: creationMethod === 'AI_GENERATED' ? 'gemini' : 'manual',
         creationMethod,
         assessmentMode,
         proctoringSettings:

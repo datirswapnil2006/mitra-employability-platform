@@ -73,6 +73,22 @@ const resolveAnswerToOption = (correctAnswerRaw, options) => {
 };
 
 /**
+ * Shuffles options using Fisher-Yates algorithm while preserving the exact
+ * correctAnswer text string.
+ */
+const shuffleOptionsAndAnswer = (options, correctAnswer) => {
+  if (!Array.isArray(options) || options.length <= 1) {
+    return { options: options || [], correctAnswer };
+  }
+  const shuffled = [...options];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return { options: shuffled, correctAnswer };
+};
+
+/**
  * Validates a single question against strict schema and deterministic rules.
  * @param {Object} rawQ - Raw question object from AI or input
  * @param {Object} config - Validation configuration & expected section constraints
@@ -178,13 +194,23 @@ const validateQuestion = (rawQ, config = {}) => {
     return { valid: false, errors };
   }
 
+  const finalAnswer = resolvedAnswer || rawOptions[0];
+
+  // Randomize option positions (Fisher-Yates) for standard MCQs/technical questions
+  // preserving the resolved correctAnswer text. Psychometric Likert scales are never shuffled.
+  let finalOptions = rawOptions;
+  if (!isPsychometric && config.shuffleOptions !== false) {
+    const shuffledRes = shuffleOptionsAndAnswer(rawOptions, finalAnswer);
+    finalOptions = shuffledRes.options;
+  }
+
   // Construct validated question
   const validated = {
     questionText: q.questionText,
     codeSnippet: q.codeSnippet || '',
     type: expectedType,
-    options: rawOptions,
-    correctAnswer: resolvedAnswer || rawOptions[0],
+    options: finalOptions,
+    correctAnswer: finalAnswer,
     explanation: q.explanation,
     difficulty: diff,
     marks: config.marks || q.marks || 1,
@@ -234,6 +260,7 @@ module.exports = {
   validateQuestion,
   validateQuestionBatch,
   resolveAnswerToOption,
+  shuffleOptionsAndAnswer,
   baseQuestionZodSchema,
   VALID_DIFFICULTIES,
   VALID_QUESTION_TYPES

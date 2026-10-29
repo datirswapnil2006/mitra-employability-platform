@@ -49,6 +49,10 @@ const assessmentGenerationJobSchema = new mongoose.Schema({
     module: { type: String, default: 'Aptitude' },
     category: { type: String, default: 'General' },
     department: { type: String, default: null },
+    topic: { type: String, default: '' },
+    prompt: { type: String, default: '' },
+    customPrompt: { type: String, default: '' },
+    questionCount: { type: Number, default: 5 },
     difficulty: { type: String, default: 'Medium' },
     timeLimitMinutes: { type: Number, default: 20 },
     passingScorePercentage: { type: Number, default: 70 },
@@ -70,7 +74,8 @@ const assessmentGenerationJobSchema = new mongoose.Schema({
       customPrompt: { type: String, default: '' },
       competencies: [{ type: String }]
     }],
-    batchSize: { type: Number, default: 5 }
+    batchSize: { type: Number, default: 5 },
+    provider: { type: String, default: 'gemini' }
   },
   requestedCount: { type: Number, required: true },
   acceptedCount: { type: Number, default: 0 },

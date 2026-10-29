@@ -57,6 +57,29 @@ const isPermanentError = (err) => {
   return false;
 };
 
+const isModelNotFoundError = (err) => {
+  if (!err) return false;
+  const status = err.status || err.statusCode || (err.response && err.response.status);
+  const msg = String(err.message || '').toLowerCase();
+  return status === 404 || msg.includes('not found') || msg.includes('is not supported') || msg.includes('is not found');
+};
+
+const parseRetryAfterMs = (err) => {
+  if (!err) return null;
+  const retryHeader = err.response?.headers?.['retry-after'];
+  if (retryHeader) {
+    const parsedSec = parseFloat(retryHeader);
+    if (!isNaN(parsedSec) && parsedSec > 0) return Math.min(15000, Math.round(parsedSec * 1000));
+  }
+  const msg = String(err.message || '');
+  const match = msg.match(/retry\s+after\s+([0-9\.]+)\s*s/i) || msg.match(/wait\s+([0-9\.]+)\s*s/i);
+  if (match) {
+    const sec = parseFloat(match[1]);
+    if (!isNaN(sec) && sec > 0) return Math.min(15000, Math.round(sec * 1000));
+  }
+  return null;
+};
+
 const isTransientError = (err) => {
   if (!err) return false;
   if (isPermanentError(err)) return false;
@@ -157,8 +180,8 @@ const generateQuestionsWithGemini = async ({
 }) => {
   const resolvedKey = (apiKey || process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY || '').trim();
 
-  if (!resolvedKey || resolvedKey === 'dummy_gemini_key_for_testing') {
-    const keyError = new Error('GEMINI_API_KEY is not configured or is a testing placeholder.');
+  if (!resolvedKey || resolvedKey === 'dummy_gemini_key_for_testing' || resolvedKey.startsWith('AQ.')) {
+    const keyError = new Error('GEMINI_API_KEY is not configured or is an invalid OAuth token (tokens starting with AQ. are gcloud OAuth tokens, not Gemini API keys which begin with AIzaSy).');
     keyError.isPermanent = true;
     keyError.code = 'NO_API_KEY';
     throw keyError;
@@ -166,17 +189,15 @@ const generateQuestionsWithGemini = async ({
 
   const ai = new GoogleGenAI({ apiKey: resolvedKey });
 
-  // Priority Model Chain
+  // Priority Model Chain: respects configured env models first, followed by active Gemini Flash models
   const modelsToTry = Array.from(
     new Set(
       [
         process.env.GEMINI_MODEL,
         process.env.GEMINI_FALLBACK_MODEL,
-        'gemini-2.5-flash',
         'gemini-2.0-flash',
         'gemini-1.5-flash',
-        'gemini-2.5-flash-lite',
-        'gemini-3.5-flash'
+        'gemini-1.5-flash-8b'
       ].filter(Boolean)
     )
   );
@@ -192,7 +213,7 @@ const generateQuestionsWithGemini = async ({
         const genConfig = {
           responseMimeType: 'application/json',
           responseSchema: buildQuestionResponseSchema(),
-          temperature: 0.2
+          temperature: parseFloat(process.env.GEMINI_TEMPERATURE) || 0.2
         };
 
         if (systemInstruction) {
@@ -273,9 +294,17 @@ const generateQuestionsWithGemini = async ({
           throw permErr;
         }
 
+        // If the model does not exist on this API tier, do not retry; fall back to the next model immediately
+        if (isModelNotFoundError(err)) {
+          console.warn(`[Gemini Model Fallback]: Model ${modelName} is not available (${err.message}). Trying next fallback model...`);
+          break;
+        }
+
         if (transient && attempt < maxRetries) {
-          // Bounded exponential backoff with jitter
-          const delay = baseDelay * Math.pow(2, attempt) + Math.floor(Math.random() * 400);
+          // Bounded rate-limit-aware exponential backoff with jitter
+          const suggestedRetry = parseRetryAfterMs(err);
+          const backoffDelay = baseDelay * Math.pow(2, attempt) + Math.floor(Math.random() * 400);
+          const delay = Math.min(15000, suggestedRetry || backoffDelay);
           console.warn(`[Gemini Backoff]: Retrying ${modelName} attempt ${attempt + 1}/${maxRetries} after ${delay}ms...`);
           await sleep(delay);
         } else {

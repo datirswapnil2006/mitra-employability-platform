@@ -1,5 +1,5 @@
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
-const { cleanMathExpression, toSuperscript } = require('./mathCleaner');
+const { cleanMathExpression, toSuperscript, toSubscript } = require('./mathCleaner');
 
 /**
  * Enhanced PDF Question Extractor & Pattern Parser
@@ -105,6 +105,9 @@ function customPageRender(pageData) {
           // Convert raised digits to Unicode superscripts
           if (yDiff >= 2.5 && /^\d+$/.test(str.trim())) {
             str = toSuperscript(str.trim());
+          } else if (yDiff <= -2.5 && /^\d+$/.test(str.trim())) {
+            // Convert lowered digits to Unicode subscripts
+            str = toSubscript(str.trim());
           }
 
           if (!lineStr) {
@@ -113,7 +116,8 @@ function customPageRender(pageData) {
             const hasLeading = str.startsWith(' ');
             const hasTrailing = lineStr.endsWith(' ');
             const isSuper = yDiff >= 2.5 && /^[⁰¹²³⁴⁵⁶⁷⁸⁹]+$/.test(str);
-            if (isSuper) {
+            const isSub = yDiff <= -2.5 && /^[₀₁₂₃₄₅₆₇₈₉]+$/.test(str);
+            if (isSuper || isSub) {
               lineStr += str;
             } else if (!hasLeading && !hasTrailing) {
               lineStr += ' ' + str;
@@ -130,11 +134,62 @@ function customPageRender(pageData) {
 
     let pageText = '';
     if (isTwoColumn) {
-      const leftItems = validItems.filter((it) => it.transform[4] < splitX);
-      const rightItems = validItems.filter((it) => it.transform[4] >= splitX);
-      const leftText = formatItemList(leftItems);
-      const rightText = formatItemList(rightItems);
-      pageText = leftText + '\n' + rightText;
+      // Preserve top-of-page full-width banners, titles, or shared passage directions
+      const sortedByY = [...validItems].sort((a, b) => b.transform[5] - a.transform[5]);
+      const lines = [];
+      let curLine = [];
+      let curY = null;
+
+      for (const item of sortedByY) {
+        if (curY === null) {
+          curLine = [item];
+          curY = item.transform[5];
+        } else if (Math.abs(curY - item.transform[5]) > 6.0) {
+          lines.push(curLine);
+          curLine = [item];
+          curY = item.transform[5];
+        } else {
+          curLine.push(item);
+        }
+      }
+      if (curLine.length) lines.push(curLine);
+
+      const headerItems = [];
+      const columnItems = [];
+      let checkingHeader = true;
+
+      for (const line of lines) {
+        if (checkingHeader) {
+          const lineMinX = Math.min(...line.map((it) => it.transform[4]));
+          const lineMaxX = Math.max(...line.map((it) => it.transform[4]));
+          const lineText = line.map((it) => it.str).join(' ').trim();
+          const isBanner = /(?:TEST|EXAM|ASSESSMENT|PAPER|DIRECTIONS?|INSTRUCTIONS?|SECTION|PART|READING\s*COMPREHENSION|STUDY\s*THE)/i.test(lineText);
+          const spansAcross = lineMinX < splitX - 30 && lineMaxX > splitX + 30;
+
+          if (spansAcross || isBanner) {
+            headerItems.push(...line);
+            continue;
+          } else {
+            checkingHeader = false;
+          }
+        }
+        columnItems.push(...line);
+      }
+
+      if (headerItems.length > 0 && columnItems.length >= 10) {
+        const headerText = formatItemList(headerItems);
+        const leftItems = columnItems.filter((it) => it.transform[4] < splitX);
+        const rightItems = columnItems.filter((it) => it.transform[4] >= splitX);
+        const leftText = formatItemList(leftItems);
+        const rightText = formatItemList(rightItems);
+        pageText = (headerText ? headerText + '\n' : '') + leftText + '\n' + rightText;
+      } else {
+        const leftItems = validItems.filter((it) => it.transform[4] < splitX);
+        const rightItems = validItems.filter((it) => it.transform[4] >= splitX);
+        const leftText = formatItemList(leftItems);
+        const rightText = formatItemList(rightItems);
+        pageText = leftText + '\n' + rightText;
+      }
     } else {
       pageText = formatItemList(validItems);
     }
@@ -152,12 +207,14 @@ function customPageRender(pageData) {
 function normalizeGluedOptionMarkers(text) {
   if (!text || typeof text !== 'string') return '';
   return text
-    // Glued (A), (B), (C), (D)
-    .replace(/([^\s\(\[\{])\s*(\([A-Da-d]\))/g, '$1\n$2')
-    // Glued Option A, Option B
-    .replace(/([a-zA-Z0-9\?\.\,\!\)\'\"])\s*(Option\s+[A-Da-d][\:\.\-]?)/gi, '$1\n$2')
-    // Glued A), B), C), D) - only if NOT preceded by words indicating coordinate points or entities
-    .replace(/(?<=[a-zA-Z0-9\?\.\,\!\)\'\"])\s*(?<!\b(?:Point|Person|Village|Town|City|Station|Node|Step|Table|Figure|from|to|at|is|of|and|or)\s*)([A-Da-d]\))(?=\s+[A-Za-z0-9]|\s*$)/gi, '\n$1 ');
+    // Glued (A), (B), (C), (D), (E) or (i), (ii), (iii), (iv), (v) - strictly letters/roman numerals, not single digits (to avoid breaking O(1) or step (1))
+    .replace(/([^\s\(\[\{])\s*(\((?:[A-Ea-e]|[ivx]+)\))/g, '$1\n$2')
+    // Glued Option A, Option B...
+    .replace(/([a-zA-Z0-9\?\.\,\!\)\'\"])\s*(Option\s+[A-Ea-e][\:\.\-]?)/gi, '$1\n$2')
+    // Glued A), B), C), D), E) - only if NOT preceded by words indicating coordinate points or entities
+    .replace(/(?<=[a-zA-Z0-9\?\.\,\!\)\'\"])\s*(?<!\b(?:Point|Person|Village|Town|City|Station|Node|Step|Table|Figure|from|to|at|is|of|and|or)\s*)([A-Ea-e]\))(?=\s+[A-Za-z0-9]|\s*$)/gi, '\n$1 ')
+    // Horizontal inline option markers with period: e.g. "red  B. blue" -> "red\nB. blue"
+    .replace(/(?<=[a-zA-Z0-9\?\!\)\'\"])\s{2,}(?<!\b(?:e\.g|i\.e|etc|vs|vol|no|dr|mr|mrs|prof)\s*)([A-Ea-e]\.)(?=\s+[A-Za-z0-9]|\s*$)/gi, '\n$1 ');
 }
 
 /**
@@ -262,21 +319,21 @@ function extractGlobalAnswersAndExplanations(text) {
   const answerKeyMap = new Map();
   const explanationMap = new Map();
 
-  // Section header for end-of-document answer keys. Must not match inline question answers like "Correct Answer: B) 3"
-  const sectionHeaderRegex = /(?:^|\n)\s*(?:FINAL\s+)?(?:ANSWERS?\s*(?:&|AND)\s*EXPLANATIONS?|SOLUTIONS?|HINTS?\s*(?:&|AND)?\s*SOLUTIONS?|ANSWER\s*KEY|KEY\s*ANSWERS?|ANSWERS\s*KEY|CORRECT\s+ANSWERS\s*[\:\-]?|ANSWERS\s*[\:\-])(?:[\:\-]|\s*\n)([\s\S]+)$/i;
+  // Section header for end-of-document answer keys. Supports "ANSWER KEY (Questions 1 - 120)", "Answer Keys:", "ANSWERS AND SOLUTIONS", "Key:", etc.
+  const sectionHeaderRegex = /(?:^|\n)\s*(?:FINAL\s+)?(?:ANSWERS?\s*(?:&|AND)\s*(?:EXPLANATIONS?|SOLUTIONS?)|SOLUTIONS?\s*(?:&|AND)?\s*ANSWERS?|ANSWERS?\s*(?:&|AND)?\s*HINTS?|HINTS?\s*(?:&|AND)?\s*SOLUTIONS?|SOLUTIONS?|ANSWER\s*KEYS?|KEY\s*ANSWERS?|ANSWERS?\s*KEY|CORRECT\s+(?:ANSWERS?|OPTIONS?)|ANSWERS?\s*SHEET|RESPONSE\s*KEYS?|SCORING\s*KEYS?|KEYS?|ANSWERS?)(?:\s*\([^\)\n]+\))?\s*[\:\-]?\s*\n([\s\S]+)$/i;
   const match = text.match(sectionHeaderRegex);
 
   if (match && match[1]) {
     const keySection = match[1];
 
-    // Safety check: ensure this is truly an answer key section and not a question paper continuation
-    const hasSubsequentQuestions = /(?:^|\n)\s*(?:Question\s*\d+|\b\d+[\.\)])[\s\S]*?\n\s*[A-Da-d][\)\.]/i.test(keySection);
-    if (hasSubsequentQuestions) {
+    // Safety check: ensure this is not an accidental mid-document match containing fresh questions with multiple options
+    const hasFullSubsequentQuestion = /(?:^|\n)\s*(?:Question\s*\d+|\b\d+[\.\)])[^\n]{15,}\n\s*(?:\(?[A-Ea-e]\)?|[A-Ea-e][\)\.])[^\n]+\n\s*(?:\(?[A-Ea-e]\)?|[A-Ea-e][\)\.])/i.test(keySection);
+    if (hasFullSubsequentQuestion) {
       return { answerKeyMap, explanationMap };
     }
 
-    // Pattern A: Numbered items with answers and detailed explanations
-    const blockRegex = /(?:^|\n)\s*(?:Q(?:uestion)?\.?\s*)?(\d+)[\.\)\-\:\s]+(?:\(?([A-Da-d1-4])\)?[\.\:\-\s]+)?([^\n]+(?:\n(?!\s*(?:Q(?:uestion)?\.?\s*)?\d+[\.\)\-\:\s]+)[^\n]+)*)/gi;
+    // Pattern A: Numbered items with answers and detailed explanations (supports pipe | tables and option E)
+    const blockRegex = /(?:^|\n)\s*(?:Q(?:uestion)?\.?\s*)?(\d+)[\.\)\-\:\s\t\|]*(?:\(?([A-Ea-e1-5])\)?[\.\:\-\s\t\|]+)?([^\n]+(?:\n(?!\s*(?:Q(?:uestion)?\.?\s*)?\d+[\.\)\-\:\s\t\|]+)[^\n]+)*)/gi;
     let blockMatch;
 
     while ((blockMatch = blockRegex.exec(keySection)) !== null) {
@@ -284,17 +341,20 @@ function extractGlobalAnswersAndExplanations(text) {
       const letter = blockMatch[2] ? blockMatch[2].toUpperCase() : '';
       const body = (blockMatch[3] || '').trim();
 
-      if (letter && ['A', 'B', 'C', 'D', '1', '2', '3', '4'].includes(letter)) {
-        const normalizedLetter = ['1', '2', '3', '4'].includes(letter)
+      if (letter && ['A', 'B', 'C', 'D', 'E', '1', '2', '3', '4', '5'].includes(letter)) {
+        const normalizedLetter = ['1', '2', '3', '4', '5'].includes(letter)
           ? String.fromCharCode(64 + parseInt(letter, 10))
           : letter;
         answerKeyMap.set(qNum, normalizedLetter);
       }
 
       if (body) {
-        const ansInBody = body.match(/^(?:\(?([A-Da-d])\)?[\.\:\-\s]*|\bOption\s+([A-Da-d])[\.\:\-\s]*)([\s\S]*)/i);
+        const ansInBody = body.match(/^(?:\(?([A-Ea-e1-5])\)?[\.\:\-\s\t\|]*|\bOption\s+([A-Ea-e1-5])[\.\:\-\s\t\|]*)([\s\S]*)/i);
         if (ansInBody) {
-          const l = (ansInBody[1] || ansInBody[2]).toUpperCase();
+          const rawL = (ansInBody[1] || ansInBody[2]).toUpperCase();
+          const l = ['1', '2', '3', '4', '5'].includes(rawL)
+            ? String.fromCharCode(64 + parseInt(rawL, 10))
+            : rawL;
           if (!answerKeyMap.has(qNum)) answerKeyMap.set(qNum, l);
           const expText = (ansInBody[3] || '').trim();
           if (expText.length > 5) {
@@ -306,14 +366,14 @@ function extractGlobalAnswersAndExplanations(text) {
       }
     }
 
-    // Pattern B: Compact answer keys: "1. A, 2. B, 3. C" or "1. (a) 2. (b)" or "1-A 2-B"
-    const simpleRegex = /(?:Q(?:uestion)?\.?\s*)?(\d+)[\.\)\-\:\s\t]+(?:\(?([A-Da-d1-4])\)?)/g;
+    // Pattern B: Compact / Table / Glued answer keys: "1. A, 2. B, 3. C", "1(b) 2(c)", "1 | A \n 2 | B", "1-A 2-B"
+    const simpleRegex = /(?:Q(?:uestion)?\.?\s*)?(\d+)[\.\)\-\:\s\t\|]*(?:\(?([A-Ea-e1-5])\)?)/g;
     let simpleMatch;
     while ((simpleMatch = simpleRegex.exec(keySection)) !== null) {
       const qNum = parseInt(simpleMatch[1], 10);
       const letter = simpleMatch[2].toUpperCase();
       if (!answerKeyMap.has(qNum)) {
-        const norm = ['1', '2', '3', '4'].includes(letter)
+        const norm = ['1', '2', '3', '4', '5'].includes(letter)
           ? String.fromCharCode(64 + parseInt(letter, 10))
           : letter;
         answerKeyMap.set(qNum, norm);
@@ -441,21 +501,21 @@ function splitIntoQuestionBlocks(text) {
   let workingText = text;
 
   // Strip global Answer Key section from end of text so it does not generate false question blocks.
-  // Must NOT match inline question answers like "Correct Answer: B) 3".
-  const answerSectionRegex = /(?:^|\n)\s*(?:FINAL\s+)?(?:ANSWERS?\s*(?:&|AND)\s*EXPLANATIONS?|SOLUTIONS?|HINTS?\s*(?:&|AND)?\s*SOLUTIONS?|ANSWER\s*KEY|KEY\s*ANSWERS?|ANSWERS\s*KEY|CORRECT\s+ANSWERS\s*[\:\-]?|ANSWERS\s*[\:\-])(?:[\:\-]|\s*\n)([\s\S]+)$/i;
+  const answerSectionRegex = /(?:^|\n)\s*(?:FINAL\s+)?(?:ANSWERS?\s*(?:&|AND)\s*(?:EXPLANATIONS?|SOLUTIONS?)|SOLUTIONS?\s*(?:&|AND)?\s*ANSWERS?|ANSWERS?\s*(?:&|AND)?\s*HINTS?|HINTS?\s*(?:&|AND)?\s*SOLUTIONS?|SOLUTIONS?|ANSWER\s*KEYS?|KEY\s*ANSWERS?|ANSWERS?\s*KEY|CORRECT\s+(?:ANSWERS?|OPTIONS?)|ANSWERS?\s*SHEET|RESPONSE\s*KEYS?|SCORING\s*KEYS?|KEYS?|ANSWERS?)(?:\s*\([^\)\n]+\))?\s*[\:\-]?\s*\n([\s\S]+)$/i;
   const ansMatch = workingText.match(answerSectionRegex);
   if (ansMatch) {
     const candidateSection = ansMatch[1] || '';
     // Ensure this is truly an answer key section at the end and not questions with options
-    const hasSubsequentQuestions = /(?:^|\n)\s*(?:Question\s*\d+|\b\d+[\.\)])[\s\S]*?\n\s*[A-Da-d][\)\.]/i.test(candidateSection);
-    if (!hasSubsequentQuestions) {
+    const hasFullSubsequentQuestion = /(?:^|\n)\s*(?:Question\s*\d+|\b\d+[\.\)])[^\n]{15,}\n\s*(?:\(?[A-Ea-e]\)?|[A-Ea-e][\)\.])[^\n]+\n\s*(?:\(?[A-Ea-e]\)?|[A-Ea-e][\)\.])/i.test(candidateSection);
+    if (!hasFullSubsequentQuestion) {
       workingText = workingText.substring(0, ansMatch.index).trim();
     }
   }
 
   // Regex to match question numbering at start of a line
-  // Matches: "1.", "1)", "1-", "Q1.", "Q1:", "Q.1", "Question 1:", "Que 1.", "Ques 1:"
-  const questionStartRegex = /(?:^|\n)\s*(?:(?:Q(?:uestion|ue|ues)?\.?\s*(\d+)[\.\)\-\:\s]*)|(?:\((\d+)\)\s+[A-Za-z])|(?:(\d+)[\.\)\-\:\s]))\s+/gi;
+  // Matches: "1.", "1)", "1-", "(1)", "[1]", "Q1.", "Q1:", "Q.1", "Question 1:", "Question-1", "Que 1.", "Ques 1:", "Problem 1:", "Exercise 1:", "Task 1:", "Item 1:"
+  // Supports glued numbers like "101.What" or "101)What" without mandatory trailing space
+  const questionStartRegex = /(?:^|\n)\s*(?:(?:(?:Q(?:uestion|ue|ues)?|Problem|Prob|Exercise|Task|Item)[.\s\-:]*(\d+)[\.\)\-\:\s]*)|(?:\((\d+)\))|(?:\[(\d+)\])|(?:(\d+)[\.\)\-\:]))(?:\s+|(?=[A-Za-z]))/gi;
 
   const indices = [];
   let match;
@@ -464,12 +524,26 @@ function splitIntoQuestionBlocks(text) {
     if (match.index === questionStartRegex.lastIndex) {
       questionStartRegex.lastIndex++;
     }
-    const qNumStr = match[1] || match[2] || match[3];
+    const qNumStr = match[1] || match[2] || match[3] || match[4];
     const qNum = parseInt(qNumStr, 10);
     indices.push({
       index: match.index,
       length: match[0].length,
       number: qNum
+    });
+  }
+
+  // Scan document section banners (e.g., "SECTION A: QUANTITATIVE APTITUDE", "PART I - REASONING", "MODULE 1")
+  const sectionBannerRegex = /(?:^|\n)\s*(?:SECTION|PART|MODULE)\s*([A-Z0-9IVX]+)(?:\s*[\:\-]\s*([^\n\r]+))?/gi;
+  const sectionBanners = [];
+  let sMatch;
+  while ((sMatch = sectionBannerRegex.exec(workingText)) !== null) {
+    const secLetter = sMatch[1];
+    const secTitle = (sMatch[2] || '').trim();
+    let label = secTitle ? secTitle : `Section ${secLetter}`;
+    sectionBanners.push({
+      index: sMatch.index,
+      label
     });
   }
 
@@ -479,7 +553,8 @@ function splitIntoQuestionBlocks(text) {
     return fallbackBlocks.map((block, idx) => ({
       rawText: block.trim(),
       number: idx + 1,
-      pageNumber: 1
+      pageNumber: 1,
+      documentSection: ''
     }));
   }
 
@@ -523,11 +598,19 @@ function splitIntoQuestionBlocks(text) {
     // Strip any leaked section headers from the block
     rawBlock = rawBlock.replace(/^(?:SECTION\s+[A-Z0-9\-]+|PART\s+[A-Z0-9\-]+)[\s\:\-]*/i, '').trim();
 
+    // Find active section banner for this question
+    let documentSection = '';
+    const activeBanner = sectionBanners.filter((b) => b.index < indices[i].index).pop();
+    if (activeBanner) {
+      documentSection = activeBanner.label;
+    }
+
     if (rawBlock.length > 0) {
       blocks.push({
         rawText: rawBlock,
         number: indices[i].number || i + 1,
-        pageNumber
+        pageNumber,
+        documentSection
       });
     }
   }
@@ -551,7 +634,7 @@ function detectSectionAndType(
   const defaultLower = (defaultSection || '').toLowerCase();
 
   // 1. Technical / Domain Assessment
-  if (codeSnippet || combined.includes('#include') || combined.includes('def ') || combined.includes('select ') || combined.includes('sql') || combined.includes('binary tree') || combined.includes('database')) {
+  if (codeSnippet || combined.includes('#include') || combined.includes('def ') || (combined.includes('select ') && combined.includes('from ')) || combined.includes('sql') || combined.includes('binary tree') || combined.includes('database')) {
     return { section: 'Domain Knowledge (CSE/IT)', type: codeSnippet ? 'output' : 'mcq' };
   }
   if (combined.includes('circuit') || combined.includes('op-amp') || combined.includes('microcontroller') || combined.includes('modulation') || combined.includes('signal')) {
@@ -601,8 +684,7 @@ function detectSectionAndType(
     combined.includes('syllogism');
 
   if (isLogicalReasoning) {
-    const sectionName = defaultLower.includes('reasoning') ? defaultSection : 'Logical Reasoning';
-    return { section: sectionName, type: 'logical_reasoning' };
+    return { section: 'Logical Reasoning', type: 'logical_reasoning' };
   }
 
   // 3. Quantitative Aptitude (Data Interpretation, Math)
@@ -649,6 +731,9 @@ function detectSectionAndType(
     return { section: 'Verbal Ability', type: isRc ? 'reading_comprehension' : 'mcq' };
   }
 
+  if (defaultLower.includes('reasoning')) return { section: 'Logical Reasoning', type: 'logical_reasoning' };
+  if (defaultLower.includes('quant')) return { section: 'Quantitative Aptitude', type: 'mcq' };
+  if (defaultLower.includes('verbal')) return { section: 'Verbal Ability', type: 'mcq' };
   return { section: defaultSection || 'Quantitative Aptitude', type: 'mcq' };
 }
 
@@ -674,12 +759,13 @@ function parseQuestionBlock(
   defaultCategory = 'Quantitative Aptitude',
   targetTopic = ''
 ) {
-  let text = rawBlock.trim();
+  let text = typeof rawBlock === 'object' && rawBlock !== null ? (rawBlock.rawText || '') : String(rawBlock || '').trim();
+  const blockDocumentSection = typeof rawBlock === 'object' && rawBlock !== null ? rawBlock.documentSection : '';
 
   // Reject standalone concept/formula header blocks that lack options
   if (
     /^(?:Important\s+)?(?:Formula|Formulas|Concept|Concepts|Theory|Overview|Definition|Rule|Rules|Tip|Tips)\b/i.test(text) &&
-    !/(?:Option\s+[A-D]|[A-Da-d][\)\.\:\-]\s+)/i.test(text)
+    !/(?:Option\s+[A-E]|[A-Ea-e1-5][\)\.\:\-]\s+|\([ivx]+\))/i.test(text)
   ) {
     return null;
   }
@@ -693,29 +779,32 @@ function parseQuestionBlock(
   let answerLetter = '';
 
   // 2. Extract Explanation if present
-  const explanationRegex = /(?:Detailed\s+Explanation|Explanation|Detailed\s+Solution|Solution|Soln|Sol|Rationale|Reasoning|Reason|Hint|Description)[\s\:\-]+([\s\S]+)$/i;
+  const explanationRegex = /(?:\[?\s*(?:Detailed\s+Explanation|Explanation|Detailed\s+Solution|Solutions?|Soln|Sol|Rationale|Reasoning|Reason|Hints?|Description)\s*[.:\-\]\s]*)([\s\S]+)$/i;
   const expMatch = text.match(explanationRegex);
   if (expMatch) {
     explanation = expMatch[1].trim();
     text = text.substring(0, expMatch.index).trim();
 
-    const ansInExp = explanation.match(/(?:Correct\s*Answer|Correct\s*Option|Answer|Ans|Key)[\s\:\-]+(?:\(?([A-Da-d])\)?|\bOption\s*([A-Da-d])\b)/i);
+    const ansInExp = explanation.match(/(?:\[?\s*(?:Correct\s*(?:Answer|Option)|Answer|Ans|Key)\s*[.:\-\]\s]*\s*(?:is\s*)?)(?:Option\s*([A-Ea-e1-5])\b|\(?([A-Ea-e1-5]|[ivx]+)\)?(?!\S)|([^\n\r\]]+))|(?:\bOption\s*\(?([A-Ea-e1-5])\)?\s*is\s*(?:the\s*)?correct)/i);
     if (ansInExp) {
-      answerLetter = (ansInExp[1] || ansInExp[2]).toUpperCase();
+      const rawChar = ansInExp[1] || ansInExp[2] || ansInExp[4];
+      if (rawChar) {
+        answerLetter = (rawChar).toUpperCase();
+      }
       explanation = explanation.substring(0, ansInExp.index).trim();
     }
   }
 
-  // 3. Extract Answer if present
-  const answerRegex = /(?:Correct\s*Answer|Correct\s*Option|Answer|Ans|Key)[\s\:\-]+(?:\(?([A-Da-d])\)?(?!\S)|\bOption\s*([A-Da-d])\b|([^\n\r]+))/i;
+  // 3. Extract Answer if present (supports "Ans. B", "Ans: C", "[Ans: B]", "Option C is correct", "Answer is (c)")
+  const answerRegex = /(?:\[?\s*(?:Correct\s*(?:Answer|Option)|Answer|Ans|Key)\s*[.:\-\]\s]*\s*(?:is\s*)?)(?:Option\s*([A-Ea-e1-5])\b|\(?([A-Ea-e1-5]|[ivx]+)\)?(?!\S)|([^\n\r\]]+))|(?:\bOption\s*\(?([A-Ea-e1-5])\)?\s*is\s*(?:the\s*)?correct)/i;
   const ansMatch = text.match(answerRegex);
   if (ansMatch) {
-    if (!answerLetter) {
-      answerLetter = (ansMatch[1] || ansMatch[2] || '').toUpperCase();
-    }
-    if (!answerLetter && ansMatch[3]) {
+    const rawChar = ansMatch[1] || ansMatch[2] || ansMatch[4];
+    if (rawChar) {
+      answerLetter = rawChar.toUpperCase();
+    } else if (ansMatch[3]) {
       const rawAns = ansMatch[3].trim();
-      if (['A', 'B', 'C', 'D'].includes(rawAns.toUpperCase())) {
+      if (['A', 'B', 'C', 'D', 'E', '1', '2', '3', '4', '5'].includes(rawAns.toUpperCase())) {
         answerLetter = rawAns.toUpperCase();
       } else {
         correctAnswer = rawAns;
@@ -732,22 +821,35 @@ function parseQuestionBlock(
     explanation = globalExplanations.get(qNumber);
   }
 
+  // Helper to normalize option markers (A-E, 1-5, i-v) to standard letters
+  const normalizeOptLetter = (letterStr) => {
+    if (!letterStr) return '';
+    const l = String(letterStr).trim().toLowerCase();
+    if (['1', 'i', 'a'].includes(l)) return 'A';
+    if (['2', 'ii', 'b'].includes(l)) return 'B';
+    if (['3', 'iii', 'c'].includes(l)) return 'C';
+    if (['4', 'iv', 'd'].includes(l)) return 'D';
+    if (['5', 'v', 'e'].includes(l)) return 'E';
+    return l.toUpperCase();
+  };
+
   // 4. Extract Options
   let options = [];
   let questionText = text;
   const optionMap = {};
 
   // Method A: Check line-by-line options first
-  // Lines starting with (A), A), A., [A], Option A:
+  // Lines starting with (A), A), A., [A], Option A:, (i), i):
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const optLineRegex = /^(?:\(?([A-Da-d1-4])[\)\]\.\:\-]|Option\s+([A-Da-d])[\:\.\-]?)\s*(.*)/i;
+  const optLineRegex = /^(?:\(?([A-Ea-e1-5]|[ivx]+)[\)\]\.\:\-]|Option\s+([A-Ea-e])[\:\.\-]?)\s*(.*)/i;
 
   let optStartLineIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     const m = l.match(optLineRegex);
-    const letter = (m?.[1] || m?.[2] || '').toUpperCase();
-    if (m && (letter === 'A' || letter === '1')) {
+    const rawChar = m?.[1] || m?.[2] || '';
+    const letter = normalizeOptLetter(rawChar);
+    if (m && letter === 'A') {
       // Verify not an entity statement like "Point A is..."
       const remainder = (m[3] || '').trim();
       const isEntityStatement = /^(?:is|was|are|were|has|have|walks|runs|moves|stands|facing)\b/i.test(remainder);
@@ -764,14 +866,39 @@ function parseQuestionBlock(
     let curLetter = null;
 
     for (const l of optLines) {
+      // Check if this line is an inline answer or explanation - stop options from bleeding!
+      const isAns = l.match(answerRegex);
+      const isExp = l.match(explanationRegex);
+      if (isAns || isExp) {
+        if (isAns && !answerLetter && !correctAnswer) {
+          const rawChar = isAns[1] || isAns[2] || isAns[4];
+          if (rawChar) answerLetter = normalizeOptLetter(rawChar);
+          else if (isAns[3]) correctAnswer = isAns[3].trim();
+        }
+        if (isExp && !explanation) {
+          explanation = (isExp[1] || '').trim();
+        }
+        break;
+      }
+
       const m = l.match(optLineRegex);
       if (m) {
-        const letter = (m[1] || m[2]).toUpperCase();
-        const norm = ['1', '2', '3', '4'].includes(letter)
-          ? String.fromCharCode(64 + parseInt(letter, 10))
-          : letter;
+        const rawChar = m[1] || m[2];
+        const norm = normalizeOptLetter(rawChar);
         curLetter = norm;
-        const val = (m[3] || '').replace(/\s+/g, ' ').trim();
+        let val = (m[3] || '').replace(/\s+/g, ' ').trim();
+
+        // Check if inline answer is embedded on the same line as the option
+        const trailingAns = val.match(answerRegex);
+        if (trailingAns) {
+          const rawAns = trailingAns[1] || trailingAns[2] || trailingAns[4];
+          if (!answerLetter && !correctAnswer) {
+            if (rawAns) answerLetter = normalizeOptLetter(rawAns);
+            else if (trailingAns[3]) correctAnswer = trailingAns[3].trim();
+          }
+          val = val.substring(0, trailingAns.index).trim();
+        }
+
         optionMap[norm] = val;
         options.push(val);
       } else if (curLetter && options.length > 0) {
@@ -790,13 +917,14 @@ function parseQuestionBlock(
   }
 
   // Method B: Horizontal options regex
-  // Matches A) ... B) ... C) ... D) or (A) ... (B) ... on the same line or in body
+  // Matches A) ... B) ... C) ... D) or (A) ... (B) ... or (i) ... (ii) ...
   if (options.length < 2) {
-    const horizRegex = /(?:^|\s+)(?<!(?:Point|Person|Village|Town|City|Station|Node|Step|Table|Figure|from|to|at|is|of|and|or)\s+)(?:Option\s+([A-Da-d])[\:\.\-\s]*|\(?([A-Da-d])[\)\]\.\:\-]\s*|\(([1-4])\)\s*)/g;
+    const horizRegex = /(?:^|\s+)(?<!(?:Point|Person|Village|Town|City|Station|Node|Step|Table|Figure)\s+)(?:Option\s+([A-Ea-e])[\:\.\-\s]*|\(?([A-Ea-e])[\)\]\.\:\-]\s*|\(([1-5])\)\s*|\(([ivx]+)\)\s*)/gi;
     const matches = [];
     let hm;
     while ((hm = horizRegex.exec(text)) !== null) {
-      const letter = (hm[1] || hm[2] || (hm[3] ? String.fromCharCode(64 + parseInt(hm[3], 10)) : '')).toUpperCase();
+      const rawChar = hm[1] || hm[2] || hm[3] || hm[4] || '';
+      const letter = normalizeOptLetter(rawChar);
       matches.push({
         letter,
         index: hm.index + (hm[0].length - hm[0].trimStart().length),
@@ -826,6 +954,16 @@ function parseQuestionBlock(
         let optVal = text.substring(start, end).trim();
         optVal = optVal.replace(/\s+/g, ' ').trim();
         if (optVal) {
+          // Check and strip trailing answer on horizontal options
+          const trailingAns = optVal.match(answerRegex);
+          if (trailingAns) {
+            const rawAns = trailingAns[1] || trailingAns[2] || trailingAns[4];
+            if (!answerLetter && !correctAnswer) {
+              if (rawAns) answerLetter = normalizeOptLetter(rawAns);
+              else if (trailingAns[3]) correctAnswer = trailingAns[3].trim();
+            }
+            optVal = optVal.substring(0, trailingAns.index).trim();
+          }
           options.push(optVal);
           optionMap[cur.letter] = optVal;
         }
@@ -851,9 +989,17 @@ function parseQuestionBlock(
     return null;
   }
 
-  // Normalize options to 4, respecting matched letters A, B, C, D
+  // Normalize options: preserve 5 options if Option E is present or detected
   let finalOptions = [];
-  if (optionMap['A'] && optionMap['B']) {
+  if (optionMap['E'] || options.length >= 5) {
+    finalOptions = [
+      cleanMathExpression(optionMap['A'] || options[0] || 'Option A'),
+      cleanMathExpression(optionMap['B'] || options[1] || 'Option B'),
+      cleanMathExpression(optionMap['C'] || options[2] || 'Option C'),
+      cleanMathExpression(optionMap['D'] || options[3] || 'Option D'),
+      cleanMathExpression(optionMap['E'] || options[4] || 'Option E')
+    ];
+  } else if (optionMap['A'] && optionMap['B']) {
     finalOptions = [
       cleanMathExpression(optionMap['A']),
       cleanMathExpression(optionMap['B']),
@@ -865,7 +1011,7 @@ function parseQuestionBlock(
     while (finalOptions.length < 4) {
       finalOptions.push(`Option ${String.fromCharCode(65 + finalOptions.length)}`);
     }
-    finalOptions = finalOptions.slice(0, 4);
+    finalOptions = finalOptions.length > 5 ? finalOptions.slice(0, 5) : finalOptions;
   }
 
   // Match correct answer
@@ -874,10 +1020,12 @@ function parseQuestionBlock(
 
   if (answerLetter) {
     let index = -1;
-    if (['A', '1'].includes(answerLetter)) index = 0;
-    else if (['B', '2'].includes(answerLetter)) index = 1;
-    else if (['C', '3'].includes(answerLetter)) index = 2;
-    else if (['D', '4'].includes(answerLetter)) index = 3;
+    const normAns = normalizeOptLetter(answerLetter);
+    if (normAns === 'A') index = 0;
+    else if (normAns === 'B') index = 1;
+    else if (normAns === 'C') index = 2;
+    else if (normAns === 'D') index = 3;
+    else if (normAns === 'E') index = 4;
 
     if (index >= 0 && index < finalOptions.length) {
       finalCorrectAnswer = finalOptions[index];
@@ -918,12 +1066,13 @@ function parseQuestionBlock(
     matchedImageUrl = visualAssets[0].dataUrl;
   }
 
-  // 7. Detect Section & Question Type
+  // 7. Detect Section & Question Type (respects blockDocumentSection if detected from document banner)
+  const effectiveCategory = blockDocumentSection || defaultCategory;
   const { section: detectedSection, type: detectedType } = detectSectionAndType(
     questionText,
     matchedPassage,
     codeSnippet,
-    defaultCategory,
+    effectiveCategory,
     targetTopic
   );
 
@@ -952,7 +1101,7 @@ function parseQuestionBlock(
  * Validates sequence gaps, duplicated numbers, option completeness,
  * answer key status, unattached visual assets, and computes confidence score.
  */
-function validateExtractedQuestions(questions, totalPageCount = 1) {
+function validateExtractedQuestions(questions, totalPageCount = 1, unparsedQuestions = []) {
   const validated = [];
   const seenNumbers = new Set();
   const numberList = [];
@@ -974,7 +1123,7 @@ function validateExtractedQuestions(questions, totalPageCount = 1) {
     seenNumbers.add(qNum);
     numberList.push(qNum);
 
-    // 2. Check options completeness
+    // 2. Check options completeness (supports 4 or 5 options)
     const validOptions = Array.isArray(q.options) ? q.options.filter((o) => o && String(o).trim()) : [];
     if (validOptions.length < 4) {
       warnings.push(`Incomplete options: source provided ${validOptions.length} of 4 expected options.`);
@@ -1070,14 +1219,15 @@ function validateExtractedQuestions(questions, totalPageCount = 1) {
     hasMissingAnswers,
     hasIncompleteOptions,
     sequenceValid,
-    totalPages: totalPageCount
+    totalPages: totalPageCount,
+    unparsedQuestions: unparsedQuestions || []
   };
 
   return { validatedQuestions: validated, validationSummary };
 }
 
 /**
- * Scanned PDF fallback using Gemini Multimodal Vision with schema-validated output
+ * Scanned PDF fallback using Gemini Multimodal Vision or OpenRouter with schema-validated output
  */
 async function extractScannedPdfWithVision({
   pdfBuffer,
@@ -1086,18 +1236,14 @@ async function extractScannedPdfWithVision({
   difficulty = 'Medium',
   count = null
 }) {
-  const apiKey = (process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY || '').trim();
-  if (!apiKey || apiKey === 'dummy_gemini_key_for_testing') {
-    throw new Error('Scanned or image-only PDF detected with no readable text layer, and Gemini API key is not configured for vision OCR.');
-  }
-
-  const { GoogleGenAI } = require('@google/genai');
-  const ai = new GoogleGenAI({ apiKey });
-  const models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const geminiKey = (process.env.GEMINI_API_KEY || process.env.Gemini_API_KEY || '').trim();
+  const openrouterKey = (process.env.OPENROUTER_API_KEY || '').trim();
+  const isValidGeminiKey = geminiKey && geminiKey.startsWith('AIzaSy') && geminiKey !== 'dummy_gemini_key_for_testing';
+  const preferOpenRouter = process.env.AI_PROVIDER === 'openrouter' && openrouterKey;
 
   const prompt = `You are an expert assessment extractor performing OCR and question extraction on this scanned PDF document.
 Extract all multiple choice questions (MCQs) strictly from the document.
-Preserve exact question numbering, sequence, options (A, B, C, D), correct answers, explanations, and any shared passages/reading comprehension directions.
+Preserve exact question numbering, sequence, options (A, B, C, D, E), correct answers, explanations, and any shared passages/reading comprehension directions.
 If there are bar charts, pie charts, or diagrams, describe the chart values accurately or state the question context.
 
 Return ONLY a valid JSON array of objects. Do NOT use markdown code fences.
@@ -1120,34 +1266,98 @@ Schema per question:
 ]`;
 
   let rawResponse = '';
-  for (const model of models) {
+
+  // 1. Try Gemini Vision if valid Gemini key is present and not explicitly set to OpenRouter
+  if (isValidGeminiKey && !preferOpenRouter) {
     try {
-      console.log(`[Scanned PDF OCR] Trying model ${model}...`);
-      const response = await ai.models.generateContent({
-        model,
-        contents: [
-          {
-            inlineData: {
-              mimeType: 'application/pdf',
-              data: pdfBuffer.toString('base64')
+      const { GoogleGenAI } = require('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+
+      for (const model of models) {
+        try {
+          console.log(`[Scanned PDF OCR] Trying Gemini model ${model}...`);
+          const response = await ai.models.generateContent({
+            model,
+            contents: [
+              {
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: pdfBuffer.toString('base64')
+                }
+              },
+              prompt
+            ],
+            config: {
+              temperature: 0.1,
+              maxOutputTokens: 4096
             }
-          },
-          prompt
-        ],
-        config: {
-          temperature: 0.1,
-          maxOutputTokens: 4096
+          });
+          rawResponse = response.text || '';
+          if (rawResponse) break;
+        } catch (err) {
+          console.warn(`[Scanned PDF OCR] Gemini model ${model} failed: ${err.message}`);
         }
-      });
-      rawResponse = response.text || '';
-      if (rawResponse) break;
-    } catch (err) {
-      console.warn(`[Scanned PDF OCR] Model ${model} failed: ${err.message}`);
+      }
+    } catch (gErr) {
+      console.warn(`[Scanned PDF OCR] Gemini initialization failed: ${gErr.message}`);
+    }
+  }
+
+  // 2. Fallback to OpenRouter Multimodal Vision if Gemini failed or OpenRouter is preferred
+  if (!rawResponse && openrouterKey) {
+    try {
+      console.log('[Scanned PDF OCR] Trying OpenRouter multimodal vision fallback...');
+      const axios = require('axios');
+      const base64Pdf = pdfBuffer.toString('base64');
+      const orModels = ['google/gemini-2.0-flash-001', 'qwen/qwen-2.5-vl-72b-instruct:free', 'nvidia/nemotron-3.5-lightning:free'];
+
+      for (const model of orModels) {
+        try {
+          const res = await axios.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            {
+              model,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: prompt },
+                    {
+                      type: 'image_url',
+                      image_url: {
+                        url: `data:application/pdf;base64,${base64Pdf}`
+                      }
+                    }
+                  ]
+                }
+              ],
+              temperature: 0.1,
+              max_tokens: 4096
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${openrouterKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://mitra-portal.edu',
+                'X-Title': 'MITRA Portal PDF OCR'
+              },
+              timeout: 45000
+            }
+          );
+          rawResponse = res.data?.choices?.[0]?.message?.content || '';
+          if (rawResponse) break;
+        } catch (orErr) {
+          console.warn(`[Scanned PDF OCR] OpenRouter ${model} failed: ${orErr.message}`);
+        }
+      }
+    } catch (orInitErr) {
+      console.warn(`[Scanned PDF OCR] OpenRouter fallback failed: ${orInitErr.message}`);
     }
   }
 
   if (!rawResponse) {
-    throw new Error('AI OCR extraction failed to process the scanned PDF. Please check document quality.');
+    throw new Error('Scanned or image-only PDF detected with no readable text layer, and neither a valid Gemini API key nor OpenRouter API key could complete vision OCR.');
   }
 
   const { sanitizeAndParseJson } = require('./pdfQuestionExtractor');
@@ -1222,11 +1432,15 @@ async function extractQuestionsWithPatterns({
     throw new Error('No PDF file or text provided for extraction.');
   }
 
-  // 2. Fallback to Gemini Vision if text is empty or near-empty (< 60 chars, likely scanned/image-only)
+  // 2. Fallback to Gemini Vision or OpenRouter if text is empty or near-empty (< 45 chars per page, likely scanned/image-only)
   const cleanedText = cleanExtractedText(extractedText);
-  if (!cleanedText || cleanedText.replace(/\[\[PAGE_(?:START|END):\d+\]\]/g, '').trim().length < 60) {
+  const textCharsWithoutPageTags = cleanedText.replace(/\[\[PAGE_(?:START|END):\d+\]\]/g, '').replace(/\s+/g, '').length;
+  const avgCharsPerPage = textCharsWithoutPageTags / Math.max(1, pageCount);
+  const isLikelyScanned = avgCharsPerPage < 45 || textCharsWithoutPageTags < 60;
+
+  if (isLikelyScanned) {
     if (pdfBuffer && Buffer.isBuffer(pdfBuffer)) {
-      console.log('[PDF Extractor] Minimal text detected. Initiating Scanned PDF Vision Fallback...');
+      console.log('[PDF Extractor] Minimal text layer detected. Initiating Scanned PDF Vision Fallback...');
       const ocrQuestions = await extractScannedPdfWithVision({
         pdfBuffer,
         category,
@@ -1253,28 +1467,29 @@ async function extractQuestionsWithPatterns({
     }
   }
 
-  // 3. Extract global answer key and explanations
-  // Extract document metadata (title, headings)
+  // 3. Extract document metadata (title, headings)
   const { documentTitle } = extractDocumentMetadata(cleanedText);
 
-  // 3. Extract global answer key and explanations
+  // 4. Extract global answer key and explanations
   const { answerKeyMap, explanationMap } = extractGlobalAnswersAndExplanations(cleanedText);
 
-  // 4. Split document into candidate question blocks with page tracking
+  // 5. Split document into candidate question blocks with page and section tracking
   const blocks = splitIntoQuestionBlocks(cleanedText);
   if (blocks.length === 0) {
     throw new Error('Could not identify any questions in the uploaded PDF. Ensure the PDF contains numbered questions (e.g. 1., Q1.) with options.');
   }
 
-  // 5. Detect shared context sets with question blocks context
+  // 6. Detect shared context sets with question blocks context
   const sharedContextSets = detectSharedContextSets(cleanedText, blocks);
 
-  // 6. Parse each block with shared context & visual asset linkage
+  // 7. Parse each block with shared context & visual asset linkage
   const parsedQuestions = [];
+  const unparsedQuestions = [];
+
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     const q = parseQuestionBlock(
-      block.rawText,
+      block,
       block.number || i + 1,
       answerKeyMap,
       difficulty,
@@ -1288,6 +1503,12 @@ async function extractQuestionsWithPatterns({
 
     if (q && q.questionText && q.questionText.length > 5) {
       parsedQuestions.push(q);
+    } else {
+      unparsedQuestions.push({
+        questionNumber: block.number || i + 1,
+        pageNumber: block.pageNumber || 1,
+        reason: 'Failed to extract valid multiple-choice options or question text too short.'
+      });
     }
   }
 
@@ -1295,7 +1516,7 @@ async function extractQuestionsWithPatterns({
     throw new Error('No valid multiple-choice questions could be extracted from the document. Please check the PDF layout.');
   }
 
-  // 7. Deduplicate questions across chunks/pages
+  // 8. Deduplicate questions across chunks/pages
   const seenKeys = new Set();
   const uniqueQuestions = [];
 
@@ -1319,10 +1540,10 @@ async function extractQuestionsWithPatterns({
     }
   }
 
-  // 8. Run Extraction Validation Engine
-  const { validatedQuestions, validationSummary } = validateExtractedQuestions(uniqueQuestions, pageCount);
+  // 9. Run Extraction Validation Engine
+  const { validatedQuestions, validationSummary } = validateExtractedQuestions(uniqueQuestions, pageCount, unparsedQuestions);
 
-  // 9. Apply count limit only if explicitly requested
+  // 10. Apply count limit only if explicitly requested
   const parsedCount = parseInt(count, 10);
   const finalQuestions = parsedCount > 0 ? validatedQuestions.slice(0, parsedCount) : validatedQuestions;
 

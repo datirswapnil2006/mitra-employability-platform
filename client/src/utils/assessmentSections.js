@@ -14,159 +14,113 @@ export const SECTION_ICONS = {
   general: Layers
 };
 
+export const getSectionType = (name = '') => {
+  const lower = String(name || '').toLowerCase();
+  if (lower.includes('quant') || lower.includes('arithmetic') || lower.includes('math')) return 'quantitative';
+  if (lower.includes('logic') || lower.includes('reasoning')) return 'logical';
+  if (lower.includes('verbal') || lower.includes('english') || lower.includes('comprehension')) return 'verbal';
+  if (lower.includes('domain') || lower.includes('tech') || lower.includes('core')) return 'technical';
+  return 'general';
+};
+
+export const getSectionIconName = (name = '') => {
+  const type = getSectionType(name);
+  if (type === 'quantitative') return 'Calculator';
+  if (type === 'logical') return 'Brain';
+  if (type === 'verbal') return 'BookOpen';
+  if (type === 'technical') return 'Code';
+  return 'Layers';
+};
+
 /**
- * Derives section breakdown for tests (e.g. Mixed Tests with Quantitative Aptitude, Logical Reasoning, Verbal Ability)
+ * Derives section breakdown for tests:
+ * - If it's a specific single-category assessment (e.g. Quantitative Aptitude, Logical Reasoning, Verbal Ability),
+ *   it creates exactly 1 unified section. NEVER mixes questions into other categories!
+ * - If it is an explicit Mix Assessment or Full Assessment, or has multiple configured sections,
+ *   it groups questions by their true section / category metadata.
  */
 export function getAssessmentSections(questions = [], assessment = {}) {
   if (!Array.isArray(questions) || questions.length === 0) return [];
 
+  const categoryStr = String(assessment?.category || '').trim();
+  const titleStr = String(assessment?.title || '').trim();
+  const moduleStr = String(assessment?.module || '').trim();
+
+  const isFullAssessment =
+    moduleStr === 'Full' ||
+    moduleStr === 'Full Assessment' ||
+    titleStr.toLowerCase().includes('full assessment');
+
   const isMix =
-    assessment?.category === 'Mix Assessment' ||
-    String(assessment?.category || '').toLowerCase().includes('mix') ||
-    String(assessment?.topic || '').toLowerCase().includes('mix') ||
-    String(assessment?.title || '').toLowerCase().includes('mix') ||
-    assessment?.category === 'All Topics (Quantitative + Logical + Verbal)';
+    categoryStr === 'Mix Assessment' ||
+    categoryStr === 'All Topics (Quantitative + Logical + Verbal)' ||
+    categoryStr.toLowerCase().includes('mix') ||
+    titleStr.toLowerCase().includes('mix assessment') ||
+    isFullAssessment;
 
-  // Method 1: Check if questions contain explicit section indicators in questionText, topic, or category
-  const quantitativeIndices = [];
-  const logicalIndices = [];
-  const verbalIndices = [];
-  const technicalIndices = [];
-  const otherIndices = [];
+  // CASE 1: Single-category assessment (NOT a Mix Assessment or Full Assessment)
+  // For example: "Quantitative Aptitude", "Logical Reasoning", "Verbal Ability", or "Domain"
+  if (!isMix) {
+    // Only split if the assessment has explicit, multiple sections defined in sectionsConfig
+    const hasExplicitMultipleSections =
+      Array.isArray(assessment?.sectionsConfig) && assessment.sectionsConfig.length > 1;
 
-  questions.forEach((q, idx) => {
-    const rawText = `${q.questionText || ''} ${q.topic || ''} ${q.category || ''} ${q.section || ''}`.toLowerCase();
-
-    if (
-      rawText.includes('[quantitative') ||
-      rawText.includes('quantitative aptitude') ||
-      rawText.includes('arithmetic') ||
-      rawText.includes('ratio & proportion') ||
-      rawText.includes('percentage') ||
-      rawText.includes('speed, time') ||
-      rawText.includes('profit & loss') ||
-      rawText.includes('time and work') ||
-      rawText.includes('simple & compound')
-    ) {
-      quantitativeIndices.push(idx);
-    } else if (
-      rawText.includes('[logical') ||
-      rawText.includes('logical reasoning') ||
-      rawText.includes('reasoning') ||
-      rawText.includes('syllogism') ||
-      rawText.includes('blood relation') ||
-      rawText.includes('seating arrangement') ||
-      rawText.includes('direction sense') ||
-      rawText.includes('coding-decoding') ||
-      rawText.includes('pattern')
-    ) {
-      logicalIndices.push(idx);
-    } else if (
-      rawText.includes('[verbal') ||
-      rawText.includes('verbal ability') ||
-      rawText.includes('reading comprehension') ||
-      rawText.includes('sentence correction') ||
-      rawText.includes('vocabulary') ||
-      rawText.includes('synonyms') ||
-      rawText.includes('antonyms') ||
-      rawText.includes('grammar') ||
-      rawText.includes('error spotting')
-    ) {
-      verbalIndices.push(idx);
-    } else if (
-      rawText.includes('[domain') ||
-      rawText.includes('domain knowledge') ||
-      rawText.includes('[technical') ||
-      rawText.includes('coding') ||
-      rawText.includes('algorithm') ||
-      rawText.includes('data structure') ||
-      Boolean(q.department)
-    ) {
-      technicalIndices.push(idx);
-    } else {
-      otherIndices.push(idx);
+    if (!hasExplicitMultipleSections) {
+      const sectionName = assessment?.category || assessment?.topic || assessment?.title || 'Main Assessment';
+      const secType = getSectionType(sectionName);
+      return [
+        {
+          id: 'sec-main',
+          type: secType,
+          name: sectionName,
+          shortName: sectionName,
+          iconName: getSectionIconName(sectionName),
+          theme: secType === 'quantitative' ? 'blue' : secType === 'logical' ? 'purple' : secType === 'verbal' ? 'emerald' : 'indigo',
+          questionIndices: questions.map((_, i) => i),
+          startIndex: 0
+        }
+      ];
     }
+  }
+
+  // CASE 2: Multi-section or Mix Assessment
+  // Priority 2a: Group by explicit question.section if distinct sections are present
+  const sectionMap = new Map();
+  questions.forEach((q, idx) => {
+    // Use explicit question metadata: section, category, or module
+    let secName = (q.section || q.category || '').trim();
+    if (!secName || secName.toLowerCase() === 'general') {
+      secName = isFullAssessment ? 'General Core' : 'Assessment Section';
+    }
+
+    if (!sectionMap.has(secName)) {
+      sectionMap.set(secName, []);
+    }
+    sectionMap.get(secName).push(idx);
   });
 
-  const distinctSectionsFound =
-    (quantitativeIndices.length > 0 ? 1 : 0) +
-    (logicalIndices.length > 0 ? 1 : 0) +
-    (verbalIndices.length > 0 ? 1 : 0) +
-    (technicalIndices.length > 0 ? 1 : 0);
-
-  // If question content clearly distributes across >= 2 sections with minimal other:
-  if (distinctSectionsFound >= 2 && otherIndices.length < questions.length * 0.4) {
-    const isFullAssessment =
-      assessment?.module === 'Full' ||
-      assessment?.module === 'Full Assessment';
-
+  if (sectionMap.size > 1) {
     const list = [];
-    if (quantitativeIndices.length > 0) {
+    let secIdx = 0;
+    for (const [secName, indices] of sectionMap.entries()) {
+      const secType = getSectionType(secName);
       list.push({
-        id: 'sec-quant',
-        type: 'quantitative',
-        name: 'Quantitative Aptitude',
-        shortName: 'Quantitative',
-        iconName: 'Calculator',
-        theme: 'blue',
-        questionIndices: quantitativeIndices,
-        startIndex: quantitativeIndices[0]
-      });
-    }
-    if (logicalIndices.length > 0) {
-      list.push({
-        id: 'sec-logical',
-        type: 'logical',
-        name: 'Logical Reasoning',
-        shortName: 'Logical Reasoning',
-        iconName: 'Brain',
-        theme: 'purple',
-        questionIndices: logicalIndices,
-        startIndex: logicalIndices[0]
-      });
-    }
-    if (verbalIndices.length > 0) {
-      list.push({
-        id: 'sec-verbal',
-        type: 'verbal',
-        name: 'Verbal Ability',
-        shortName: 'Verbal Ability',
-        iconName: 'BookOpen',
-        theme: 'emerald',
-        questionIndices: verbalIndices,
-        startIndex: verbalIndices[0]
-      });
-    }
-    if (technicalIndices.length > 0) {
-      list.push({
-        id: 'sec-tech',
-        type: 'technical',
-        name: isFullAssessment ? 'Domain Knowledge' : 'Technical / Core',
-        shortName: isFullAssessment ? 'Domain Knowledge' : 'Technical',
-        iconName: 'Code',
-        theme: 'indigo',
-        questionIndices: technicalIndices,
-        startIndex: technicalIndices[0]
-      });
-    }
-    if (otherIndices.length > 0) {
-      list.push({
-        id: 'sec-general',
-        type: 'general',
-        name: 'General Topics',
-        shortName: 'General',
-        iconName: 'Layers',
-        theme: 'slate',
-        questionIndices: otherIndices,
-        startIndex: otherIndices[0]
+        id: `sec-${secIdx++}`,
+        type: secType,
+        name: secName,
+        shortName: secName,
+        iconName: getSectionIconName(secName),
+        theme: secType === 'quantitative' ? 'blue' : secType === 'logical' ? 'purple' : secType === 'verbal' ? 'emerald' : 'indigo',
+        questionIndices: indices,
+        startIndex: indices[0]
       });
     }
     list.sort((a, b) => a.startIndex - b.startIndex);
     return list;
   }
 
-  // Method 2: Mix Assessment or Aptitude with >= 6 questions without tags -> Balanced 3-way partition
-  if (isMix || (assessment?.module === 'Aptitude' && questions.length >= 6)) {
+  // Priority 2b: Mix Assessment with >= 6 questions without tags -> Balanced 3-way partition
+  if (isMix && questions.length >= 6) {
     const total = questions.length;
     const countPerSection = Math.ceil(total / 3);
 
@@ -224,14 +178,16 @@ export function getAssessmentSections(questions = [], assessment = {}) {
     return list;
   }
 
-  // Method 3: Single section
+  // Fallback: 1 main section
+  const defaultName = assessment?.category || assessment?.topic || 'Main Assessment';
+  const defaultType = getSectionType(defaultName);
   return [
     {
       id: 'sec-main',
-      type: 'general',
-      name: assessment?.topic || assessment?.category || 'General Section',
-      shortName: assessment?.topic || assessment?.category || 'Section 1',
-      iconName: 'BookOpen',
+      type: defaultType,
+      name: defaultName,
+      shortName: defaultName,
+      iconName: getSectionIconName(defaultName),
       theme: 'blue',
       questionIndices: questions.map((_, i) => i),
       startIndex: 0

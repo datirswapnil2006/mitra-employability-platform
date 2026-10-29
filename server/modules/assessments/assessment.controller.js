@@ -482,8 +482,44 @@ exports.generateQuestionsForReview = async (req, res) => {
 
     const count = Math.min(Math.max(parseInt(questionCount, 10) || 5, 1), 180);
 
+    // Fetch relevant existing questions from recent official assessments for cross-assessment deduplication
+    const combinedExisting = Array.isArray(existingQuestions) ? [...existingQuestions] : [];
+    try {
+      const cleanTopic = (topic && topic.trim()) || '';
+      const filter = { status: { $in: ['published', 'draft'] } };
+      if (moduleName && moduleName !== 'All') filter.module = moduleName;
+      if (cleanTopic && cleanTopic !== 'General') {
+        filter.$or = [{ topic: cleanTopic }, { 'questions.topic': cleanTopic }];
+      } else if (category && category !== 'General') {
+        filter.category = category;
+      }
+      const existingOfficial = await Assessment.find(filter)
+        .select('questions.questionText')
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .lean();
+
+      if (Array.isArray(existingOfficial)) {
+        for (const a of existingOfficial) {
+          if (Array.isArray(a.questions)) {
+            for (const q of a.questions) {
+              if (q?.questionText && !combinedExisting.some((e) => (typeof e === 'string' ? e : e?.questionText) === q.questionText)) {
+                combinedExisting.push(q.questionText);
+                if (combinedExisting.length >= 25) break;
+              }
+            }
+          }
+          if (combinedExisting.length >= 25) break;
+        }
+      }
+    } catch (fetchErr) {
+      // Non-fatal, proceed with existingQuestions
+    }
+
+    const targetProvider = 'gemini';
+
     const questions = await generateQuestionsAI({
-      provider: 'gemini',
+      provider: targetProvider,
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
@@ -493,7 +529,7 @@ exports.generateQuestionsForReview = async (req, res) => {
       difficulty,
       count,
       batchSize: parseInt(batchSize, 10) || Math.min(count, 10),
-      existingQuestions
+      existingQuestions: combinedExisting
     });
 
     res.json({
@@ -582,9 +618,11 @@ exports.generateAIAssessment = async (req, res) => {
       proctoringSettings,
       status = 'published',
       sections = null,
-      batchSize = 5
+      batchSize = 5,
+      provider = null
     } = req.body;
 
+    const targetProvider = 'gemini';
     const effectivePrompt = (prompt || customPrompt || topic || '').trim();
 
     if (!effectivePrompt && (!sections || !Array.isArray(sections) || sections.length === 0)) {
@@ -608,7 +646,7 @@ exports.generateAIAssessment = async (req, res) => {
       timeLimitMinutes: parseInt(timeLimitMinutes, 10) || 20,
       totalMarks: 0,
       isAIGenerated: true,
-      aiProvider: 'gemini',
+      aiProvider: targetProvider,
       assessmentMode: assessmentMode || 'NORMAL',
       creationMethod: creationMethod || 'AI_GENERATED',
       proctoringSettings: proctoringSettings || {
@@ -631,12 +669,17 @@ exports.generateAIAssessment = async (req, res) => {
       module: moduleName,
       category,
       department: moduleName === 'Domain' ? (department || category) : null,
+      topic: (topic && topic.trim()) || effectivePrompt.slice(0, 60),
+      prompt: effectivePrompt,
+      customPrompt: customPrompt || effectivePrompt,
+      questionCount: finalQuestionCount,
       difficulty,
       timeLimitMinutes: parseInt(timeLimitMinutes, 10) || 20,
       passingScorePercentage: parseInt(passingScorePercentage, 10) || 70,
       sections,
-      batchSize: Math.max(5, Math.min(10, parseInt(batchSize, 10) || 5)),
+      batchSize: Math.max(1, Math.min(10, parseInt(batchSize, 10) || 5)),
       assessmentId: assessment._id,
+      provider: targetProvider,
       userId: req.user ? req.user._id : undefined
     });
 
@@ -652,7 +695,8 @@ exports.generateAIAssessment = async (req, res) => {
         questions: completedJob.acceptedQuestions,
         totalMarks: completedJob.acceptedQuestions.reduce((acc, q) => acc + (q.marks || 1), 0),
         status: finalAssessmentStatus,
-        sectionsConfig: completedJob.config.sections
+        sectionsConfig: completedJob.config.sections,
+        aiProvider: completedJob.providerUsed || targetProvider
       },
       { new: true }
     );

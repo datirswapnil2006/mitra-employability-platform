@@ -160,6 +160,7 @@ export const AssessmentManagementPage = () => {
     try {
       const payload = {
         ...aiForm,
+        provider: 'gemini',
         module: currentModule,
         category: isDomainModule ? (aiForm.department || 'CSE') : aiForm.category,
         department: isDomainModule ? (aiForm.department || 'CSE') : null
