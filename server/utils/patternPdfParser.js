@@ -1,5 +1,5 @@
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
-const { cleanMathExpression, toSuperscript, toSubscript } = require('./mathCleaner');
+const { cleanMathExpression, normalizeCurrencySymbols, toSuperscript, toSubscript } = require('./mathCleaner');
 
 /**
  * Enhanced PDF Question Extractor & Pattern Parser
@@ -268,7 +268,8 @@ function cleanExtractedText(rawText) {
     })
     .join('\n');
 
-  return normalizeGluedOptionMarkers(cleaned);
+  const withCurrency = normalizeCurrencySymbols(cleaned);
+  return normalizeGluedOptionMarkers(withCurrency);
 }
 
 /**
@@ -514,8 +515,8 @@ function splitIntoQuestionBlocks(text) {
 
   // Regex to match question numbering at start of a line
   // Matches: "1.", "1)", "1-", "(1)", "[1]", "Q1.", "Q1:", "Q.1", "Question 1:", "Question-1", "Que 1.", "Ques 1:", "Problem 1:", "Exercise 1:", "Task 1:", "Item 1:"
-  // Supports glued numbers like "101.What" or "101)What" without mandatory trailing space
-  const questionStartRegex = /(?:^|\n)\s*(?:(?:(?:Q(?:uestion|ue|ues)?|Problem|Prob|Exercise|Task|Item)[.\s\-:]*(\d+)[\.\)\-\:\s]*)|(?:\((\d+)\))|(?:\[(\d+)\])|(?:(\d+)[\.\)\-\:]))(?:\s+|(?=[A-Za-z]))/gi;
+  // Supports glued numbers like "101.What", "101)What", "50.₹500", "50.25%" without mandatory trailing space
+  const questionStartRegex = /(?:^|\n)\s*(?:(?:(?:Q(?:uestion|ue|ues)?|Problem|Prob|Exercise|Task|Item)[.\s\-:]*(\d+)[\.\)\-\:\s]*)|(?:\((\d+)\))|(?:\[(\d+)\])|(?:(\d+)[\.\)\-\:\/]))(?:\s*)/gi;
 
   const indices = [];
   let match;
@@ -560,17 +561,25 @@ function splitIntoQuestionBlocks(text) {
 
   // Intervening directions or section headers regex to prevent bleeding into previous question block
   const passageHeaderRegex = /(?:^|\n)\s*(?:(?:Directions?|Instructions?|Passage|Case\s*Study|Study\s*the\s*following|Read\s*the\s*following|Questions?\s*(?:\(?\s*(?:for\s+)?(?:Q(?:uestions?|ue)?\.?\s*)?\d+|\b\d+\s*(?:to|-)))|SECTION\s+[A-Z0-9]+|PART\s+[A-Z0-9]+)/i;
+  const hasOptionsRegex = /(?:Option\s+[A-Ea-e]|\(?[A-Ea-e1-5][\)\.\:\-]\s*)/i;
 
   const blocks = [];
   for (let i = 0; i < indices.length; i++) {
     const startPos = indices[i].index + indices[i].length;
     let endPos = i + 1 < indices.length ? indices[i + 1].index : workingText.length;
 
-    // Check if intervening text has directions / passage header for next set
-    const chunkBetween = workingText.substring(startPos, endPos);
-    const pMatch = chunkBetween.match(passageHeaderRegex);
-    if (pMatch && pMatch.index > 0) {
-      endPos = startPos + pMatch.index;
+    // Check if intervening text has directions / passage header for next set (only if not the last question)
+    if (i + 1 < indices.length) {
+      const chunkBetween = workingText.substring(startPos, endPos);
+      const pMatch = chunkBetween.match(passageHeaderRegex);
+      if (pMatch && pMatch.index > 0) {
+        const textBefore = chunkBetween.substring(0, pMatch.index);
+        const textAfter = chunkBetween.substring(pMatch.index);
+        // Only truncate if the text BEFORE pMatch already has options, and the text AFTER does NOT have options (belongs to the next section)
+        if (hasOptionsRegex.test(textBefore) && !hasOptionsRegex.test(textAfter)) {
+          endPos = startPos + pMatch.index;
+        }
+      }
     }
 
     let rawBlock = workingText.substring(startPos, endPos).trim();
@@ -841,17 +850,17 @@ function parseQuestionBlock(
   // Method A: Check line-by-line options first
   // Lines starting with (A), A), A., [A], Option A:, (i), i):
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const optLineRegex = /^(?:\(?([A-Ea-e1-5]|[ivx]+)[\)\]\.\:\-]|Option\s+([A-Ea-e])[\:\.\-]?)\s*(.*)/i;
+  const optLineRegex = /^(?:\(?([A-Ea-e1-5]|[ivx]+)[\)\]\.\:\-]|\[([A-Ea-e1-5]|[ivx]+)\]|Option\s+([A-Ea-e])[\:\.\-]?)\s*(.*)/i;
 
   let optStartLineIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     const m = l.match(optLineRegex);
-    const rawChar = m?.[1] || m?.[2] || '';
+    const rawChar = m?.[1] || m?.[2] || m?.[3] || '';
     const letter = normalizeOptLetter(rawChar);
     if (m && letter === 'A') {
       // Verify not an entity statement like "Point A is..."
-      const remainder = (m[3] || '').trim();
+      const remainder = (m[4] || m[3] || '').trim();
       const isEntityStatement = /^(?:is|was|are|were|has|have|walks|runs|moves|stands|facing)\b/i.test(remainder);
       if (!isEntityStatement) {
         optStartLineIdx = i;
@@ -883,10 +892,10 @@ function parseQuestionBlock(
 
       const m = l.match(optLineRegex);
       if (m) {
-        const rawChar = m[1] || m[2];
+        const rawChar = m[1] || m[2] || m[3];
         const norm = normalizeOptLetter(rawChar);
         curLetter = norm;
-        let val = (m[3] || '').replace(/\s+/g, ' ').trim();
+        let val = (m[4] || m[3] || '').replace(/\s+/g, ' ').trim();
 
         // Check if inline answer is embedded on the same line as the option
         const trailingAns = val.match(answerRegex);
@@ -917,13 +926,13 @@ function parseQuestionBlock(
   }
 
   // Method B: Horizontal options regex
-  // Matches A) ... B) ... C) ... D) or (A) ... (B) ... or (i) ... (ii) ...
+  // Matches A) ... B) ... C) ... D) or (A) ... (B) ... or [A] ... [B] ... or (i) ... (ii) ...
   if (options.length < 2) {
-    const horizRegex = /(?:^|\s+)(?<!(?:Point|Person|Village|Town|City|Station|Node|Step|Table|Figure)\s+)(?:Option\s+([A-Ea-e])[\:\.\-\s]*|\(?([A-Ea-e])[\)\]\.\:\-]\s*|\(([1-5])\)\s*|\(([ivx]+)\)\s*)/gi;
+    const horizRegex = /(?:^|\s+)(?<!(?:Point|Person|Village|Town|City|Station|Node|Step|Table|Figure)\s+)(?:Option\s+([A-Ea-e])[\:\.\-\s]*|\[([A-Ea-e1-5])\]\s*|\(?([A-Ea-e])[\)\]\.\:\-]\s*|\(([1-5])\)\s*|([1-5])[\)\.\:\-]\s*|\(([ivx]+)\)\s*)/gi;
     const matches = [];
     let hm;
     while ((hm = horizRegex.exec(text)) !== null) {
-      const rawChar = hm[1] || hm[2] || hm[3] || hm[4] || '';
+      const rawChar = hm[1] || hm[2] || hm[3] || hm[4] || hm[5] || hm[6] || '';
       const letter = normalizeOptLetter(rawChar);
       matches.push({
         letter,
@@ -971,9 +980,44 @@ function parseQuestionBlock(
     }
   }
 
+  // Method C: Fallback line detection for options if standard markers were slightly deformed
+  if (options.length < 2) {
+    const rawLines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (rawLines.length >= 3) {
+      let splitIdx = -1;
+      for (let i = 1; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        if (/^(?:[\(\[]?[A-E1-5a-e][\)\]\.\:\-]|Option\s+[A-Ea-e])/i.test(line)) {
+          splitIdx = i;
+          break;
+        }
+      }
+      if (splitIdx !== -1) {
+        questionText = rawLines.slice(0, splitIdx).join(' ').trim();
+        for (let j = splitIdx; j < rawLines.length; j++) {
+          const cleanOpt = rawLines[j].replace(/^(?:[\(\[]?[A-E1-5a-e][\)\]\.\:\-]|Option\s+[A-Ea-e][\:\.\-]?)\s*/i, '').trim();
+          if (cleanOpt) {
+            options.push(cleanOpt);
+            const letter = String.fromCharCode(65 + (options.length - 1));
+            optionMap[letter] = cleanOpt;
+          }
+        }
+      }
+    }
+  }
+
   // Must have at least 2 detected options to be considered an MCQ
   if (options.length < 2) {
-    return null;
+    const candidateLines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (candidateLines.length >= 3 && candidateLines[0].length >= 8) {
+      questionText = candidateLines[0];
+      for (let k = 1; k < Math.min(candidateLines.length, 5); k++) {
+        options.push(candidateLines[k]);
+        optionMap[String.fromCharCode(65 + k - 1)] = candidateLines[k];
+      }
+    } else {
+      return null;
+    }
   }
 
   // Clean and normalize question text

@@ -20,9 +20,33 @@ function toSubscript(numStr) {
   return String(numStr).split('').map(c => map[c] || c).join('');
 }
 
+/**
+ * Normalizes currency symbols:
+ * Converts legacy Indian Rupee font glyph artifact 'n' or 'N' (e.g. "n 800", "n 1,000", "n 25,000")
+ * as well as Rs. / Rs / INR / ` into the standard Indian Rupee symbol '₹'.
+ * Preserves mathematical variables like "for n = 5" or "if n is an integer".
+ */
+function normalizeCurrencySymbols(rawText) {
+  if (!rawText || typeof rawText !== 'string') return rawText || '';
+  let str = rawText;
+
+  // 1. Explicit Rs. / Rs / INR / ` before numbers -> ₹
+  str = str.replace(/\b(?:Rs\.?|INR)\s*(\d+(?:,\d+)*(?:\.\d+)?)/gi, '₹$1');
+  str = str.replace(/`\s*(\d+(?:,\d+)*(?:\.\d+)?)/g, '₹$1');
+
+  // 2. Convert Indian Rupee font artifact 'n' or 'N' before amounts/prices to ₹:
+  // Matches: "from n 800 to n 1,000", "salary of n 25,000", "saves n 5,000", "n 15,000", "(n 500)", "n. 500"
+  str = str.replace(/(^|[\s\(\[\{,\/])(?:n|N)\s*[\.]?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d+)?|\d+)(?=[^\w]|$)/g, '$1₹$2');
+
+  // 3. Fix cases where Rupee symbol ₹ is followed by excessive space before digits
+  str = str.replace(/₹\s+(\d)/g, '₹$1');
+
+  return str;
+}
+
 function cleanMathExpression(rawText) {
   if (!rawText || typeof rawText !== 'string') return rawText || '';
-  let text = rawText.trim();
+  let text = normalizeCurrencySymbols(rawText.trim());
 
   // 1. If it contains duplicate prefix separated by =?
   if (text.includes('=?')) {
@@ -112,6 +136,7 @@ function cleanMathExpression(rawText) {
 
 module.exports = {
   cleanMathExpression,
+  normalizeCurrencySymbols,
   toSuperscript,
   toSubscript
 };

@@ -2,6 +2,7 @@ const { generateQuestionsWithGemini } = require('./geminiClient');
 const Question = require('../modules/assessments/question.model');
 const { validateQuestionBatch, validateQuestion } = require('./questionValidator');
 const { checkIsDuplicate, filterUniqueQuestions } = require('./questionDeduplicator');
+const { normalizeCurrencySymbols } = require('./mathCleaner');
 
 /**
  * Enhanced AI Question Generator for MITRA Assessment Module
@@ -125,22 +126,23 @@ const retrieveQuestionBankFallback = async ({
     const normText = c.questionText.trim().toLowerCase();
     if (alreadySelectedTexts.has(normText)) continue;
 
-    // Validate options and correctAnswer
-    const opts = Array.isArray(c.options) && c.options.length >= 4
-      ? c.options.slice(0, 4).map((o) => String(o || '').trim())
-      : ['Option A', 'Option B', 'Option C', 'Option D'];
+    // Validate options and correctAnswer with currency normalization
+    const cleanQText = normalizeCurrencySymbols(c.questionText.trim());
+    const opts = (Array.isArray(c.options) && c.options.length >= 4
+      ? c.options.slice(0, 4).map((o) => normalizeCurrencySymbols(String(o || '').trim()))
+      : ['Option A', 'Option B', 'Option C', 'Option D']).map((o) => normalizeCurrencySymbols(o));
     while (opts.length < 4) opts.push(`Option ${String.fromCharCode(65 + opts.length)}`);
 
-    let corr = String(c.correctAnswer || opts[0]).trim();
+    let corr = normalizeCurrencySymbols(String(c.correctAnswer || opts[0]).trim());
     if (!opts.includes(corr)) opts[0] = corr;
 
     eligible.push({
-      questionText: c.questionText.trim(),
+      questionText: cleanQText,
       codeSnippet: c.codeSnippet || '',
       type: c.type || type || 'mcq',
       options: opts,
       correctAnswer: corr,
-      explanation: c.explanation || 'Verified question retrieved from Question Bank.',
+      explanation: normalizeCurrencySymbols(c.explanation || 'Verified question retrieved from Question Bank.'),
       difficulty: c.difficulty || difficulty || 'Medium',
       marks: c.marks || 1,
       topic: c.topic || cleanTopic || 'General',

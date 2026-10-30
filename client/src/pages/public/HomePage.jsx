@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { PlacementReadinessPieChart } from '../../components/PlacementReadinessPieChart';
 import {
   ArrowRight,
   BookOpen,
@@ -631,55 +632,12 @@ export const HomePage = () => {
             <div className="lg:col-span-7 bg-[#051B33] rounded-2xl p-6 sm:p-8 border border-[#F8C85A]/30 shadow-2xl space-y-6 flex flex-col justify-between">
               <div className="space-y-6">
                 
-                {/* Metric Overview Card */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/10">
-                  <div>
-                    <span className="text-xs font-mono font-bold text-[#F8C85A] uppercase tracking-wider">
-                      Student Benchmark Dashboard
-                    </span>
-                    <h3 className="text-xl font-bold text-white mt-0.5">
-                      Overall Placement Readiness Index
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-3 bg-[#FFF8E9]/10 px-4 py-2 rounded-xl border border-[#F8C85A]/30">
-                    <div className="text-right">
-                      <div className="text-2xl font-black text-[#F8C85A] leading-none">88%</div>
-                      <div className="text-[10px] text-emerald-400 font-bold">Cutoff 75% Met</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Skill-Gap Competency Breakdown */}
-                <div className="space-y-3.5">
-                  <div className="flex items-center justify-between text-xs font-bold text-[#FFF8E9]">
-                    <span>Competency Breakdown Across Placement Domains</span>
-                    <span className="text-[#F8C85A]">Diagnostic Confidence: 94%</span>
-                  </div>
-
-                  {/* Domain Bars */}
-                  {[
-                    { domain: 'Technical Coding & DSA', score: 86, color: 'bg-blue-400', status: 'Recruiter Qualified' },
-                    { domain: 'Quantitative & Logical Aptitude', score: 91, color: 'bg-emerald-400', status: 'Advanced Tier' },
-                    { domain: 'Core Department Engineering', score: 80, color: 'bg-[#F8C85A]', status: 'Proficient' },
-                    { domain: 'Professional & Verbal Communication', score: 84, color: 'bg-purple-400', status: 'Interview Ready' }
-                  ].map((item, idx) => (
-                    <div key={idx} className="space-y-1 bg-white/5 p-3 rounded-xl border border-white/5">
-                      <div className="flex items-center justify-between text-xs font-semibold">
-                        <span className="text-white">{item.domain}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-300 font-normal">{item.status}</span>
-                          <span className="font-bold text-[#F8C85A]">{item.score}%</span>
-                        </div>
-                      </div>
-                      <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                        <div
-                          className={`${item.color} h-full rounded-full transition-all duration-700`}
-                          style={{ width: `${item.score}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {/* Benchmark Dashboard with Interactive Placement Readiness Pie Chart */}
+                <PlacementReadinessPieChart
+                  overallScore={88}
+                  cutoffScore={75}
+                  confidence={94}
+                />
 
                 {/* Highlighted Skill-Gap Alert */}
                 <div className="bg-[#FFF8E9]/10 rounded-xl p-4 border border-[#F8C85A]/40 flex items-start gap-3.5">
