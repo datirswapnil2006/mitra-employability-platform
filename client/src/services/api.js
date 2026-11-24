@@ -108,6 +108,26 @@ export const api = {
     });
     return res.json();
   },
+  verifyLoginOtp: async (email, otp, role) => {
+    const payload = { email, otp };
+    if (role) payload.role = role;
+    const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.json();
+  },
+  resendLoginOtp: async (email, role) => {
+    const payload = { email };
+    if (role) payload.role = role;
+    const res = await fetch(`${API_BASE}/auth/resend-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res.json();
+  },
   register: async (userData) => {
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',

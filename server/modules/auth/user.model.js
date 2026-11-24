@@ -23,6 +23,13 @@ const userSchema = new mongoose.Schema({
   },
   resetPasswordToken: { type: String, default: null },
   resetPasswordExpires: { type: Date, default: null },
+  loginOtp: { type: String, default: null },
+  loginOtpExpires: { type: Date, default: null },
+  loginOtpAttempts: { type: Number, default: 0 },
+  lastOtpSentAt: { type: Date, default: null },
+  otpRequestCount: { type: Number, default: 0 },
+  otpWindowStart: { type: Date, default: null },
+  otpLockedUntil: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 

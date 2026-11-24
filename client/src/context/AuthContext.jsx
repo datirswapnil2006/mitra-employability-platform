@@ -176,7 +176,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password, role) => {
     const res = await api.login(email, password, role);
-    if (res.success) {
+    if (res.success && res.token && res.user) {
       const now = Date.now();
       localStorage.setItem('mitra_token', res.token);
       localStorage.setItem('mitra_last_activity', String(now));
@@ -192,6 +192,32 @@ export const AuthProvider = ({ children }) => {
         setProfileCompletion(res.user?.role === 'admin' ? 100 : 0);
       }
     }
+    return res;
+  };
+
+  const verifyLoginOtp = async (email, otp, role) => {
+    const res = await api.verifyLoginOtp(email, otp, role);
+    if (res.success && res.token && res.user) {
+      const now = Date.now();
+      localStorage.setItem('mitra_token', res.token);
+      localStorage.setItem('mitra_last_activity', String(now));
+      lastActivityRef.current = now;
+      setToken(res.token);
+      setUser(res.user);
+      setInactivityNotice(false);
+      if (res.user?.profileCompletion !== undefined) {
+        setProfileCompletion(res.user.profileCompletion);
+      } else if (res.studentProfile?.profileCompletionPercentage !== undefined) {
+        setProfileCompletion(res.studentProfile.profileCompletionPercentage);
+      } else {
+        setProfileCompletion(res.user?.role === 'admin' ? 100 : 0);
+      }
+    }
+    return res;
+  };
+
+  const resendLoginOtp = async (email, role) => {
+    const res = await api.resendLoginOtp(email, role);
     return res;
   };
 
@@ -227,6 +253,8 @@ export const AuthProvider = ({ children }) => {
         inactivityNotice,
         dismissInactivityNotice: () => setInactivityNotice(false),
         login,
+        verifyLoginOtp,
+        resendLoginOtp,
         register,
         logout,
         logoutAll,

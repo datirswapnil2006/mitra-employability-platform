@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('./user.model');
 const Session = require('./session.model');
 const { StudentProfile } = require('../students/student.model');
-const { sendCredentialEmail, sendPasswordResetEmail, getEmailDiagnostics, sendTestEmail, verifyConnection } = require('../../utils/email.service');
+const { sendCredentialEmail, sendPasswordResetEmail, sendLoginOtpEmail, getEmailDiagnostics, sendTestEmail, verifyConnection } = require('../../utils/email.service');
 const { OFFICIAL_DEPARTMENTS } = require('../../config/constants');
 const {
   generateAccessToken,
@@ -176,6 +176,75 @@ exports.register = async (req, res) => {
   }
 };
 
+/**
+ * Enforce OTP rate limiting (60s cooldown, max 5 per 15 min, 15m lockout)
+ */
+const checkOtpRateLimit = (user) => {
+  const now = Date.now();
+  const COOLDOWN_MS = 60 * 1000; // 60 seconds
+  const WINDOW_MS = 15 * 60 * 1000; // 15 minutes rolling window
+  const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes lockout
+  const MAX_REQUESTS = 5; // Max 5 requests per 15 minutes
+
+  // 1. Check if account is currently locked out
+  if (user.otpLockedUntil && new Date(user.otpLockedUntil).getTime() > now) {
+    const remainingSecs = Math.ceil((new Date(user.otpLockedUntil).getTime() - now) / 1000);
+    const remainingMins = Math.ceil(remainingSecs / 60);
+    return {
+      allowed: false,
+      status: 429,
+      retryAfterSeconds: remainingSecs,
+      message: `Too many verification requests. For security reasons, this account is temporarily locked from requesting OTPs for another ${remainingMins} minute(s). Please try again later.`
+    };
+  }
+
+  // 2. Check 60-second cooldown between individual requests
+  if (user.lastOtpSentAt) {
+    const timeSinceLast = now - new Date(user.lastOtpSentAt).getTime();
+    if (timeSinceLast < COOLDOWN_MS) {
+      const waitSecs = Math.ceil((COOLDOWN_MS - timeSinceLast) / 1000);
+      return {
+        allowed: false,
+        status: 429,
+        retryAfterSeconds: waitSecs,
+        message: `Please wait ${waitSecs} second${waitSecs > 1 ? 's' : ''} before requesting another verification code.`
+      };
+    }
+  }
+
+  // 3. Check rolling 15-minute window count
+  let windowStart = user.otpWindowStart ? new Date(user.otpWindowStart).getTime() : 0;
+  let requestCount = user.otpRequestCount || 0;
+
+  if (!windowStart || now - windowStart > WINDOW_MS) {
+    windowStart = now;
+    requestCount = 1;
+  } else {
+    requestCount += 1;
+  }
+
+  // If exceeded max requests in this window, trigger lockout
+  if (requestCount > MAX_REQUESTS) {
+    user.otpLockedUntil = new Date(now + LOCKOUT_MS);
+    user.otpRequestCount = requestCount;
+    user.otpWindowStart = new Date(windowStart);
+    return {
+      allowed: false,
+      status: 429,
+      retryAfterSeconds: Math.ceil(LOCKOUT_MS / 1000),
+      message: `Too many verification code requests. You have reached the limit of ${MAX_REQUESTS} codes in 15 minutes. Please try again after 15 minutes.`
+    };
+  }
+
+  // Update user rate limiting state
+  user.otpWindowStart = new Date(windowStart);
+  user.otpRequestCount = requestCount;
+  user.lastOtpSentAt = new Date(now);
+  user.otpLockedUntil = null;
+
+  return { allowed: true };
+};
+
 exports.login = async (req, res) => {
   try {
     const { email, password, role } = req.body;
@@ -201,6 +270,125 @@ exports.login = async (req, res) => {
     if (user.status !== 'active') {
       return res.status(403).json({ success: false, message: 'Account is inactive. Contact administrator.' });
     }
+
+    // Rate Limiting: Check cooldown and request limits
+    const rateLimitCheck = checkOtpRateLimit(user);
+    if (!rateLimitCheck.allowed) {
+      await user.save();
+      return res.status(rateLimitCheck.status || 429).json({
+        success: false,
+        message: rateLimitCheck.message,
+        retryAfterSeconds: rateLimitCheck.retryAfterSeconds
+      });
+    }
+
+    // Two-Factor Authentication: Generate 6-digit numeric OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    user.loginOtp = otpHash;
+    user.loginOtpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    user.loginOtpAttempts = 0;
+    await user.save();
+
+    // Dispatch verification OTP email
+    let emailSent = false;
+    try {
+      await sendLoginOtpEmail({
+        toEmail: user.email,
+        userName: user.name,
+        otp,
+        role: user.role
+      });
+      emailSent = true;
+      console.log(`[Login OTP]: Verification code dispatched to ${user.email}`);
+    } catch (mailErr) {
+      console.error(`[Login OTP Email Dispatch Failed]: ${mailErr.message}`);
+    }
+
+    return res.json({
+      success: true,
+      requireOtp: true,
+      email: user.email,
+      role: user.role,
+      emailSent,
+      message: `A 6-digit verification code has been sent to ${user.email}.`
+    });
+  } catch (err) {
+    console.error('[Login Error]:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Verify Login OTP and complete authentication session
+ */
+exports.verifyLoginOtp = async (req, res) => {
+  try {
+    const { email, otp, role } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: 'Email and 6-digit verification code are required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Account not found. Please log in again.' });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Account is inactive. Contact administrator.' });
+    }
+
+    if (role && user.role !== role) {
+      const selectedLabel = role === 'admin' ? 'Administrator' : 'Student';
+      const actualLabel = user.role === 'admin' ? 'Administrator' : 'Student';
+      return res.status(403).json({
+        success: false,
+        message: `This account belongs to an ${actualLabel}. You cannot sign in under the ${selectedLabel} portal.`
+      });
+    }
+
+    if (!user.loginOtp || !user.loginOtpExpires) {
+      return res.status(400).json({ success: false, message: 'No active verification code found. Please request a new code.' });
+    }
+
+    if (new Date() > user.loginOtpExpires) {
+      user.loginOtp = null;
+      user.loginOtpExpires = null;
+      user.loginOtpAttempts = 0;
+      await user.save();
+      return res.status(400).json({ success: false, message: 'Verification code has expired. Please request a new code.' });
+    }
+
+    const cleanOtp = String(otp).trim();
+    const enteredHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+
+    if (enteredHash !== user.loginOtp) {
+      user.loginOtpAttempts = (user.loginOtpAttempts || 0) + 1;
+      if (user.loginOtpAttempts >= 5) {
+        user.loginOtp = null;
+        user.loginOtpExpires = null;
+        user.loginOtpAttempts = 0;
+        await user.save();
+        return res.status(400).json({
+          success: false,
+          message: 'Too many incorrect attempts. This verification code has been invalidated. Please sign in again.'
+        });
+      }
+      await user.save();
+      const remaining = 5 - user.loginOtpAttempts;
+      return res.status(400).json({
+        success: false,
+        message: `Invalid verification code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+      });
+    }
+
+    // OTP verified successfully! Clear OTP state and reset limits
+    user.loginOtp = null;
+    user.loginOtpExpires = null;
+    user.loginOtpAttempts = 0;
+    user.otpRequestCount = 0;
+    user.otpLockedUntil = null;
+    await user.save();
 
     const { accessToken } = await createSession(user, req, res);
 
@@ -229,7 +417,75 @@ exports.login = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Login Error]:', err);
+    console.error('[Verify Login OTP Error]:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Resend Login OTP with cooldown protection
+ */
+exports.resendLoginOtp = async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email address is required.' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Account is inactive.' });
+    }
+
+    if (role && user.role !== role) {
+      return res.status(403).json({ success: false, message: 'Role mismatch.' });
+    }
+
+    // Rate Limiting: Check cooldown and request limits
+    const rateLimitCheck = checkOtpRateLimit(user);
+    if (!rateLimitCheck.allowed) {
+      await user.save();
+      return res.status(rateLimitCheck.status || 429).json({
+        success: false,
+        message: rateLimitCheck.message,
+        retryAfterSeconds: rateLimitCheck.retryAfterSeconds
+      });
+    }
+
+    // Generate fresh OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    user.loginOtp = otpHash;
+    user.loginOtpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    user.loginOtpAttempts = 0;
+    await user.save();
+
+    let emailSent = false;
+    try {
+      await sendLoginOtpEmail({
+        toEmail: user.email,
+        userName: user.name,
+        otp,
+        role: user.role
+      });
+      emailSent = true;
+      console.log(`[Login OTP]: Fresh verification code dispatched to ${user.email}`);
+    } catch (mailErr) {
+      console.error(`[Resend Login OTP Email Error]: ${mailErr.message}`);
+    }
+
+    res.json({
+      success: true,
+      emailSent,
+      retryAfterSeconds: 60,
+      message: `A fresh 6-digit verification code has been sent to ${user.email}.`
+    });
+  } catch (err) {
+    console.error('[Resend Login OTP Error]:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

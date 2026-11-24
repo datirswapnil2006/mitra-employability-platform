@@ -3,6 +3,8 @@ const router = express.Router();
 const {
   register,
   login,
+  verifyLoginOtp,
+  resendLoginOtp,
   refreshToken,
   logout,
   logoutAll,
@@ -20,6 +22,8 @@ const { protect } = require('../../middleware/authMiddleware');
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/verify-otp', verifyLoginOtp);
+router.post('/resend-otp', resendLoginOtp);
 router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 router.post('/logout-all', protect, logoutAll);

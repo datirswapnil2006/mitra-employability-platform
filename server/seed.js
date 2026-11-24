@@ -16,19 +16,19 @@ const seedData = async () => {
       console.log('[System Init]: Bootstrapping initial system administrator...');
       const newAdmin = await User.create({
         name: 'Dr. N. N. Khalsa (Admin)',
-        email: 'tpomitech@mitra.ac.in',
+        email: 'datirswapnil1@gmail.com',
         password: 'adminpassword123',
         role: 'admin',
         department: 'CSE'
       });
       adminId = newAdmin._id;
-      console.log('[System Init]: Administrator account initialized (tpomitech@mitra.ac.in).');
+      console.log('[System Init]: Administrator account initialized (datirswapnil1@gmail.com).');
     } else {
-      // Ensure admin email is updated to official tpomitech@mitra.ac.in in database
-      if (adminUser.email !== 'tpomitech@mitra.ac.in') {
-        adminUser.email = 'tpomitech@mitra.ac.in';
+      // Ensure admin email is updated to official datirswapnil1@gmail.com in database
+      if (adminUser.email !== 'datirswapnil1@gmail.com') {
+        adminUser.email = 'datirswapnil1@gmail.com';
         await adminUser.save();
-        console.log('[System Init]: Updated administrator email to tpomitech@mitra.ac.in in database.');
+        console.log('[System Init]: Updated administrator email to datirswapnil1@gmail.com in database.');
       }
     }
 

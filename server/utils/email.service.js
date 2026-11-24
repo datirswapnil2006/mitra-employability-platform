@@ -783,3 +783,128 @@ exports.sendTestEmail = async (targetEmail) => {
     };
   }
 };
+
+/**
+ * Sends a 6-digit Login Verification OTP email
+ */
+exports.sendLoginOtpEmail = async ({ toEmail, userName, otp, role }) => {
+  const recipient = (toEmail || '').trim();
+  if (!recipient) {
+    throw new Error('Recipient email is required for login OTP verification.');
+  }
+
+  const roleLabel = role === 'admin' ? 'Administrator' : 'Student';
+  const subject = `[MITRA Security] Verification Code: ${otp}`;
+  const now = new Date();
+  const formattedTime = now.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>MITRA Security Verification</title>
+    </head>
+    <body style="margin: 0; padding: 24px 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(8, 40, 75, 0.08); border: 1px solid #e2e8f0;">
+        
+        <!-- Header Banner -->
+        <tr>
+          <td style="background: linear-gradient(135deg, #08284B 0%, #0e3b6d 100%); padding: 36px 32px; text-align: center; border-bottom: 3px solid #F8C85A;">
+            <div style="display: inline-block; padding: 4px 14px; background: rgba(248, 200, 90, 0.15); border: 1px solid rgba(248, 200, 90, 0.4); border-radius: 20px; color: #F8C85A; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 12px;">
+              Two-Factor Authentication (2FA)
+            </div>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
+              MITRA Employability Portal
+            </h1>
+            <p style="color: #94a3b8; font-size: 13px; margin: 6px 0 0; font-weight: 500;">
+              Institutional Identity & Access Management
+            </p>
+          </td>
+        </tr>
+
+        <!-- Content Area -->
+        <tr>
+          <td style="padding: 36px 32px 28px;">
+            <p style="font-size: 16px; color: #0f172a; margin: 0 0 16px; font-weight: 700;">
+              Hello ${userName || 'User'},
+            </p>
+            <p style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 24px;">
+              A sign-in request was initiated for your <strong style="color: #08284B;">MITRA ${roleLabel} Portal</strong> account. To verify your identity and complete the authentication process, please use the one-time verification code below:
+            </p>
+
+            <!-- OTP Hero Box -->
+            <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 28px 0; background: #FFFBF2; border: 2px dashed #F8C85A; border-radius: 14px; text-align: center;">
+              <tr>
+                <td style="padding: 24px 16px;">
+                  <div style="font-size: 11px; font-weight: 700; color: #854d0e; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">
+                    One-Time Verification Password
+                  </div>
+                  <div style="font-family: 'Courier New', Courier, monospace; font-size: 40px; font-weight: 900; letter-spacing: 10px; color: #08284B; padding: 6px 0;">
+                    ${otp}
+                  </div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 8px; font-weight: 600;">
+                    ⏱ Valid for <strong>5 minutes</strong> • Single-use only
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Session Details Table -->
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border-radius: 10px; padding: 14px 16px; margin: 24px 0; font-size: 12px; color: #475569; border: 1px solid #e2e8f0;">
+              <tr>
+                <td style="padding: 4px 0; width: 40%; font-weight: 600; color: #64748b;">Account:</td>
+                <td style="padding: 4px 0; font-weight: 700; color: #0f172a;">${recipient}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: 600; color: #64748b;">Access Level:</td>
+                <td style="padding: 4px 0; font-weight: 700; color: #0f172a;">${roleLabel} Privileges</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; font-weight: 600; color: #64748b;">Request Time:</td>
+                <td style="padding: 4px 0; font-weight: 700; color: #0f172a;">${formattedTime} IST</td>
+              </tr>
+            </table>
+
+            <!-- Security Notice -->
+            <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-left: 4px solid #ef4444; border-radius: 8px; padding: 14px 16px; margin: 24px 0; font-size: 12px; color: #991b1b; line-height: 1.5;">
+              <strong style="color: #7f1d1d;">Security Notice:</strong> Never share this OTP with anyone. The MITRA T&P Cell or system administrators will <strong>never</strong> ask you for your verification code. If you did not initiate this sign-in request, please secure your account immediately or notify the T&P Cell.
+            </div>
+
+            <!-- Sign-Off -->
+            <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #475569; line-height: 1.6;">
+              <p style="margin: 0;">Warm regards,<br>
+              <strong style="color: #08284B;">Training & Placement Cell</strong><br>
+              <span style="font-size: 12px; color: #64748b;">MITRA Employability Platform • Institutional Security Team</span></p>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background-color: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+            This is an automated system notification from the MITRA Employability Platform. Please do not reply directly to this email.<br>
+            © 2026 MITRA Platform • All rights reserved.
+          </td>
+        </tr>
+
+      </table>
+    </body>
+    </html>
+  `;
+
+  return await dispatchEmail({
+    to: recipient,
+    subject,
+    html
+  });
+};
