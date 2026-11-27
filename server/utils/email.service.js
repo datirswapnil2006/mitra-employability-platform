@@ -23,85 +23,6 @@ let cachedTransporter = null;
 let cachedPort = null;
 
 /**
- * Sends email via HTTP REST API (Resend or Brevo) using native fetch (Port 443).
- * This completely bypasses Render Free Tier's firewall blocks on raw SMTP ports (25, 465, 587).
- */
-const sendViaHttpApi = async ({ from, to, subject, html }) => {
-  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
-
-  // 1. Resend REST API (Port 443 HTTPS - 100% cloud firewall proof)
-  if (resendApiKey) {
-    console.log('[Email Service]: Dispatching via Resend HTTP REST API (Port 443)...');
-    const sender = from.includes('@') ? from : 'MITRA Portal <onboarding@resend.dev>';
-
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        from: sender,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html
-      }),
-      signal: AbortSignal.timeout(15000)
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.message || data.error || `Resend API error: HTTP ${res.status}`);
-    }
-
-    return {
-      method: 'resend_http_api',
-      messageId: data.id || 'resend-delivered'
-    };
-  }
-
-  // 2. Brevo REST API (Port 443 HTTPS)
-  if (brevoApiKey) {
-    console.log('[Email Service]: Dispatching via Brevo HTTP REST API (Port 443)...');
-    let senderName = 'MITRA Employability Portal';
-    let senderEmail = (process.env.MAIL_USER || 'contact@mitraemployabilityportal.in').trim();
-    const match = from.match(/^(?:["']?(.*?)["']?\s*)?<([^>]+)>$/);
-    if (match) {
-      if (match[1]) senderName = match[1].trim();
-      if (match[2]) senderEmail = match[2].trim();
-    }
-
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': brevoApiKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        sender: { name: senderName, email: senderEmail },
-        to: [{ email: to }],
-        subject,
-        htmlContent: html
-      }),
-      signal: AbortSignal.timeout(15000)
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.message || data.error || `Brevo API error: HTTP ${res.status}`);
-    }
-
-    return {
-      method: 'brevo_http_api',
-      messageId: data.messageId || 'brevo-delivered'
-    };
-  }
-
-  return null;
-};
-
-/**
  * Resolves a hostname strictly to its IPv4 address (e.g. smtp.hostinger.com -> 172.65.255.143)
  */
 const resolveIPv4 = async (hostname) => {
@@ -131,9 +52,6 @@ const getSender = () => {
   const mailUser = (process.env.MAIL_USER || '').trim();
 
   if (!from && !mailUser) {
-    if (process.env.RESEND_API_KEY) {
-      return '"MITRA Employability Portal" <onboarding@resend.dev>';
-    }
     throw new Error('Neither EMAIL_FROM nor MAIL_USER is configured in environment variables');
   }
 
@@ -224,21 +142,10 @@ const resetTransporter = () => {
 };
 
 /**
- * Unified dispatch helper:
- * 1. Checks HTTP API (Resend / Brevo) first (Port 443 HTTPS - bypasses Render Free firewall).
- * 2. Falls back to Nodemailer SMTP (Port 465 / 587) over IPv4.
- * 3. Provides actionable error message if Render blocks SMTP ports.
+ * Unified SMTP dispatch helper over IPv4 (Port 465 / 587).
  */
 const dispatchEmail = async ({ to, subject, html }) => {
   const from = getSender();
-
-  // 1. Try HTTP API first (Bypasses Render Free Tier raw SMTP blocks)
-  const apiResult = await sendViaHttpApi({ from, to, subject, html });
-  if (apiResult) {
-    return apiResult;
-  }
-
-  // 2. SMTP dispatch over IPv4
   const configuredPort = parseInt((process.env.MAIL_PORT || '465').trim(), 10) || 465;
   const fallbackPort = configuredPort === 465 ? 587 : 465;
 
@@ -280,15 +187,6 @@ const dispatchEmail = async ({ to, subject, html }) => {
         response: info.response
       };
     } catch (fallbackErr) {
-      const isTimeout = fallbackErr.code === 'ETIMEDOUT' || fallbackErr.message?.includes('timeout');
-      const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
-
-      if (isTimeout && isRender) {
-        throw new Error(
-          'Render Free Tier blocks raw SMTP ports (25, 465, 587), causing connection timeout. To fix this on Render, configure a free RESEND_API_KEY in Render environment variables to send over HTTPS (Port 443), or upgrade Render to a paid plan.'
-        );
-      }
-
       throw fallbackErr;
     }
   }
@@ -545,58 +443,6 @@ exports.sendPasswordResetEmail = async ({ toEmail, studentName, resetToken, rese
  */
 exports.verifyConnection = async () => {
   const startTime = Date.now();
-  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
-
-  // 1. Resend API Check
-  if (resendApiKey) {
-    try {
-      const res = await fetch('https://api.resend.com/api_keys', {
-        headers: { Authorization: `Bearer ${resendApiKey}` },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (!res.ok) throw new Error(`Resend returned HTTP ${res.status}`);
-      return {
-        success: true,
-        provider: 'Resend HTTPS API (Port 443)',
-        latencyMs: Date.now() - startTime,
-        message: 'Resend API key is valid and connected over HTTPS Port 443 (Render firewall proof).'
-      };
-    } catch (err) {
-      return {
-        success: false,
-        provider: 'Resend HTTPS API',
-        latencyMs: Date.now() - startTime,
-        error: err.message
-      };
-    }
-  }
-
-  // 2. Brevo API Check
-  if (brevoApiKey) {
-    try {
-      const res = await fetch('https://api.brevo.com/v3/account', {
-        headers: { 'api-key': brevoApiKey },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (!res.ok) throw new Error(`Brevo returned HTTP ${res.status}`);
-      return {
-        success: true,
-        provider: 'Brevo HTTPS API (Port 443)',
-        latencyMs: Date.now() - startTime,
-        message: 'Brevo API key is valid and connected over HTTPS Port 443 (Render firewall proof).'
-      };
-    } catch (err) {
-      return {
-        success: false,
-        provider: 'Brevo HTTPS API',
-        latencyMs: Date.now() - startTime,
-        error: err.message
-      };
-    }
-  }
-
-  // 3. SMTP Check
   const host = (process.env.MAIL_HOST || 'smtp.hostinger.com').trim();
   const configuredPort = parseInt((process.env.MAIL_PORT || '465').trim(), 10) || 465;
   const user = (process.env.MAIL_USER || '').trim();
@@ -636,11 +482,11 @@ exports.verifyConnection = async () => {
       };
     } catch (fallbackErr) {
       resetTransporter();
-      let hint = 'Check your SMTP credentials and cloud network settings.';
+      let hint = 'Check your SMTP credentials and network settings.';
       if (primaryErr.code === 'EAUTH') {
-        hint = 'Authentication failed. Please verify MAIL_USER and MAIL_PASSWORD in Render.';
+        hint = 'Authentication failed. Please verify MAIL_USER and MAIL_PASSWORD.';
       } else if (primaryErr.code === 'ETIMEDOUT' || primaryErr.message?.includes('timeout')) {
-        hint = 'Render Free Tier blocks raw SMTP ports (465, 587). Add a RESEND_API_KEY in Render to send via HTTPS (Port 443).';
+        hint = 'SMTP connection timed out. Verify firewall/port settings for 465 and 587.';
       }
 
       return {
@@ -659,8 +505,6 @@ exports.verifyConnection = async () => {
  * Diagnostic helper to inspect email configuration status
  */
 exports.getEmailDiagnostics = async (verifyLive = false) => {
-  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
   const host = (process.env.MAIL_HOST || 'smtp.hostinger.com').trim();
   const port = (process.env.MAIL_PORT || '465').trim();
   const user = (process.env.MAIL_USER || '').trim();
@@ -675,14 +519,10 @@ exports.getEmailDiagnostics = async (verifyLive = false) => {
     sender = user ? `"MITRA Portal" <${user}>` : 'NOT_SET';
   }
 
-  const isConfigured = Boolean(resendApiKey || brevoApiKey || (host && user && pass));
+  const isConfigured = Boolean(host && user && pass);
 
   let provider = `Custom SMTP (${host}:${port})`;
-  if (resendApiKey) {
-    provider = 'Resend HTTPS API (Port 443 - Render Firewall Proof)';
-  } else if (brevoApiKey) {
-    provider = 'Brevo HTTPS API (Port 443 - Render Firewall Proof)';
-  } else if (host.toLowerCase().includes('hostinger')) {
+  if (host.toLowerCase().includes('hostinger')) {
     provider = `Hostinger Secure SMTP (${host}:${port})`;
   } else if (host.toLowerCase().includes('gmail')) {
     provider = `Gmail SMTP (${host}:${port})`;
@@ -695,7 +535,6 @@ exports.getEmailDiagnostics = async (verifyLive = false) => {
     isRender,
     status: isConfigured ? 'Ready' : 'Incomplete Configuration',
     config: {
-      usingHttpsApi: Boolean(resendApiKey || brevoApiKey),
       smtpHost: host || 'NOT_SET',
       smtpPort: port,
       smtpUser: user || 'NOT_SET',
@@ -731,11 +570,7 @@ exports.sendTestEmail = async (targetEmail) => {
   const sender = getSender();
   const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
 
-  const providerName = process.env.RESEND_API_KEY
-    ? 'Resend HTTPS API'
-    : process.env.BREVO_API_KEY
-    ? 'Brevo HTTPS API'
-    : host.toLowerCase().includes('hostinger')
+  const providerName = host.toLowerCase().includes('hostinger')
     ? `Hostinger Secure SMTP (${host}:${port})`
     : `SMTP (${host}:${port})`;
 
@@ -820,9 +655,7 @@ exports.sendLoginOtpEmail = async ({ toEmail, userName, otp, role }) => {
         <!-- Header Banner -->
         <tr>
           <td style="background: linear-gradient(135deg, #08284B 0%, #0e3b6d 100%); padding: 36px 32px; text-align: center; border-bottom: 3px solid #F8C85A;">
-            <div style="display: inline-block; padding: 4px 14px; background: rgba(248, 200, 90, 0.15); border: 1px solid rgba(248, 200, 90, 0.4); border-radius: 20px; color: #F8C85A; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 12px;">
-              Two-Factor Authentication (2FA)
-            </div>
+
             <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
               MITRA Employability Portal
             </h1>
